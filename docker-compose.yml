@@ -1,0 +1,27 @@
+# Convenience Postgres for local development.
+#
+#   docker compose up -d
+#   cp .env.example .env      # DATABASE_URL already matches this service
+#   npm run db:migrate
+#   npm run db:seed
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: wetestcase-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: wetestcase
+    ports:
+      - "5432:5432"
+    volumes:
+      - wetestcase-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d wetestcase"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  wetestcase-pgdata:

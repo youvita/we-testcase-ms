@@ -1,0 +1,351 @@
+// Test Case Management System — Phase 1
+//
+// Two groups of models live here:
+//   1. Better Auth tables (User, Session, Account, Verification). Their shape is
+//      dictated by the Better Auth Prisma adapter — ids are strings without a
+//      database default because Better Auth generates them itself.
+//   2. Domain tables (Project, Module, TestCase, TestExecution, Attachment).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------------
+
+enum ProjectStatus {
+  PLANNING
+  ACTIVE
+  ON_HOLD
+  COMPLETED
+  ARCHIVED
+}
+
+/// The kind of testing a case represents. Declaration order is the order
+/// Postgres sorts by, so it doubles as the display order in the UI.
+enum TestType {
+  FUNCTIONAL
+  UI
+  API
+  NEGATIVE
+  INTEGRATION
+  REGRESSION
+  PERFORMANCE
+  SECURITY
+  USABILITY
+  COMPATIBILITY
+}
+
+/// How urgent a case is. Declared most-severe-first so an ascending Postgres
+/// sort surfaces Critical / High ahead of Medium / Low.
+enum Priority {
+  CRITICAL
+  HIGH
+  MEDIUM
+  LOW
+}
+
+enum ExecutionStatus {
+  NOT_RUN
+  PASSED
+  FAILED
+  BLOCKED
+}
+
+/// Where a developer says a reported failure stands.
+///
+/// Deliberately separate from ExecutionStatus: that records what testing found
+/// and only QA may write it, while this records what engineering says about the
+/// finding. Keeping them apart is what stops a developer's "fixed" from ever
+/// reading as a passing test.
+enum FixStatus {
+  NONE
+  INVESTIGATING
+  FIXED
+  /// Set by QA, not the developer: it marks that someone has picked the fix up
+  /// and is re-running the case. Cleared automatically by the resulting
+  /// execution, so it cannot be left stale.
+  RETESTING
+  WONT_FIX
+  NOT_A_BUG
+}
+
+// ---------------------------------------------------------------------------
+// Better Auth
+// ---------------------------------------------------------------------------
+
+model User {
+  id            String   @id
+  name          String
+  email         String   @unique
+  emailVerified Boolean  @default(false)
+  image         String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  /// One of ADMIN | QA | DEVELOPER. Kept as a String rather than a Prisma enum
+  /// because the Better Auth adapter writes this column through its generic
+  /// additional-fields mechanism, which only round-trips scalars reliably.
+  /// Always validate through `roleSchema` in lib/validations.ts.
+  role String @default("QA")
+
+  isActive Boolean @default(true)
+
+  sessions Session[]
+  accounts Account[]
+
+  ownedProjects    Project[]        @relation("ProjectQaOwner")
+  createdProjects  Project[]        @relation("ProjectCreatedBy")
+  executions       TestExecution[]
+  editedExecutions TestExecution[]  @relation("TestExecutionEditedBy")
+  comments         Comment[]
+  deletedComments  Comment[]        @relation("CommentDeletedBy")
+  fixStatusSet     TestCase[]       @relation("TestCaseFixStatusBy")
+  fixStatusEvents  FixStatusEvent[] @relation("FixStatusEventActor")
+
+  @@index([role])
+}
+
+model Session {
+  id        String   @id
+  expiresAt DateTime
+  token     String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  ipAddress String?
+  userAgent String?
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model Account {
+  id                    String    @id
+  accountId             String
+  providerId            String
+  accessToken           String?
+  refreshToken          String?
+  idToken               String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  password              String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model Verification {
+  id         String   @id
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([identifier])
+}
+
+// ---------------------------------------------------------------------------
+// Domain
+// ---------------------------------------------------------------------------
+
+model Project {
+  id          String        @id @default(cuid())
+  name        String
+  description String?
+  version     String?
+  environment String?
+  status      ProjectStatus @default(PLANNING)
+  startDate   DateTime?
+  endDate     DateTime?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  qaOwnerId String?
+  qaOwner   User?   @relation("ProjectQaOwner", fields: [qaOwnerId], references: [id], onDelete: SetNull)
+
+  createdById String
+  createdBy   User   @relation("ProjectCreatedBy", fields: [createdById], references: [id])
+
+  modules   Module[]
+  testCases TestCase[]
+
+  @@index([status])
+  @@index([qaOwnerId])
+}
+
+model Module {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  /// Manual sort order so QA can keep modules in test-plan sequence.
+  position    Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  projectId String
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  testCases TestCase[]
+
+  @@unique([projectId, name])
+  @@index([projectId])
+}
+
+model TestCase {
+  id             String   @id @default(cuid())
+  /// Human-facing identifier from the Excel sheet, e.g. "TC-LOGIN-001".
+  tcId           String
+  title          String
+  preconditions  String?
+  steps          String?
+  expectedResult String?
+  testType       TestType @default(FUNCTIONAL)
+  priority       Priority @default(MEDIUM)
+
+  /// Latest execution outcome, denormalized from TestExecution so the test-case
+  /// list can filter/sort by status and the dashboard can aggregate with a
+  /// single groupBy. Written only by execution.service.ts.
+  status         ExecutionStatus @default(NOT_RUN)
+  lastExecutedAt DateTime?
+
+  /// Developer-owned triage state for the current failure. Reset to NONE
+  /// whenever an execution is recorded, so a stale "fixed" can never sit on top
+  /// of a fresh test result. Written only by test-case.service.ts.
+  fixStatus     FixStatus @default(NONE)
+  fixStatusAt   DateTime?
+  fixStatusById String?
+  fixStatusBy   User?     @relation("TestCaseFixStatusBy", fields: [fixStatusById], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  moduleId String
+  module   Module @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+
+  /// Denormalized from module.projectId. TC IDs are unique per *project*, not
+  /// per module, and every list/report query is project-scoped — carrying the
+  /// id here makes both cheap.
+  projectId String
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  executions      TestExecution[]
+  comments        Comment[]
+  fixStatusEvents FixStatusEvent[]
+
+  @@unique([projectId, tcId])
+  @@index([moduleId])
+  @@index([projectId, status])
+  @@index([projectId, testType])
+  @@index([projectId, priority])
+  @@index([projectId, fixStatus])
+}
+
+/// One row per developer triage change.
+///
+/// `TestCase.fixStatus` holds only the current value, so without this log a
+/// stage would lose its "who and when" the moment the next stage began — the
+/// progress timeline needs both for every step, not just the latest one.
+model FixStatusEvent {
+  id        String    @id @default(cuid())
+  fixStatus FixStatus
+  createdAt DateTime  @default(now())
+
+  /// Why. Required for the decisions that close a case rather than move it
+  /// along — "won't fix" and "not a bug" both overrule a reported failure, and
+  /// the reason belongs with the decision rather than loose in the discussion.
+  note String?
+
+  testCaseId String
+  testCase   TestCase @relation(fields: [testCaseId], references: [id], onDelete: Cascade)
+
+  actorId String
+  actor   User   @relation("FixStatusEventActor", fields: [actorId], references: [id])
+
+  @@index([testCaseId, createdAt])
+}
+
+/// Discussion between QA and developers on a test case.
+///
+/// Separate from `TestExecution.comment`: that one is part of an immutable
+/// result and belongs to whoever ran the test, whereas these are a conversation
+/// anyone signed in may join without touching the audit trail.
+model Comment {
+  id        String   @id @default(cuid())
+  body      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  /// Soft delete. Removing a post outright would tear a hole in a conversation
+  /// other posts reply to, so the row stays and the UI shows a tombstone. The
+  /// body is retained here but never served once this is set.
+  deletedAt   DateTime?
+  deletedById String?
+  deletedBy   User?     @relation("CommentDeletedBy", fields: [deletedById], references: [id])
+
+  testCaseId String
+  testCase   TestCase @relation(fields: [testCaseId], references: [id], onDelete: Cascade)
+
+  authorId String
+  author   User   @relation(fields: [authorId], references: [id])
+
+  @@index([testCaseId, createdAt])
+  @@index([authorId])
+}
+
+model TestExecution {
+  id           String          @id @default(cuid())
+  actualResult String?
+  status       ExecutionStatus
+  comment      String?
+  executedAt   DateTime        @default(now())
+
+  /// Set when the narrative (actual result / comment) is corrected after the
+  /// fact. `status`, `testerId` and `executedAt` are never editable: the
+  /// dashboard's pass rate and daily chart are computed from those, and a
+  /// silent change would rewrite numbers nobody re-ran a test to earn.
+  editedAt   DateTime?
+  editedById String?
+  editedBy   User?     @relation("TestExecutionEditedBy", fields: [editedById], references: [id])
+
+  testCaseId String
+  testCase   TestCase @relation(fields: [testCaseId], references: [id], onDelete: Cascade)
+
+  testerId String
+  tester   User   @relation(fields: [testerId], references: [id])
+
+  attachments Attachment[]
+
+  @@index([testCaseId, executedAt])
+  @@index([testerId])
+  @@index([executedAt])
+}
+
+model Attachment {
+  id        String   @id @default(cuid())
+  fileName  String
+  /// Path relative to UPLOAD_DIR. Served through /api/attachments/[id]/file so
+  /// access can be authorized; never exposed as a static asset.
+  filePath  String
+  fileSize  Int
+  mimeType  String
+  createdAt DateTime @default(now())
+
+  executionId String
+  execution   TestExecution @relation(fields: [executionId], references: [id], onDelete: Cascade)
+
+  @@index([executionId])
+}
