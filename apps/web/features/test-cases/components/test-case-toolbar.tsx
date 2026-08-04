@@ -33,15 +33,9 @@ export function TestCaseToolbar({
         Import Excel
       </Button>
 
-      <Button
-        onClick={() => setFormOpen(true)}
-        disabled={modules.length === 0}
-        title={
-          modules.length === 0
-            ? "Create a module first, or import a sheet with a Module column"
-            : undefined
-        }
-      >
+      {/* Enabled even with no modules: the dialog creates the first one itself,
+          so a new project is not a dead end here. */}
+      <Button onClick={() => setFormOpen(true)}>
         <Plus className="mr-2 size-4" />
         New test case
       </Button>

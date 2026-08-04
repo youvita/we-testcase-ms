@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -39,11 +39,18 @@ import type { TestCaseWithDetails } from "@/types";
 
 export type ModuleOption = { id: string; name: string };
 
+/** Sentinel select value that switches the Module field to "name a new one". */
+const NEW_MODULE = "__new-module__";
+
 /**
  * Create/edit a single test case.
  *
  * In edit mode the full record is fetched when the dialog opens — the list only
  * carries summary fields, and steps/expected result can be long.
+ *
+ * A test case must belong to a module, and a freshly created project has none,
+ * so the Module field can create one on the spot — otherwise the first test case
+ * in a project would be unreachable from here.
  */
 export function TestCaseFormDialog({
   projectId,
@@ -62,6 +69,22 @@ export function TestCaseFormDialog({
   const router = useRouter();
   const isEdit = Boolean(testCaseId);
   const [loading, setLoading] = useState(false);
+
+  /** Modules added from this dialog, before the page has been refreshed. */
+  const [createdModules, setCreatedModules] = useState<ModuleOption[]>([]);
+  const [creatingModule, setCreatingModule] = useState(false);
+  const [newModuleName, setNewModuleName] = useState("");
+  const [savingModule, setSavingModule] = useState(false);
+
+  const moduleOptions = [
+    ...modules,
+    ...createdModules.filter((c) => !modules.some((m) => m.id === c.id)),
+  ];
+
+  // Read inside the open effect through a ref: a background refresh that adds or
+  // reorders modules must not re-run the reset and wipe what has been typed.
+  const moduleOptionsRef = useRef(moduleOptions);
+  moduleOptionsRef.current = moduleOptions;
 
   const {
     register,
@@ -88,9 +111,12 @@ export function TestCaseFormDialog({
   useEffect(() => {
     if (!open) return;
 
+    setNewModuleName("");
+
     if (!testCaseId) {
+      const options = moduleOptionsRef.current;
       reset({
-        moduleId: modules[0]?.id ?? "",
+        moduleId: options[0]?.id ?? "",
         tcId: "",
         title: "",
         preconditions: "",
@@ -99,8 +125,12 @@ export function TestCaseFormDialog({
         testType: "FUNCTIONAL",
         priority: "MEDIUM",
       });
+      // Nothing to pick from yet — go straight to naming the first module.
+      setCreatingModule(options.length === 0);
       return;
     }
+
+    setCreatingModule(false);
 
     let cancelled = false;
     setLoading(true);
@@ -130,7 +160,47 @@ export function TestCaseFormDialog({
     return () => {
       cancelled = true;
     };
-  }, [open, testCaseId, modules, reset]);
+  }, [open, testCaseId, reset]);
+
+  /**
+   * Create the module and select it, without refreshing the page — a refresh
+   * mid-form would re-render this dialog's parent while the user is still typing.
+   * `handleOpenChange` picks the new module up when the dialog closes.
+   */
+  async function handleCreateModule() {
+    const name = newModuleName.trim();
+    if (!name) {
+      toast.error("Module name is required");
+      return;
+    }
+
+    setSavingModule(true);
+    try {
+      const created = await api.post<ModuleOption>(
+        `/api/projects/${projectId}/modules`,
+        { name, description: "", position: 0 },
+      );
+
+      setCreatedModules((prev) => [...prev, { id: created.id, name: created.name }]);
+      setValue("moduleId", created.id, {
+        shouldDirty: true,
+        shouldValidate: true,
+      });
+      setCreatingModule(false);
+      setNewModuleName("");
+      toast.success(`Module "${created.name}" created`);
+    } catch (error) {
+      toast.error(errorMessage(error));
+    } finally {
+      setSavingModule(false);
+    }
+  }
+
+  /** Closing after adding a module has to refresh, or the list stays stale. */
+  function handleOpenChange(next: boolean) {
+    if (!next && createdModules.length > 0) router.refresh();
+    onOpenChange(next);
+  }
 
   async function onSubmit(values: TestCaseInput) {
     try {
@@ -160,7 +230,7 @@ export function TestCaseFormDialog({
   const priority = watch("priority");
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>
@@ -207,26 +277,87 @@ export function TestCaseFormDialog({
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="moduleId">
+                <Label htmlFor={creatingModule ? "newModuleName" : "moduleId"}>
                   Module <span className="text-destructive">*</span>
                 </Label>
-                <Select
-                  value={moduleId ?? ""}
-                  onValueChange={(value) =>
-                    setValue("moduleId", value, { shouldDirty: true })
-                  }
-                >
-                  <SelectTrigger id="moduleId">
-                    <SelectValue placeholder="Select a module" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {modules.map((mod) => (
-                      <SelectItem key={mod.id} value={mod.id}>
-                        {mod.name}
+
+                {creatingModule ? (
+                  <>
+                    <div className="flex items-center gap-2">
+                      <Input
+                        id="newModuleName"
+                        placeholder="Login"
+                        value={newModuleName}
+                        onChange={(event) => setNewModuleName(event.target.value)}
+                        onKeyDown={(event) => {
+                          // Enter would otherwise submit the test case form.
+                          if (event.key === "Enter") {
+                            event.preventDefault();
+                            void handleCreateModule();
+                          }
+                        }}
+                        disabled={savingModule}
+                      />
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        onClick={() => void handleCreateModule()}
+                        disabled={savingModule}
+                      >
+                        {savingModule ? (
+                          <Loader2 className="size-4 animate-spin" />
+                        ) : (
+                          "Add"
+                        )}
+                      </Button>
+                      {moduleOptions.length > 0 && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          onClick={() => {
+                            setCreatingModule(false);
+                            setNewModuleName("");
+                          }}
+                          disabled={savingModule}
+                        >
+                          Cancel
+                        </Button>
+                      )}
+                    </div>
+                    {moduleOptions.length === 0 && (
+                      <p className="text-xs text-muted-foreground">
+                        This project has no modules yet — name the first one, e.g.
+                        Login or Payment.
+                      </p>
+                    )}
+                  </>
+                ) : (
+                  <Select
+                    value={moduleId ?? ""}
+                    onValueChange={(value) => {
+                      if (value === NEW_MODULE) {
+                        setCreatingModule(true);
+                        return;
+                      }
+                      setValue("moduleId", value, { shouldDirty: true });
+                    }}
+                  >
+                    <SelectTrigger id="moduleId">
+                      <SelectValue placeholder="Select a module" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {moduleOptions.map((mod) => (
+                        <SelectItem key={mod.id} value={mod.id}>
+                          {mod.name}
+                        </SelectItem>
+                      ))}
+                      <SelectItem value={NEW_MODULE} className="text-primary">
+                        + New module…
                       </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                    </SelectContent>
+                  </Select>
+                )}
+
                 {errors.moduleId && (
                   <p className="text-xs text-destructive">
                     {errors.moduleId.message}
@@ -338,7 +469,7 @@ export function TestCaseFormDialog({
           <Button
             type="button"
             variant="outline"
-            onClick={() => onOpenChange(false)}
+            onClick={() => handleOpenChange(false)}
             disabled={isSubmitting}
           >
             Cancel
@@ -346,7 +477,7 @@ export function TestCaseFormDialog({
           <Button
             type="submit"
             form="test-case-form"
-            disabled={isSubmitting || loading || modules.length === 0}
+            disabled={isSubmitting || loading || savingModule}
           >
             {isSubmitting && <Loader2 className="mr-2 size-4 animate-spin" />}
             {isEdit ? "Save changes" : "Create test case"}

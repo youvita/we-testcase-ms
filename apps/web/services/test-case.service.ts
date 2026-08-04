@@ -60,8 +60,9 @@ function buildOrderBy(
       return [{ updatedAt: order }];
     case "tcId":
     default:
-      // Lexicographic. TC-2 sorts after TC-10; teams that care should
-      // zero-pad their IDs (TC-002), which is the common convention anyway.
+      // Natural, not lexicographic: the column carries the `natural_sort` ICU
+      // collation (see the 20260804090000 migration), so TC-2 sorts before
+      // TC-10 whether or not the IDs are zero-padded.
       return [{ tcId: order }];
   }
 }

@@ -96,11 +96,13 @@ function Step({
 }
 
 /**
- * Excel import flow: pick a file, choose how to treat existing TC IDs, upload,
- * then read a summary of exactly what happened.
+ * Excel import flow: pick a file, choose how to treat existing TC IDs, upload.
  *
- * The summary is deliberately detailed — a silent import that "worked" but
- * dropped rows is the failure mode QA teams fear most about tooling like this.
+ * A clean import closes the dialog and reports through a toast. The summary
+ * screen appears only when rows were skipped or nothing imported — a silent
+ * import that "worked" but dropped rows is the failure mode QA teams fear most
+ * about tooling like this, and the preview panel has already shown the counts
+ * before the commit.
  */
 export function ImportDialog({
   projectId,
@@ -181,11 +183,36 @@ export function ImportDialog({
         form,
       );
 
-      setSummary(result);
       const changed = result.created + result.updated;
-      if (changed > 0) {
+
+      // Nothing to explain: every row landed. The summary screen would only
+      // stand between the user and the list they came to see, so close and let
+      // the toast carry the numbers.
+      if (changed > 0 && result.errors.length === 0) {
         toast.success(
           `Imported ${result.created} new and updated ${result.updated} test cases`,
+          {
+            description: [
+              `${result.rowsRead} rows read from “${result.sheetName}”`,
+              result.modulesCreated.length > 0 &&
+                `${result.modulesCreated.length} module${result.modulesCreated.length === 1 ? "" : "s"} created`,
+            ]
+              .filter(Boolean)
+              .join(" · "),
+          },
+        );
+        reset();
+        onOpenChange(false);
+        router.refresh();
+        return;
+      }
+
+      // Rows were dropped, or nothing imported at all — that has to be shown,
+      // not tucked into a toast that disappears.
+      setSummary(result);
+      if (changed > 0) {
+        toast.warning(
+          `Imported ${changed} test case${changed === 1 ? "" : "s"}, ${result.errors.length} row${result.errors.length === 1 ? "" : "s"} skipped`,
         );
         router.refresh();
       } else {

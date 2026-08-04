@@ -252,6 +252,9 @@ export default async function TestCaseDetailPage({
                     <RetestButton
                       testCaseId={testCase.id}
                       fixStatus={testCase.fixStatus}
+                      claimedBy={testCase.fixStatusBy}
+                      claimedAt={testCase.fixStatusAt}
+                      currentUserId={user.id}
                     />
                   ) : undefined
                 }

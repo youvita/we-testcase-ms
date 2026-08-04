@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import {
   DEV_FIX_STATUSES,
   FIX_STATUS_HINTS,
@@ -24,7 +25,7 @@ import {
 } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 import { api, errorMessage } from "@/utils/api-client";
-import { formatDateTime } from "@/utils/format";
+import { formatDateTime, formatRelative } from "@/utils/format";
 
 /**
  * The developer's side of a failure: say where the fix stands without touching
@@ -50,8 +51,10 @@ export function FixStatusPanel({
   // Which closing decision is awaiting its reason, if any.
   const [closing, setClosing] = useState<FixStatus | null>(null);
   const [note, setNote] = useState("");
+  const [clearOpen, setClearOpen] = useState(false);
 
-  async function update(next: FixStatus, reason?: string) {
+  /** Resolves false on failure — the caller decides whether that is fatal. */
+  async function update(next: FixStatus, reason?: string): Promise<boolean> {
     setPending(next);
     try {
       await api.patch(`/api/test-cases/${testCaseId}/fix-status`, {
@@ -61,8 +64,10 @@ export function FixStatusPanel({
       setClosing(null);
       setNote("");
       router.refresh();
+      return true;
     } catch (error) {
       toast.error(errorMessage(error));
+      return false;
     } finally {
       setPending(null);
     }
@@ -171,18 +176,57 @@ export function FixStatusPanel({
               Set by {fixStatusBy?.name ?? "someone"}
               {fixStatusAt ? ` · ${formatDateTime(fixStatusAt)}` : ""}
             </span>
+            {/* Asks first: one stray click here would otherwise wipe the whole
+                round — including a retest another person is in the middle of. */}
             <Button
               variant="ghost"
               size="sm"
               className="h-7 shrink-0 px-2"
               disabled={pending !== null}
-              onClick={() => update("NONE")}
+              onClick={() => setClearOpen(true)}
             >
               Clear
             </Button>
           </div>
         )}
       </CardContent>
+
+      <ConfirmDialog
+        open={clearOpen}
+        onOpenChange={setClearOpen}
+        title={
+          fixStatus === "RETESTING"
+            ? `Clear the retest ${fixStatusBy?.name ?? "someone"} started?`
+            : "Clear this update?"
+        }
+        description={
+          <div className="space-y-2">
+            {fixStatus === "RETESTING" ? (
+              <p>
+                {fixStatusBy?.name ?? "Someone"} claimed this retest
+                {fixStatusAt ? ` ${formatRelative(fixStatusAt)}` : ""} and may
+                still be running it.
+              </p>
+            ) : (
+              <p>
+                <strong>{FIX_STATUS_LABELS[fixStatus]}</strong>, set by{" "}
+                {fixStatusBy?.name ?? "someone"}
+                {fixStatusAt ? ` on ${formatDateTime(fixStatusAt)}` : ""}.
+              </p>
+            )}
+            <p>
+              Clearing ends this round: the status and its author come off the
+              case, and nobody is notified. The progress timeline keeps the
+              history, and the recorded test result is not affected.
+            </p>
+          </div>
+        }
+        confirmLabel="Clear update"
+        onConfirm={async () => {
+          // Throwing keeps the dialog open; `update` has already toasted why.
+          if (!(await update("NONE"))) throw new Error("Clear failed");
+        }}
+      />
     </Card>
   );
 }
