@@ -3,20 +3,14 @@ import { Prisma } from "@prisma/client";
 import { ZodError } from "zod";
 
 import { getSessionUser, type SessionUser } from "@/lib/session";
-import type { Role } from "@/lib/constants";
+import type { ApiFailure, ApiResult, ApiSuccess, Role } from "@wetestcase/dto";
+
+export type { ApiFailure, ApiResult, ApiSuccess };
 
 /**
- * Shared response envelope so every client call can be parsed the same way.
+ * Shared response envelope types live in @wetestcase/dto.
+ * Next.js response helpers stay here.
  */
-export type ApiSuccess<T> = { ok: true; data: T };
-export type ApiFailure = {
-  ok: false;
-  error: string;
-  /** Field-level messages, keyed by form field name. */
-  fieldErrors?: Record<string, string[]>;
-};
-export type ApiResult<T> = ApiSuccess<T> | ApiFailure;
-
 export function ok<T>(data: T, init?: number | ResponseInit) {
   return NextResponse.json<ApiSuccess<T>>(
     { ok: true, data },
@@ -66,7 +60,11 @@ export function toErrorResponse(error: unknown) {
   }
 
   if (error instanceof ZodError) {
-    return fail("Validation failed", 422, error.flatten().fieldErrors as Record<string, string[]>);
+    return fail(
+      "Validation failed",
+      422,
+      error.flatten().fieldErrors as Record<string, string[]>,
+    );
   }
 
   if (error instanceof Prisma.PrismaClientKnownRequestError) {

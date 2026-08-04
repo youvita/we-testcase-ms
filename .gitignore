@@ -8,6 +8,10 @@ build/
 # env
 .env
 .env*.local
+.env.production
+!.env.production.example
+apps/web/.env
+apps/web/.env*.local
 
 # debug
 npm-debug.log*
@@ -17,7 +21,13 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+apps/web/next-env.d.ts
 
 # runtime artifacts
 /uploads/
 !/uploads/.gitkeep
+apps/web/uploads/
+!apps/web/uploads/.gitkeep
+
+# Stable tunnel public URL (local machine)
+deploy/public-url.env

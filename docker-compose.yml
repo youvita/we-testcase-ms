@@ -1,20 +1,18 @@
-# Convenience Postgres for local development.
-#
-#   docker compose up -d
-#   cp .env.example .env      # DATABASE_URL already matches this service
-#   npm run db:migrate
-#   npm run db:seed
+# docker-compose.yml at monorepo root — dev Postgres only.
+# Host port 5433 avoids clashing with other stacks (e.g. devone-postgres on :5432).
+# App: apps/web — DATABASE_URL must use localhost:5433 (see apps/web/.env.example).
+
 services:
   postgres:
     image: postgres:16-alpine
-    container_name: wetestcase-postgres
+    container_name: wetestcase-postgres-dev
     restart: unless-stopped
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: wetestcase
     ports:
-      - "5432:5432"
+      - "5433:5432"
     volumes:
       - wetestcase-pgdata:/var/lib/postgresql/data
     healthcheck:

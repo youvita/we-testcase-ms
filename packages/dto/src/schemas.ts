@@ -5,10 +5,10 @@ import {
   EXECUTION_STATUSES,
   FIX_STATUSES,
   PRIORITIES,
-  TEST_TYPES,
   PROJECT_STATUSES,
   ROLE_VALUES,
-} from "@/lib/constants";
+  TEST_TYPES,
+} from "./enums";
 
 // ---------------------------------------------------------------------------
 // Primitives
@@ -89,7 +89,6 @@ export const changePasswordSchema = z
 export type ProfileInput = z.infer<typeof profileSchema>;
 export type ChangePasswordInput = z.infer<typeof changePasswordSchema>;
 
-
 // ---------------------------------------------------------------------------
 // Project
 // ---------------------------------------------------------------------------
@@ -149,10 +148,6 @@ export const testCaseSchema = z.object({
 export type TestCaseInput = z.input<typeof testCaseSchema>;
 
 export const testCaseBulkDeleteSchema = z.object({
-  /**
-   * Capped at the query schema's max page size, so "select every row on this
-   * page" always fits in one request whatever page size the user picked.
-   */
   ids: z
     .array(z.string().min(1))
     .min(1, "Select at least one test case")
@@ -173,12 +168,7 @@ export type ExecutionInput = z.input<typeof executionSchema>;
 
 /**
  * A correction to an already-recorded result.
- *
- * The outcome is editable along with the narrative, so a result entered wrongly
- * can be put right in place. `executedAt` and the tester are not: they say when
- * the test ran and who ran it, which an edit does not change. Editing a status
- * moves the dashboard's pass rate — see `updateExecution`, which recomputes the
- * case's denormalized status from whichever execution is newest.
+ * `executedAt` and the tester are not editable.
  */
 export const executionEditSchema = z.object({
   status: executionStatusSchema,
@@ -200,15 +190,9 @@ export type CommentInput = z.infer<typeof commentSchema>;
 
 export const fixStatusSchema = z
   .object({
-    /**
-     * NONE is accepted so a developer can retract a premature "fixed" without
-     * waiting for QA to run the case again.
-     */
     fixStatus: z.enum(["NONE", ...FIX_STATUSES]),
     note: optionalText(1000),
   })
-  // "Won't fix" and "not a bug" overrule a reported failure. Requiring the
-  // reason here means it cannot be recorded without one.
   .refine(
     (input) =>
       !CLOSING_FIX_STATUSES.includes(

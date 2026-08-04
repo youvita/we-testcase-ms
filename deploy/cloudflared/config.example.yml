@@ -1,0 +1,22 @@
+# Cloudflare Tunnel — host LaunchDaemon config (stable public hostname).
+#
+# Prefer the helper (writes config.yml + credentials + DNS + LaunchDaemon):
+#   ./deploy/scripts/setup-stable-cloudflare-tunnel.sh app.yourdomain.com
+#
+# Manual equivalent:
+#   cloudflared tunnel login
+#   cloudflared tunnel create wetestcase
+#   cloudflared tunnel route dns wetestcase app.yourdomain.com
+#
+# Free trycloudflare.com quick tunnels CANNOT keep the same URL across restarts.
+# A named tunnel + DNS hostname on a Cloudflare zone stays fixed forever.
+
+tunnel: REPLACE_WITH_TUNNEL_UUID
+credentials-file: REPLACE_WITH_ABSOLUTE_PATH_TO_UUID.json
+
+ingress:
+  - hostname: app.yourdomain.com
+    service: http://127.0.0.1:3000
+    originRequest:
+      connectTimeout: 30s
+  - service: http_status:404

@@ -1,0 +1,114 @@
+# Production stack for a Mac mini (or any always-on Docker host).
+#
+# Architecture:
+#   Internet → Cloudflare (DNS / CDN / WAF / TLS)
+#            → Cloudflare Tunnel (cloudflared)
+#            → app:3000 (Next.js)
+#            → postgres:5432 (local, not exposed publicly)
+#
+# First time:
+#   1. cp .env.production.example .env.production
+#   2. Edit secrets and public URLs in .env.production
+#   3. Follow deploy/README.md for Cloudflare Tunnel
+#   4. docker compose -f docker-compose.prod.yml --env-file .env.production up -d --build
+#
+# Day-to-day deploy:
+#   ./deploy/scripts/deploy.sh
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: wetestcase-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env.production}
+      POSTGRES_DB: ${POSTGRES_DB:-wetestcase}
+    volumes:
+      - wetestcase-pgdata:/var/lib/postgresql/data
+      - ./deploy/backups:/backups
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-wetestcase}",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    # Local-only for tools like DBeaver / psql on the Mac mini.
+    # Not reachable from LAN or the public internet (Cloudflare tunnel only
+    # proxies the app, not this port).
+    ports:
+      - "127.0.0.1:5434:5432"
+    networks:
+      - internal
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        # Empty = free tunnel / multi-host; auth client uses the browser origin.
+        # Only set this when you have a fixed public URL (e.g. https://app.example.com).
+        NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-}
+    image: wetestcase-ms:latest
+    container_name: wetestcase-app
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    env_file:
+      - .env.production
+    environment:
+      # In-compose DNS: app talks to the postgres service name, not localhost.
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-wetestcase}?schema=public
+      DIRECT_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-wetestcase}?schema=public
+      UPLOAD_DIR: /app/uploads
+      HOSTNAME: 0.0.0.0
+      PORT: "3000"
+    volumes:
+      # Persistent screenshots / avatars on the Mac mini disk
+      - wetestcase-uploads:/app/uploads
+    # Local admin access only; public traffic comes through the tunnel.
+    ports:
+      - "127.0.0.1:3000:3000"
+    networks:
+      - internal
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3000/api/health').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 40s
+
+  # Optional: run the tunnel in Docker instead of as a host LaunchDaemon.
+  # Requires credentials + config under deploy/cloudflared/ (see deploy/README.md).
+  # Enable with: docker compose -f docker-compose.prod.yml --profile tunnel up -d
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: wetestcase-tunnel
+    restart: unless-stopped
+    profiles: ["tunnel"]
+    command: tunnel --config /etc/cloudflared/config.yml run
+    volumes:
+      - ./deploy/cloudflared:/etc/cloudflared:ro
+    depends_on:
+      app:
+        condition: service_healthy
+    networks:
+      - internal
+
+networks:
+  internal:
+    driver: bridge
+
+volumes:
+  wetestcase-pgdata:
+  wetestcase-uploads:

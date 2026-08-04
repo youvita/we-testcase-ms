@@ -14,21 +14,45 @@ This is **not** a bug tracker and **not** an AI testing platform.
 
 | Layer      | Choice                                        |
 | ---------- | --------------------------------------------- |
-| Framework  | Next.js 15 (App Router) + React 19            |
+| Layout     | **npm workspaces monorepo** (`apps/*`, `packages/*`) |
+| Web app    | **Next.js 15** (App Router) + React 19 — `apps/web` |
+| Shared DTOs| **`@wetestcase/dto`** — Zod schemas, enums, pure response types |
 | Language   | TypeScript (`strict`, `noUncheckedIndexedAccess`) |
 | Styling    | Tailwind CSS v3 + shadcn/ui (new-york)        |
-| Database   | PostgreSQL via Prisma 6                       |
+| Database   | PostgreSQL via Prisma 6 (`apps/web/prisma`)   |
 | Auth       | Better Auth (email + password)                |
 | Excel      | SheetJS (`xlsx`)                              |
 | PDF        | `pdf-lib`                                     |
 | Charts     | Recharts                                      |
-| Validation | Zod + react-hook-form                         |
+| Validation | Zod (dto package) + react-hook-form           |
+
+---
+
+## Repository layout
+
+```
+we-testcase-ms/
+  apps/web/              # Next.js app (UI, API routes, services, Prisma)
+  packages/dto/          # Shared DTOs (@wetestcase/dto)
+  deploy/                # Mac mini + Cloudflare hosting scripts
+  docker-compose*.yml
+  package.json           # workspace root — run scripts from here
+```
+
+Import shared contracts anywhere:
+
+```ts
+import { testCaseSchema, type TestCaseInput, ROLES } from "@wetestcase/dto";
+```
+
+`apps/web` still re-exports many of these via `@/lib/validations`, `@/lib/constants`,
+and `@/types` for existing app code.
 
 ---
 
 ## Getting started
 
-### 1. Install
+### 1. Install (monorepo root)
 
 ```bash
 npm install
@@ -36,8 +60,11 @@ npm install
 
 ### 2. Configure
 
+Next.js loads env from **`apps/web`**:
+
 ```bash
-cp .env.example .env
+cp .env.example apps/web/.env
+# or: cp apps/web/.env.example apps/web/.env
 ```
 
 Then set a real auth secret:
@@ -93,6 +120,23 @@ npm run dev
 ```
 
 Open http://localhost:3000.
+
+---
+
+## Production (Cloudflare + Mac mini)
+
+Self-host on a Mac mini. **No domain purchase required** for the free path
+(Cloudflare `*.trycloudflare.com`).
+
+```bash
+chmod +x deploy/scripts/*.sh deploy/entrypoint.sh
+./deploy/scripts/setup-mac-mini.sh
+# edit .env.production — set DB password; leave public URLs empty
+./deploy/scripts/deploy.sh
+./deploy/scripts/run-free-tunnel.sh   # prints a free https://….trycloudflare.com URL
+```
+
+Full guide (free + optional fixed domain): [deploy/README.md](deploy/README.md).
 
 ---
 
@@ -177,33 +221,29 @@ and blocked case with expected vs actual result and the QA comment.
 ## Project structure
 
 ```
-app/
-  (auth)/            login, register — split layout
-  (app)/             authenticated shell (sidebar + top nav)
-    dashboard/
-    projects/[projectId]/
-      test-cases/[testCaseId]/    detail + execution panel
-      failed/                     developer read-only view
-    admin/users/
-  api/               route handlers
-components/
-  ui/                shadcn/ui primitives
-  layout/            sidebar, mobile nav, breadcrumbs, user menu
-  shared/            badges, stat cards, empty states, pagination
-features/            feature-scoped components (auth, projects, modules,
-                     test-cases, executions, dashboard, reports, users)
-hooks/               use-debounce, use-query-params
-lib/                 auth, prisma, session, permissions, validations, api
-prisma/              schema.prisma, seed.ts
-services/            data access + business logic (server-only)
-types/               shared domain types
-utils/               excel parsing, formatting, stats, api client
+apps/web/
+  app/                 # routes + API
+  components/          # shadcn/ui + layout/shared
+  features/            # feature UI
+  lib/                 # auth, prisma, permissions (app-specific)
+  services/            # domain services (server-only)
+  types/               # Prisma-shaped view models (+ re-exports from dto)
+  prisma/
+  utils/
+packages/dto/
+  src/enums.ts         # role / status values (shared)
+  src/schemas.ts       # Zod request + query DTOs
+  src/types.ts         # pure response DTOs (stats, import, ApiResult)
+deploy/                # production host scripts
 ```
 
 The rule that keeps this scalable: **route handlers and pages never touch
 `prisma` directly.** They call a service in `services/`, which owns the queries
 and the business rules. Services throw `HttpError`; `route()` in
-[`lib/api.ts`](lib/api.ts) turns anything thrown into the right status code.
+[`apps/web/lib/api.ts`](apps/web/lib/api.ts) turns anything thrown into the right status code.
+
+Shared **request/response contracts** belong in `@wetestcase/dto` so a second app
+or client can depend on them without importing Next.js or Prisma.
 
 ---
 
@@ -253,8 +293,9 @@ reload.
 
 ```bash
 npm run dev          # dev server
-npm run build        # prisma generate + next build
+npm run build        # prisma generate + next build (standalone)
 npm run start        # serve the production build
+npm run start:prod   # migrate then serve (bare-metal host)
 npm run typecheck    # tsc --noEmit
 npm run lint         # next lint
 npm run db:migrate   # create/apply a migration
@@ -262,6 +303,9 @@ npm run db:push      # push the schema without a migration
 npm run db:seed      # demo data
 npm run db:studio    # Prisma Studio
 ```
+
+Mac mini Docker helpers: `./deploy/scripts/deploy.sh`,
+`./deploy/scripts/backup-db.sh` — see [deploy/README.md](deploy/README.md).
 
 ---
 

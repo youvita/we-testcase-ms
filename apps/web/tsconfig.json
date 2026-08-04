@@ -17,7 +17,9 @@
     "noUncheckedIndexedAccess": true,
     "plugins": [{ "name": "next" }],
     "paths": {
-      "@/*": ["./*"]
+      "@/*": ["./*"],
+      "@wetestcase/dto": ["../../packages/dto/src/index.ts"],
+      "@wetestcase/dto/*": ["../../packages/dto/src/*"]
     }
   },
   "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],

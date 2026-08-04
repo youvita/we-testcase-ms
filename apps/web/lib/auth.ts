@@ -6,15 +6,21 @@ import { prisma } from "@/lib/prisma";
 import { ROLES } from "@/lib/constants";
 
 /**
- * Origins allowed to call the auth endpoints.
+ * Origins allowed to call auth (sign-in / sign-up).
  *
- * Better Auth seeds this from `baseURL` and rejects any other `Origin` with a
- * 403, so a deployment whose real host is not listed cannot sign in at all.
- * Vercel's own variables are included because preview deployments get a fresh
- * hostname every time and could never be configured by hand.
+ * Better Auth rejects mismatched Origin with 403. Free Cloudflare tunnels use
+ * a random `https://*.trycloudflare.com` host that is empty in env, so we always
+ * allow that pattern plus localhost. Optional fixed hosts still come from env.
+ *
+ * Better Auth also reads comma-separated BETTER_AUTH_TRUSTED_ORIGINS.
  */
 const trustedOrigins = [
   process.env.NEXT_PUBLIC_APP_URL,
+  process.env.BETTER_AUTH_URL,
+  "http://localhost:3000",
+  "http://127.0.0.1:3000",
+  // Free Quick Tunnel (URL changes every tunnel restart)
+  "https://*.trycloudflare.com",
   process.env.VERCEL_PROJECT_PRODUCTION_URL &&
     `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`,
   process.env.VERCEL_BRANCH_URL && `https://${process.env.VERCEL_BRANCH_URL}`,
@@ -28,13 +34,11 @@ export const auth = betterAuth({
   /**
    * Left undefined when unset rather than defaulting to localhost.
    *
-   * `getBaseURL` treats an explicit value as final, so a hardcoded fallback
-   * would pin every deployment to http://localhost:3000 — and with it the
-   * trusted-origin list, which is what makes sign-in fail anywhere else.
-   * Undefined lets Better Auth fall back to BETTER_AUTH_URL and then to the
-   * incoming request's own origin.
+   * Undefined lets Better Auth use the request's own origin (correct for free
+   * tunnels and for local dev). Set BETTER_AUTH_URL to a fixed public https
+   * origin when you have a stable domain.
    */
-  baseURL: process.env.BETTER_AUTH_URL,
+  baseURL: process.env.BETTER_AUTH_URL || undefined,
   trustedOrigins,
 
   database: prismaAdapter(prisma, { provider: "postgresql" }),
