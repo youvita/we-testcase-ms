@@ -1,5 +1,6 @@
 import { ROLES } from "@/lib/constants";
 import { badRequest, ok, route } from "@/lib/api";
+import { assertExecutionAccess } from "@/lib/project-access";
 import { saveAttachment } from "@/services/attachment.service";
 
 type Ctx = { params: Promise<{ executionId: string }> };
@@ -9,8 +10,9 @@ export const runtime = "nodejs";
 
 export const POST = route<Ctx>(
   { roles: [ROLES.ADMIN, ROLES.QA] },
-  async (request, { params }) => {
+  async (request, { params, user }) => {
     const { executionId } = await params;
+    await assertExecutionAccess(executionId, user);
 
     const form = await request.formData().catch(() => {
       throw badRequest("Expected a multipart form upload");

@@ -53,6 +53,7 @@ import type { Project, ProjectWithStats } from "@/types";
 
 import {
   ProjectFormDialog,
+  type MemberOption,
   type QaOwnerOption,
 } from "./project-form-dialog";
 
@@ -68,11 +69,15 @@ type ProjectView = "card" | "list";
 export function ProjectList({
   projects,
   qaOwners,
+  memberCandidates,
+  environments,
   canManage,
   canDelete,
 }: {
   projects: ProjectWithStats[];
   qaOwners: QaOwnerOption[];
+  memberCandidates: MemberOption[];
+  environments: string[];
   canManage: boolean;
   canDelete: boolean;
 }) {
@@ -81,7 +86,7 @@ export function ProjectList({
   const [statusFilter, setStatusFilter] = useState<string>("ALL");
   const [view, setView] = useState<ProjectView>("card");
   const [formOpen, setFormOpen] = useState(false);
-  const [editing, setEditing] = useState<Project | undefined>();
+  const [editing, setEditing] = useState<ProjectWithStats | undefined>();
   const [deleting, setDeleting] = useState<ProjectWithStats | null>(null);
 
   const filtered = useMemo(() => {
@@ -368,6 +373,8 @@ export function ProjectList({
           onOpenChange={setFormOpen}
           project={editing}
           qaOwners={qaOwners}
+          memberCandidates={memberCandidates}
+          environments={environments}
         />
       )}
 

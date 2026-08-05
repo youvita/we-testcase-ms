@@ -116,6 +116,17 @@ export const PROJECT_STATUSES = [
 
 export type ProjectStatus = (typeof PROJECT_STATUSES)[number];
 
+/**
+ * Environments offered by default when creating a project.
+ *
+ * Suggestions, not a closed set: the column stays free text so a team can name
+ * an environment these three do not cover, and whatever they type is offered
+ * alongside these the next time.
+ */
+export const PROJECT_ENVIRONMENTS = ["SIT", "UAT", "PRO"] as const;
+
+export type ProjectEnvironment = (typeof PROJECT_ENVIRONMENTS)[number];
+
 // ---------------------------------------------------------------------------
 // Reports
 // ---------------------------------------------------------------------------

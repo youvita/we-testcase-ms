@@ -17,12 +17,14 @@ export function middleware(request: NextRequest) {
   const hasSession = Boolean(getSessionCookie(request));
   const isAuthRoute = AUTH_ROUTES.some((r) => pathname.startsWith(r));
 
-  if (isAuthRoute) {
-    if (hasSession) {
-      return NextResponse.redirect(new URL("/dashboard", request.url));
-    }
-    return NextResponse.next();
-  }
+  /**
+   * Auth pages always render. Sending a cookie-bearing visitor to /dashboard
+   * from here would be a guess: a revoked or wiped session still leaves the
+   * cookie behind, and /dashboard would bounce it straight back — a loop the
+   * browser ends with "too many redirects". `redirectIfSignedIn` in the page
+   * makes that call against a real session instead.
+   */
+  if (isAuthRoute) return NextResponse.next();
 
   if (!hasSession) {
     const loginUrl = new URL("/login", request.url);

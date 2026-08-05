@@ -21,6 +21,7 @@ export {
   TEST_TYPES,
   PRIORITIES,
   PROJECT_STATUSES,
+  PROJECT_ENVIRONMENTS,
   EXCEL_REPORT_SCOPES,
   type Role,
   type ExcelReportScope,

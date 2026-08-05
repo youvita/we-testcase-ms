@@ -1,5 +1,6 @@
 import { route } from "@/lib/api";
 import { prisma } from "@/lib/prisma";
+import { assertProjectAccess } from "@/lib/project-access";
 import { buildImportTemplate } from "@/services/import.service";
 import { assertProjectExists } from "@/services/project.service";
 
@@ -10,12 +11,14 @@ export const runtime = "nodejs";
  *
  * Pass `?projectId=` to include that project's modules in the Module dropdown.
  */
-export const GET = route({}, async (request) => {
+export const GET = route({}, async (request, { user }) => {
   const projectId = new URL(request.url).searchParams.get("projectId");
 
   let modules: string[] = [];
   if (projectId) {
     await assertProjectExists(projectId);
+    // The module list is project data, so it follows the project's access rule.
+    await assertProjectAccess(projectId, user);
     const rows = await prisma.module.findMany({
       where: { projectId },
       orderBy: [{ position: "asc" }, { name: "asc" }],

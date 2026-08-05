@@ -60,8 +60,13 @@ export type PublicUser = Omit<
   "role"
 > & { role: Role };
 
+/** A person on a project — QA owner or one of the people in charge. */
+export type ProjectPerson = Pick<User, "id" | "name" | "email" | "image">;
+
 export type ProjectWithStats = Project & {
-  qaOwner: Pick<User, "id" | "name" | "email" | "image"> | null;
+  qaOwner: ProjectPerson | null;
+  /** People in charge, flattened out of the join table by the service. */
+  members: ProjectPerson[];
   moduleCount: number;
   stats: import("@wetestcase/dto").StatusBreakdown;
 };

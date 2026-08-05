@@ -108,6 +108,7 @@ model User {
 
   ownedProjects    Project[]        @relation("ProjectQaOwner")
   createdProjects  Project[]        @relation("ProjectCreatedBy")
+  projectRoles     ProjectMember[]  @relation("ProjectMemberUser")
   executions       TestExecution[]
   editedExecutions TestExecution[]  @relation("TestExecutionEditedBy")
   comments         Comment[]
@@ -188,9 +189,27 @@ model Project {
 
   modules   Module[]
   testCases TestCase[]
+  members   ProjectMember[]
 
   @@index([status])
   @@index([qaOwnerId])
+}
+
+/// A person in charge of a project, alongside its single QA owner.
+///
+/// Also the access list: everyone here, the QA owner and the creator can open
+/// the project. Admins are not listed because they can reach every project by
+/// role — see lib/project-access.ts, which is the only place that decides this.
+model ProjectMember {
+  projectId String
+  userId    String
+  createdAt DateTime @default(now())
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user    User    @relation("ProjectMemberUser", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([projectId, userId])
+  @@index([userId])
 }
 
 model Module {

@@ -28,7 +28,11 @@ import {
   canSetFixStatus,
   isAdmin,
 } from "@/lib/permissions";
-import { requireUser } from "@/lib/session";
+import {
+  hasTestCaseAccess,
+  requireProjectAccess,
+} from "@/lib/project-access";
+import { getSessionUser, requireUser } from "@/lib/session";
 import { listComments } from "@/services/comment.service";
 import {
   getTestCase,
@@ -42,6 +46,14 @@ export async function generateMetadata({
   params: Promise<{ testCaseId: string }>;
 }): Promise<Metadata> {
   const { testCaseId } = await params;
+
+  // Same reason as the project page: the tab title must not name a case the
+  // viewer is not allowed to open.
+  const user = await getSessionUser();
+  if (!(await hasTestCaseAccess(testCaseId, user))) {
+    return { title: "Test Case" };
+  }
+
   try {
     const testCase = await getTestCase(testCaseId);
     return { title: `${testCase.tcId} — ${testCase.title}` };
@@ -57,6 +69,7 @@ export default async function TestCaseDetailPage({
 }) {
   const user = await requireUser();
   const { projectId, testCaseId } = await params;
+  await requireProjectAccess(projectId, user);
 
   const testCase = await getTestCase(testCaseId).catch(() => null);
   if (!testCase) notFound();

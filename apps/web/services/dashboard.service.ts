@@ -13,8 +13,27 @@ const DAILY_WINDOW_DAYS = 14;
  * execution *events*, not test cases, so re-running a case shows up as new
  * activity on that day.
  */
+/** Every day in the window at zero, so the chart has no gaps. */
+function emptyWindow(since: Date): DailyExecutionPoint[] {
+  const points: DailyExecutionPoint[] = [];
+  for (let i = 0; i < DAILY_WINDOW_DAYS; i += 1) {
+    const day = new Date(since);
+    day.setUTCDate(since.getUTCDate() + i);
+    points.push({
+      date: day.toISOString().slice(0, 10),
+      passed: 0,
+      failed: 0,
+      blocked: 0,
+      total: 0,
+    });
+  }
+  return points;
+}
+
 async function getDailyExecutions(
   projectId?: string,
+  /** When present, count only executions in these projects. */
+  projectIds?: string[],
 ): Promise<DailyExecutionPoint[]> {
   type Row = {
     day: Date;
@@ -25,6 +44,11 @@ async function getDailyExecutions(
   const since = new Date();
   since.setUTCHours(0, 0, 0, 0);
   since.setUTCDate(since.getUTCDate() - (DAILY_WINDOW_DAYS - 1));
+
+  // An empty scope means "no projects", which must return no rows rather than
+  // falling through to the unscoped query.
+  const scoped = projectIds ?? null;
+  if (scoped && scoped.length === 0) return emptyWindow(since);
 
   const rows = projectId
     ? await prisma.$queryRaw<Row[]>`
@@ -38,7 +62,19 @@ async function getDailyExecutions(
         GROUP BY 1, 2
         ORDER BY 1 ASC
       `
-    : await prisma.$queryRaw<Row[]>`
+    : scoped
+      ? await prisma.$queryRaw<Row[]>`
+        SELECT date_trunc('day', e."executedAt") AS day,
+               e."status"                        AS status,
+               COUNT(*)                          AS count
+        FROM "TestExecution" e
+        JOIN "TestCase" t ON t."id" = e."testCaseId"
+        WHERE e."executedAt" >= ${since}
+          AND t."projectId" = ANY(${scoped})
+        GROUP BY 1, 2
+        ORDER BY 1 ASC
+      `
+      : await prisma.$queryRaw<Row[]>`
         SELECT date_trunc('day', e."executedAt") AS day,
                e."status"                        AS status,
                COUNT(*)                          AS count
@@ -48,14 +84,7 @@ async function getDailyExecutions(
         ORDER BY 1 ASC
       `;
 
-  // Pre-fill every day in the window so the chart has no gaps.
-  const byDate = new Map<string, DailyExecutionPoint>();
-  for (let i = 0; i < DAILY_WINDOW_DAYS; i += 1) {
-    const d = new Date(since);
-    d.setUTCDate(since.getUTCDate() + i);
-    const key = d.toISOString().slice(0, 10);
-    byDate.set(key, { date: key, passed: 0, failed: 0, blocked: 0, total: 0 });
-  }
+  const byDate = new Map(emptyWindow(since).map((point) => [point.date, point]));
 
   for (const row of rows) {
     const key = new Date(row.day).toISOString().slice(0, 10);
@@ -72,13 +101,27 @@ async function getDailyExecutions(
   return [...byDate.values()];
 }
 
-/** Organisation-wide dashboard. */
-export async function getDashboardSummary(): Promise<DashboardSummary> {
+/**
+ * Dashboard across the projects a viewer can open.
+ *
+ * `projectIds` comes from the caller's already-filtered project list, so the
+ * headline numbers never describe projects the viewer cannot reach. Omit it only
+ * for genuinely org-wide reporting.
+ */
+export async function getDashboardSummary(
+  projectIds?: string[],
+): Promise<DashboardSummary> {
+  const scope = projectIds ? { id: { in: projectIds } } : {};
+
   const [totalProjects, activeProjects, grouped, daily] = await Promise.all([
-    prisma.project.count(),
-    prisma.project.count({ where: { status: "ACTIVE" } }),
-    prisma.testCase.groupBy({ by: ["status"], _count: { _all: true } }),
-    getDailyExecutions(),
+    prisma.project.count({ where: scope }),
+    prisma.project.count({ where: { ...scope, status: "ACTIVE" } }),
+    prisma.testCase.groupBy({
+      by: ["status"],
+      ...(projectIds ? { where: { projectId: { in: projectIds } } } : {}),
+      _count: { _all: true },
+    }),
+    getDailyExecutions(undefined, projectIds),
   ]);
 
   const stats = buildBreakdown(
@@ -123,8 +166,13 @@ export async function getProjectDashboard(
 }
 
 /** Most recent executions across all projects, for the dashboard activity list. */
-export async function getRecentActivity(limit = 8) {
+export async function getRecentActivity(limit = 8, projectIds?: string[]) {
   return prisma.testExecution.findMany({
+    // Scoped for the same reason as the summary: activity names a test case, and
+    // that name should not surface from a project the viewer cannot open.
+    ...(projectIds
+      ? { where: { testCase: { projectId: { in: projectIds } } } }
+      : {}),
     orderBy: { executedAt: "desc" },
     take: limit,
     include: {

@@ -7,6 +7,7 @@ import { TestCaseFilters } from "@/features/test-cases/components/test-case-filt
 import { TestCaseTable } from "@/features/test-cases/components/test-case-table";
 import { TestCaseToolbar } from "@/features/test-cases/components/test-case-toolbar";
 import { canManageTestCases } from "@/lib/permissions";
+import { requireProjectAccess } from "@/lib/project-access";
 import { requireUser } from "@/lib/session";
 import { testCaseQuerySchema } from "@/lib/validations";
 import { listModules } from "@/services/module.service";
@@ -24,6 +25,7 @@ export default async function TestCasesPage({
 }) {
   const user = await requireUser();
   const { projectId } = await params;
+  await requireProjectAccess(projectId, user);
   const rawSearchParams = await searchParams;
 
   // Drop blank and "ALL" sentinels so the schema's defaults apply.

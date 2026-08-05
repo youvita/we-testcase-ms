@@ -28,6 +28,7 @@ import { StatusBadge } from "@/components/shared/status-badge";
 import { DailyExecutionChart } from "@/features/dashboard/components/daily-execution-chart";
 import { StatusDonut } from "@/features/dashboard/components/status-donut";
 import { canManageProjects } from "@/lib/permissions";
+import { projectAccessWhere } from "@/lib/project-access";
 import { requireUser } from "@/lib/session";
 import {
   getDashboardSummary,
@@ -41,10 +42,14 @@ export const metadata: Metadata = { title: "Dashboard" };
 export default async function DashboardPage() {
   const user = await requireUser();
 
-  const [summary, projects, activity] = await Promise.all([
-    getDashboardSummary(),
-    listProjects(),
-    getRecentActivity(6),
+  // The project list comes first because everything else is scoped to it: the
+  // dashboard must not count or name work in projects this person cannot open.
+  const projects = await listProjects({ access: projectAccessWhere(user) });
+  const projectIds = projects.map((project) => project.id);
+
+  const [summary, activity] = await Promise.all([
+    getDashboardSummary(projectIds),
+    getRecentActivity(6, projectIds),
   ]);
 
   const { stats } = summary;

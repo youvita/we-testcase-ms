@@ -46,6 +46,24 @@ export async function requireUser(): Promise<SessionUser> {
 }
 
 /**
+ * Send an already-signed-in visitor away from the auth pages.
+ *
+ * This decision cannot be made in middleware, which sees only whether a session
+ * *cookie* exists. A cookie whose session has been revoked, cleaned up or wiped
+ * with the database still looks signed in there — so bouncing on cookie presence
+ * sent the visitor to a page that immediately redirected back to /login, and the
+ * two ping-ponged until the browser gave up.
+ *
+ * The condition deliberately mirrors `requireUser`: a disabled account must fall
+ * through to the login page rather than be sent to a dashboard that will refuse
+ * it and bounce back here.
+ */
+export async function redirectIfSignedIn(): Promise<void> {
+  const user = await getSessionUser();
+  if (user?.isActive) redirect("/dashboard");
+}
+
+/**
  * Require one of `roles`. Renders the 403 page instead of redirecting so the
  * user understands they are signed in but not permitted.
  */

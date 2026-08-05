@@ -1,5 +1,6 @@
 import { ROLES } from "@/lib/constants";
 import { ok, readJson, route } from "@/lib/api";
+import { assertTestCaseAccess } from "@/lib/project-access";
 import { fixStatusSchema } from "@/lib/validations";
 import { setFixStatus } from "@/services/test-case.service";
 
@@ -16,6 +17,7 @@ export const PATCH = route<Ctx>(
   { roles: [ROLES.ADMIN, ROLES.QA, ROLES.DEVELOPER] },
   async (request, { params, user }) => {
     const { testCaseId } = await params;
+    await assertTestCaseAccess(testCaseId, user);
     const { fixStatus, note } = fixStatusSchema.parse(await readJson(request));
     return ok(
       await setFixStatus(

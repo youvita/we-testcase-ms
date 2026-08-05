@@ -24,10 +24,15 @@ export const prioritySchema = z.enum(PRIORITIES);
 export const projectStatusSchema = z.enum(PROJECT_STATUSES);
 
 const trimmed = (max: number) => z.string().trim().max(max);
+/**
+ * Optional free text. Accepts absent, `null` or `""` and yields undefined, so
+ * the schema also accepts what it produces — clients that validate with it and
+ * post the parsed result must not be rejected for an untouched field.
+ */
 const optionalText = (max: number) =>
   trimmed(max)
-    .optional()
-    .transform((v) => (v === "" ? undefined : v));
+    .nullish()
+    .transform((v) => (v == null || v === "" ? undefined : v));
 
 /** Accepts "" / undefined / "YYYY-MM-DD" / ISO string and yields Date | null. */
 const optionalDate = z
@@ -93,17 +98,40 @@ export type ChangePasswordInput = z.infer<typeof changePasswordSchema>;
 // Project
 // ---------------------------------------------------------------------------
 
+/**
+ * A project's editable fields.
+ *
+ * Every optional field here accepts its own *output* as input (`null` as well as
+ * `""`/absent). That matters because the client validates with this schema too,
+ * and react-hook-form submits the parsed result — so "no QA owner" reaches the
+ * API as `null`, not as the `"none"` the Select used. A schema that rejected
+ * that would fail only for users who left the field alone.
+ */
 export const projectSchema = z
   .object({
     name: trimmed(160).min(2, "Project name must be at least 2 characters"),
     description: optionalText(2000),
     version: optionalText(60),
+    // Free text on purpose — see PROJECT_ENVIRONMENTS.
     environment: optionalText(60),
     status: projectStatusSchema.default("PLANNING"),
     qaOwnerId: z
       .string()
-      .optional()
+      .nullish()
       .transform((v) => (v === "" || v === "none" ? null : (v ?? null))),
+    /**
+     * Everyone in charge alongside the QA owner. Order is not significant.
+     *
+     * Absent is *not* the same as empty: an update that omits this leaves the
+     * existing people in place, while `[]` clears them. Without that
+     * distinction any client that did not know about the field — an old tab
+     * still running yesterday's bundle, a script that only renames a project —
+     * would silently revoke everyone's access on save.
+     */
+    memberIds: z
+      .array(z.string().min(1))
+      .nullish()
+      .transform((v) => (v == null ? undefined : Array.from(new Set(v)))),
     startDate: optionalDate,
     endDate: optionalDate,
   })

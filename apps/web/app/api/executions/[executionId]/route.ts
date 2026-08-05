@@ -1,5 +1,6 @@
 import { ROLES } from "@/lib/constants";
 import { ok, readJson, route } from "@/lib/api";
+import { assertExecutionAccess } from "@/lib/project-access";
 import { executionEditSchema } from "@/lib/validations";
 import { updateExecution } from "@/services/execution.service";
 
@@ -16,6 +17,7 @@ export const PATCH = route<Ctx>(
   { roles: [ROLES.ADMIN, ROLES.QA] },
   async (request, { params, user }) => {
     const { executionId } = await params;
+    await assertExecutionAccess(executionId, user);
     const body = executionEditSchema.parse(await readJson(request));
     const execution = await updateExecution(
       executionId,

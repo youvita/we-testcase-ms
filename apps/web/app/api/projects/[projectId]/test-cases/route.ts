@@ -1,5 +1,6 @@
 import { ROLES } from "@/lib/constants";
 import { ok, readJson, route } from "@/lib/api";
+import { assertProjectAccess } from "@/lib/project-access";
 import {
   testCaseBulkDeleteSchema,
   testCaseQuerySchema,
@@ -13,8 +14,9 @@ import {
 
 type Ctx = { params: Promise<{ projectId: string }> };
 
-export const GET = route<Ctx>({}, async (request, { params }) => {
+export const GET = route<Ctx>({}, async (request, { params, user }) => {
   const { projectId } = await params;
+  await assertProjectAccess(projectId, user);
   const url = new URL(request.url);
 
   // Blank and "ALL" values mean "no filter" — strip them before validating so
@@ -31,8 +33,9 @@ export const GET = route<Ctx>({}, async (request, { params }) => {
 
 export const POST = route<Ctx>(
   { roles: [ROLES.ADMIN, ROLES.QA] },
-  async (request, { params }) => {
+  async (request, { params, user }) => {
     const { projectId } = await params;
+    await assertProjectAccess(projectId, user);
     const body = testCaseSchema.parse(await readJson(request));
     return ok(await createTestCase(projectId, body), 201);
   },
@@ -45,8 +48,9 @@ export const POST = route<Ctx>(
  */
 export const DELETE = route<Ctx>(
   { roles: [ROLES.ADMIN, ROLES.QA] },
-  async (request, { params }) => {
+  async (request, { params, user }) => {
     const { projectId } = await params;
+    await assertProjectAccess(projectId, user);
     const { ids } = testCaseBulkDeleteSchema.parse(await readJson(request));
     return ok(await deleteTestCases(projectId, ids));
   },

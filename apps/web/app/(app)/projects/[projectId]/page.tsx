@@ -29,7 +29,11 @@ import { StatusDonut } from "@/features/dashboard/components/status-donut";
 import { ModuleManager } from "@/features/modules/components/module-manager";
 import { ExportMenu } from "@/features/reports/components/export-menu";
 import { canManageProjects } from "@/lib/permissions";
-import { requireUser } from "@/lib/session";
+import {
+  hasProjectAccess,
+  requireProjectAccess,
+} from "@/lib/project-access";
+import { getSessionUser, requireUser } from "@/lib/session";
 import { getProjectDashboard } from "@/services/dashboard.service";
 import { listModules } from "@/services/module.service";
 import { getProject } from "@/services/project.service";
@@ -41,6 +45,13 @@ export async function generateMetadata({
   params: Promise<{ projectId: string }>;
 }): Promise<Metadata> {
   const { projectId } = await params;
+
+  // Metadata renders before the page can redirect, so it gets the same access
+  // check — otherwise the project's name would show in the tab of someone who
+  // is about to be sent to /forbidden.
+  const user = await getSessionUser();
+  if (!(await hasProjectAccess(projectId, user))) return { title: "Project" };
+
   try {
     const project = await getProject(projectId);
     return { title: project.name };
@@ -56,6 +67,7 @@ export default async function ProjectOverviewPage({
 }) {
   const user = await requireUser();
   const { projectId } = await params;
+  await requireProjectAccess(projectId, user);
 
   const project = await getProject(projectId).catch(() => null);
   if (!project) notFound();
@@ -108,6 +120,12 @@ export default async function ProjectOverviewPage({
           {project.version && <span>Version {project.version}</span>}
           {project.environment && <span>{project.environment}</span>}
           <span>QA owner: {project.qaOwner?.name ?? "Unassigned"}</span>
+          {project.members.length > 0 && (
+            <span>
+              In charge:{" "}
+              {project.members.map((member) => member.name).join(", ")}
+            </span>
+          )}
           {(project.startDate || project.endDate) && (
             <span>
               {formatDate(project.startDate)} – {formatDate(project.endDate)}

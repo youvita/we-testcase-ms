@@ -3,6 +3,7 @@ import {
   EXCEL_REPORT_SCOPES,
   type ExcelReportScope,
 } from "@/lib/constants";
+import { assertProjectAccess } from "@/lib/project-access";
 import { getProject } from "@/services/project.service";
 import {
   buildExcelReport,
@@ -15,8 +16,9 @@ type Ctx = { params: Promise<{ projectId: string }> };
 export const runtime = "nodejs";
 
 /** Excel report. Readable by every role, including Developers. */
-export const GET = route<Ctx>({}, async (request, { params }) => {
+export const GET = route<Ctx>({}, async (request, { params, user }) => {
   const { projectId } = await params;
+  await assertProjectAccess(projectId, user);
 
   const requested = new URL(request.url).searchParams.get("scope") ?? "summary";
   if (!(EXCEL_REPORT_SCOPES as readonly string[]).includes(requested)) {

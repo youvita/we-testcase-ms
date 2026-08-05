@@ -16,6 +16,7 @@ import { FixStatusBadge } from "@/components/shared/fix-status-badge";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { AttachmentGallery } from "@/features/executions/components/attachment-gallery";
 import { ExportMenu } from "@/features/reports/components/export-menu";
+import { requireProjectAccess } from "@/lib/project-access";
 import { requireUser } from "@/lib/session";
 import { getProject } from "@/services/project.service";
 import { listFailedTestCases } from "@/services/test-case.service";
@@ -33,8 +34,9 @@ export default async function FailedCasesPage({
 }: {
   params: Promise<{ projectId: string }>;
 }) {
-  await requireUser();
+  const user = await requireUser();
   const { projectId } = await params;
+  await requireProjectAccess(projectId, user);
 
   const project = await getProject(projectId).catch(() => null);
   if (!project) notFound();

@@ -5,6 +5,7 @@ import {
   statAttachment,
 } from "@/services/attachment.service";
 import { route } from "@/lib/api";
+import { assertAttachmentAccess } from "@/lib/project-access";
 
 type Ctx = { params: Promise<{ attachmentId: string }> };
 
@@ -20,8 +21,9 @@ export const runtime = "nodejs";
  * asking for a byte range, and Safari will not begin playback at all against a
  * server that ignores them.
  */
-export const GET = route<Ctx>({}, async (request, { params }) => {
+export const GET = route<Ctx>({}, async (request, { params, user }) => {
   const { attachmentId } = await params;
+  await assertAttachmentAccess(attachmentId, user);
 
   const { attachment, size } = await statAttachment(attachmentId);
   const etag = attachmentETag(attachment.id, size);
