@@ -4,6 +4,7 @@ import path from "node:path";
 
 import { prisma } from "@/lib/prisma";
 import { badRequest, notFound } from "@/lib/api";
+import { withBasePath } from "@/lib/base-path";
 import { ALLOWED_IMAGE_MIME_TYPES, MAX_UPLOAD_BYTES } from "@/lib/constants";
 
 /**
@@ -103,7 +104,7 @@ async function findAvatarFile(userId: string) {
 
 /** Stable URL with a cache-buster so browsers pick up a replacement. */
 export function avatarUrl(userId: string, version: number | string = Date.now()) {
-  return `/api/avatars/${userId}?v=${version}`;
+  return withBasePath(`/api/avatars/${userId}?v=${version}`);
 }
 
 export async function saveAvatar(

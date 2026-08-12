@@ -32,6 +32,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
+import { withBasePath } from "@/lib/base-path";
 import { api, errorMessage } from "@/utils/api-client";
 import { formatBytes } from "@/utils/format";
 import type { ImportPreview, ImportSummary } from "@/types";
@@ -272,7 +273,7 @@ export function ImportDialog({
                   className="shrink-0"
                   asChild
                 >
-                  <a href={`/api/import-template?projectId=${projectId}`}>
+                  <a href={withBasePath(`/api/import-template?projectId=${projectId}`)}>
                     <Download className="mr-2 size-4" />
                     Download template
                   </a>

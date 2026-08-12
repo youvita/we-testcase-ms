@@ -5,6 +5,7 @@ import { FileVideo, ImageIcon } from "lucide-react";
 
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { isVideoMimeType } from "@/lib/constants";
+import { withBasePath } from "@/lib/base-path";
 import { formatBytes } from "@/utils/format";
 import type { Attachment } from "@/types";
 
@@ -64,7 +65,7 @@ export function AttachmentGallery({
             <div className="overflow-auto">
               {isVideoMimeType(active.mimeType) ? (
                 <video
-                  src={`/api/attachments/${active.id}/file`}
+                  src={withBasePath(`/api/attachments/${active.id}/file`)}
                   controls
                   autoPlay
                   playsInline
@@ -73,7 +74,7 @@ export function AttachmentGallery({
               ) : (
                 /* eslint-disable-next-line @next/next/no-img-element */
                 <img
-                  src={`/api/attachments/${active.id}/file`}
+                  src={withBasePath(`/api/attachments/${active.id}/file`)}
                   alt={active.fileName}
                   className="mx-auto max-h-[75vh] w-auto rounded-md"
                 />

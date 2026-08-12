@@ -1,4 +1,5 @@
 import type { ApiResult } from "@/lib/api";
+import { withBasePath } from "@/lib/base-path";
 
 /** Error thrown by `apiFetch` carrying the server's status and field errors. */
 export class ApiError extends Error {
@@ -17,12 +18,15 @@ export class ApiError extends Error {
  *
  * Unwraps the `{ ok, data }` envelope and turns any failure into an ApiError, so
  * callers can `try/catch` instead of checking shapes at every call site.
+ *
+ * Paths are prefixed with `NEXT_PUBLIC_BASE_PATH` (e.g. `/cases`) so edge /
+ * Cloudflare shared-host routing reaches the app instead of nginx 404.
  */
 export async function apiFetch<T>(
   input: string,
   init?: RequestInit,
 ): Promise<T> {
-  const response = await fetch(input, {
+  const response = await fetch(withBasePath(input), {
     ...init,
     headers: {
       // FormData must set its own multipart boundary — only add JSON headers
@@ -90,7 +94,7 @@ export function errorMessage(error: unknown): string {
  * instead of the browser navigating to a JSON error page.
  */
 export async function downloadFile(url: string): Promise<void> {
-  const response = await fetch(url);
+  const response = await fetch(withBasePath(url));
 
   if (!response.ok) {
     let message = `Download failed with status ${response.status}`;

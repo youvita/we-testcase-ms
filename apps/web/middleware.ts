@@ -12,6 +12,18 @@ import { getSessionCookie } from "better-auth/cookies";
  */
 const AUTH_ROUTES = ["/login", "/register"];
 
+/** `new URL("/login", …)` drops Next basePath — required for /cases edge/tunnel. */
+function appPath(path: string): string {
+  const raw =
+    process.env.NEXT_PUBLIC_BASE_PATH?.trim() ||
+    process.env.BASE_PATH?.trim() ||
+    "";
+  if (!raw || raw === "/") return path;
+  const base = raw.startsWith("/") ? raw.replace(/\/$/, "") : `/${raw.replace(/\/$/, "")}`;
+  if (path === "/") return base || "/";
+  return `${base}${path.startsWith("/") ? path : `/${path}`}`;
+}
+
 export function middleware(request: NextRequest) {
   const { pathname, search } = request.nextUrl;
   const hasSession = Boolean(getSessionCookie(request));
@@ -27,7 +39,7 @@ export function middleware(request: NextRequest) {
   if (isAuthRoute) return NextResponse.next();
 
   if (!hasSession) {
-    const loginUrl = new URL("/login", request.url);
+    const loginUrl = new URL(appPath("/login"), request.url);
     // Preserve where the user was heading so login can send them back.
     if (pathname !== "/") loginUrl.searchParams.set("redirect", pathname + search);
     return NextResponse.redirect(loginUrl);

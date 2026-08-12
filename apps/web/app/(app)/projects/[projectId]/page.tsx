@@ -28,6 +28,7 @@ import { ModuleProgressList } from "@/features/dashboard/components/module-progr
 import { StatusDonut } from "@/features/dashboard/components/status-donut";
 import { ModuleManager } from "@/features/modules/components/module-manager";
 import { ExportMenu } from "@/features/reports/components/export-menu";
+import { withBasePath } from "@/lib/base-path";
 import { canManageProjects } from "@/lib/permissions";
 import {
   hasProjectAccess,
@@ -213,7 +214,7 @@ export default async function ProjectOverviewPage({
               </Link>
             </Button>
             <Button variant="outline" asChild>
-              <a href={`/api/import-template?projectId=${projectId}`}>
+              <a href={withBasePath(`/api/import-template?projectId=${projectId}`)}>
                 Download a template
               </a>
             </Button>
