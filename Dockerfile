@@ -32,6 +32,9 @@ COPY package.json package-lock.json ./
 # host (window.location.origin). Only set when you have a fixed public HTTPS URL.
 ARG NEXT_PUBLIC_APP_URL=
 ENV NEXT_PUBLIC_APP_URL=$NEXT_PUBLIC_APP_URL
+# Shared edge URL path prefix (one Cloudflare host → /cases + /securescan).
+ARG BASE_PATH=/cases
+ENV BASE_PATH=$BASE_PATH
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV NODE_ENV=production
 
@@ -47,6 +50,8 @@ ENV NEXT_TELEMETRY_DISABLED=1
 ENV PORT=3000
 ENV HOSTNAME=0.0.0.0
 ENV UPLOAD_DIR=/app/uploads
+ARG BASE_PATH=/cases
+ENV BASE_PATH=$BASE_PATH
 
 RUN apk add --no-cache libc6-compat openssl dumb-init \
   && addgroup --system --gid 1001 nodejs \

@@ -1,0 +1,11 @@
+# Optional LAN testing (no Cloudflare). Add to /etc/hosts on this Mac:
+#
+#   127.0.0.1  cases.local scan.local
+#
+# Then browse:
+#   http://cases.local:8080  → we-testcase
+#   http://scan.local:8080   → SecureScan
+#
+# Public internet still needs Cloudflare Tunnel + a real zone hostname.
+
+127.0.0.1  cases.local scan.local

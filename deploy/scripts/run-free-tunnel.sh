@@ -7,9 +7,10 @@
 #   - Meant for personal / demo use, not a fixed team link forever
 #
 # Usage:
-#   1. Start the app stack:  ./deploy/scripts/deploy.sh
-#   2. Run this tunnel:      ./deploy/scripts/run-free-tunnel.sh
-#   3. Open the https://….trycloudflare.com URL printed in the terminal
+#   Terminal 1 (start once, leave running):
+#     npm run tunnel:free
+#   Terminal 2 (redeploy app only — same public URL):
+#     npm run docker:stack:up
 #
 # If you see "Failed to dial a quic connection" / timeout, that is usually a
 # network blocking UDP. This script defaults to HTTP/2 over TCP.
@@ -36,7 +37,7 @@ EOF
   exit 1
 fi
 
-if ! curl -fsS "${ORIGIN}/api/health" >/dev/null 2>&1; then
+if ! curl -fsS "${SAMPLE_HEALTH_URL:-${ORIGIN}/cases/api/health}" >/dev/null 2>&1; then
   cat <<EOF >&2
 App is not reachable at ${ORIGIN}
 
@@ -53,21 +54,19 @@ fi
 
 cat <<EOF
 ================================================================
-  FREE tunnel (no domain) — Cloudflare trycloudflare.com
+  FREE tunnel — leave this terminal running
 ================================================================
-  origin (your app):  ${ORIGIN}
-  protocol:           ${PROTOCOL}
+  origin:    ${ORIGIN}
+  protocol:  ${PROTOCOL}
 
-  This trycloudflare URL CHANGES every time you re-run this script.
-  After redeploy, the stable sample URL is always:
+  Copy the https://….trycloudflare.com URL below and keep this
+  process alive. Redeploy the app in another terminal with:
 
-    ${SAMPLE_APP_URL:-http://127.0.0.1:3000}
-    ${SAMPLE_HEALTH_URL:-http://127.0.0.1:3000/api/health}
+    npm run docker:stack:up
 
-  Wait for a line like:
-    https://random-words.trycloudflare.com
+  That does NOT restart this tunnel → same public URL.
 
-  Press Ctrl+C to stop the tunnel (the app keeps running on port 3000).
+  Ctrl+C here = tunnel dies and the next start gets a NEW URL.
 ================================================================
 
 EOF

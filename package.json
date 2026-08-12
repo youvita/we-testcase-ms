@@ -19,7 +19,12 @@
     "db:deploy": "npm run db:deploy -w @wetestcase/web",
     "db:push": "npm run db:push -w @wetestcase/web",
     "db:studio": "npm run db:studio -w @wetestcase/web",
-    "db:seed": "npm run db:seed -w @wetestcase/web"
+    "db:seed": "npm run db:seed -w @wetestcase/web",
+    "tunnel:free": "./deploy/scripts/run-free-tunnel.sh",
+    "tunnel:edge": "./deploy/scripts/run-edge-free-tunnel.sh",
+    "edge:up": "./deploy/scripts/run-edge.sh",
+    "edge:down": "docker compose -f deploy/edge/docker-compose.yml down",
+    "docker:stack:up": "./deploy/scripts/stack-up.sh"
   },
   "engines": {
     "node": ">=20"

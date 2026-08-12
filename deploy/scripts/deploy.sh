@@ -110,8 +110,10 @@ cat <<EOF
   Stable public Cloudflare (named tunnel):
     ${PUBLIC_NOTE}
 
-  Free random tunnel (changes every start — not for production):
-    ./deploy/scripts/run-free-tunnel.sh
+  Free tunnel (start once, leave running — same URL until Ctrl+C):
+    npm run tunnel:free
+  Redeploy app only (does not restart the tunnel):
+    npm run docker:stack:up
 
   Permanent Cloudflare URL (once, needs a domain on Cloudflare):
     ./deploy/scripts/setup-stable-cloudflare-tunnel.sh app.yourdomain.com

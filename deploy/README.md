@@ -14,6 +14,27 @@ Users → Cloudflare → Tunnel → Mac mini :3000 (Next.js)
                                └─ Volume: screenshots / avatars
 ```
 
+## Many projects: one nginx + one tunnel (recommended)
+
+Avoid one `cloudflared` / terminal per repo. Use the shared edge proxy (also in SecureScan):
+
+```text
+Internet → Cloudflare → cloudflared (1 process) → nginx :8080
+                                                   ├─ /cases/       → :3000
+                                                   └─ /securescan/  → :3001
+```
+
+```bash
+npm run edge:up      # nginx on 127.0.0.1:8080
+npm run tunnel:edge  # one free trycloudflare URL → edge (leave running)
+# → https://….trycloudflare.com/cases/
+# → https://….trycloudflare.com/securescan/
+```
+
+Do **not** also run `tunnel:free` if you use `tunnel:edge`.
+
+Details: [edge/README.md](./edge/README.md). Start edge from **either** this repo or `secure-scanner` — not both (same `macmini-edge` container).
+
 ---
 
 ## Free only (no domain purchase)
@@ -46,16 +67,20 @@ Edit `.env.production`:
 2. Leave **`BETTER_AUTH_URL` and `NEXT_PUBLIC_APP_URL` empty** (required for free mode — auth follows the trycloudflare host)
 
 ```bash
-# Start app + database (stays on the Mini; not on the public internet yet)
-./deploy/scripts/deploy.sh
+# Start app + database
+npm run docker:stack:up
 
-# In another terminal: free public URL
-./deploy/scripts/run-free-tunnel.sh
+# Terminal 1 — start once, leave it running
+npm run tunnel:free
+# copy the https://….trycloudflare.com URL
+
+# Later — redeploy app only (tunnel stays up → same URL)
+npm run docker:stack:up
 ```
 
-Copy the `https://….trycloudflare.com` line from the terminal and open it in a browser.
+Copy the `https://….trycloudflare.com` line from Terminal 1 and open it in a browser.
 
-Stop only the tunnel with Ctrl+C; the app keeps running until you `docker compose … down`.
+Do **not** Ctrl+C Terminal 1 while people still need that link. Redeploys go in another terminal.
 
 ### Free mode limits (honest)
 
@@ -84,7 +109,7 @@ chmod +x deploy/scripts/*.sh deploy/entrypoint.sh
 
 ### Free path
 
-Leave public URLs empty → `./deploy/scripts/deploy.sh` → `./deploy/scripts/run-free-tunnel.sh`
+Leave public URLs empty → `npm run docker:stack:up` → `npm run tunnel:free` (leave running).
 
 ### Stable path (needs a domain you own)
 
@@ -133,8 +158,10 @@ Change demo passwords immediately.
 
 | Task | Command |
 | --- | --- |
-| Deploy latest code | `./deploy/scripts/deploy.sh --pull` |
-| Free public URL again | `./deploy/scripts/run-free-tunnel.sh` |
+| Redeploy app only (tunnel stays up) | `npm run docker:stack:up` |
+| Edge proxy (many apps, one port) | `npm run edge:up` |
+| Free public URL via edge (once, leave running) | `npm run tunnel:edge` |
+| Free public URL — this app only | `npm run tunnel:free` |
 | Logs | `docker compose -f docker-compose.prod.yml logs -f app` |
 | DB backup | `./deploy/scripts/backup-db.sh` |
 | DB restore | `./deploy/scripts/restore-db.sh deploy/backups/….sql.gz` |

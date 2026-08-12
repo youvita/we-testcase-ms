@@ -1,0 +1,25 @@
+# Edge reverse proxy for many Mac mini apps — one port for cloudflared.
+#
+#   docker compose -f deploy/edge/docker-compose.yml up -d
+#   curl -sI http://127.0.0.1:8080/healthz
+#
+# Shared with secure-scanner (same container name). Run from ONE repo only.
+
+services:
+  edge:
+    image: nginx:1.27-alpine
+    container_name: macmini-edge
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./www:/usr/share/nginx/html:ro
+    extra_hosts:
+      # Docker Desktop Mac host IPv4 (avoids broken IPv6 for host.docker.internal)
+      - "host.docker.internal:192.168.65.254"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/healthz"]
+      interval: 15s
+      timeout: 3s
+      retries: 3

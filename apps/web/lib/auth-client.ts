@@ -9,6 +9,9 @@ import { createAuthClient } from "better-auth/react";
  *
  * Empty / unset → Better Auth uses `window.location.origin` (login/register
  * work on free tunnels and any host).
+ *
+ * With Next.js basePath (/cases), the client must call /cases/api/auth while the
+ * server still sees /api/auth (Next strips basePath from the request URL).
  */
 function publicAppOrigin(): string | undefined {
   const raw = process.env.NEXT_PUBLIC_APP_URL?.trim();
@@ -20,8 +23,14 @@ function publicAppOrigin(): string | undefined {
   return raw.replace(/\/$/, "");
 }
 
+function authBasePath(): string {
+  const prefix = (process.env.NEXT_PUBLIC_BASE_PATH || "").replace(/\/$/, "");
+  return `${prefix}/api/auth`;
+}
+
 export const authClient = createAuthClient({
   baseURL: publicAppOrigin(),
+  basePath: authBasePath(),
 });
 
 export const { signIn, signUp, signOut, useSession, changePassword, updateUser } =

@@ -52,6 +52,8 @@ services:
         # Empty = free tunnel / multi-host; auth client uses the browser origin.
         # Only set this when you have a fixed public URL (e.g. https://app.example.com).
         NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-}
+        # One shared Cloudflare URL: https://….trycloudflare.com/cases/
+        BASE_PATH: ${BASE_PATH:-/cases}
     image: wetestcase-ms:latest
     container_name: wetestcase-app
     restart: unless-stopped
@@ -81,7 +83,7 @@ services:
           "CMD",
           "node",
           "-e",
-          "fetch('http://127.0.0.1:3000/api/health').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+          "fetch('http://127.0.0.1:3000/cases/api/health').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
         ]
       interval: 15s
       timeout: 5s

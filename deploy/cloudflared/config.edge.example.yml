@@ -1,0 +1,31 @@
+# Single named Cloudflare Tunnel → nginx edge → many Mac mini apps.
+#
+# Setup (once, needs a domain on Cloudflare):
+#   1. npm run edge:up
+#   2. cloudflared tunnel login
+#   3. cloudflared tunnel create macmini-edge
+#   4. Copy ~/.cloudflared/<TUNNEL_ID>.json → deploy/cloudflared/
+#   5. Fill tunnel UUID + credentials-file below
+#   6. cloudflared tunnel route dns macmini-edge cases.yourdomain.com
+#   7. cloudflared tunnel route dns macmini-edge scan.yourdomain.com
+#   8. cloudflared tunnel --config deploy/cloudflared/config.edge.yml run
+#
+# Cloudflare terminates TLS; nginx only sees HTTP on 127.0.0.1:8080.
+# Host header is preserved so nginx can route by hostname.
+
+tunnel: REPLACE_WITH_TUNNEL_UUID
+credentials-file: /Users/kosign/Projects/we-testcase-ms/deploy/cloudflared/REPLACE_WITH_TUNNEL_UUID.json
+
+ingress:
+  - hostname: cases.example.com
+    service: http://127.0.0.1:8080
+    originRequest:
+      connectTimeout: 30s
+  - hostname: scan.example.com
+    service: http://127.0.0.1:8080
+    originRequest:
+      connectTimeout: 30s
+  # Add more projects the same way — still ONE cloudflared process:
+  # - hostname: other.example.com
+  #   service: http://127.0.0.1:8080
+  - service: http_status:404

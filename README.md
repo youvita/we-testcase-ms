@@ -132,8 +132,14 @@ Self-host on a Mac mini. **No domain purchase required** for the free path
 chmod +x deploy/scripts/*.sh deploy/entrypoint.sh
 ./deploy/scripts/setup-mac-mini.sh
 # edit .env.production — set DB password; leave public URLs empty
-./deploy/scripts/deploy.sh
-./deploy/scripts/run-free-tunnel.sh   # prints a free https://….trycloudflare.com URL
+npm run docker:stack:up
+
+# Terminal 1 — start once, leave it running
+npm run tunnel:free
+# copy the https://….trycloudflare.com URL
+
+# Later — redeploy app only (tunnel stays up → same URL)
+npm run docker:stack:up
 ```
 
 Full guide (free + optional fixed domain): [deploy/README.md](deploy/README.md).
@@ -302,9 +308,11 @@ npm run db:migrate   # create/apply a migration
 npm run db:push      # push the schema without a migration
 npm run db:seed      # demo data
 npm run db:studio    # Prisma Studio
+npm run docker:stack:up   # rebuild/restart app only (does not touch tunnel)
+npm run tunnel:free       # free Cloudflare URL — leave this terminal running
 ```
 
-Mac mini Docker helpers: `./deploy/scripts/deploy.sh`,
+Mac mini Docker helpers: `npm run docker:stack:up`, `npm run tunnel:free`,
 `./deploy/scripts/backup-db.sh` — see [deploy/README.md](deploy/README.md).
 
 ---

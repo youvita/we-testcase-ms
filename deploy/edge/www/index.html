@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Mac mini edge</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 40rem; margin: 3rem auto; padding: 0 1rem; line-height: 1.5; color: #1a1a1a; }
+    code { background: #f4f4f4; padding: 0.1rem 0.35rem; border-radius: 4px; }
+    a { color: #0b57d0; }
+  </style>
+</head>
+<body>
+  <h1>Mac mini edge</h1>
+  <p>One nginx + one Cloudflare tunnel for both apps (Next.js <code>basePath</code>).</p>
+  <ul>
+    <li><a href="/cases/">/cases/</a> → we-testcase <code>:3000</code></li>
+    <li><a href="/securescan/">/securescan/</a> → SecureScan <code>:3001</code></li>
+  </ul>
+  <p>
+    Public: run <code>npm run tunnel:edge</code> once, then open those paths on the
+    printed <code>https://….trycloudflare.com</code> URL.
+  </p>
+  <p>
+    Direct (no nginx):
+    <a href="http://127.0.0.1:3000/cases">:3000/cases</a> ·
+    <a href="http://127.0.0.1:3001/securescan/login">:3001/securescan/login</a>
+  </p>
+</body>
+</html>

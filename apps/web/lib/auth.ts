@@ -39,6 +39,9 @@ export const auth = betterAuth({
    * origin when you have a stable domain.
    */
   baseURL: process.env.BETTER_AUTH_URL || undefined,
+  // Next.js strips app basePath from the inbound request URL, so the server
+  // auth mount stays at /api/auth. The browser client uses /cases/api/auth.
+  basePath: "/api/auth",
   trustedOrigins,
 
   database: prismaAdapter(prisma, { provider: "postgresql" }),
@@ -54,6 +57,13 @@ export const auth = betterAuth({
   session: {
     expiresIn: 60 * 60 * 24 * 7, // 7 days
     updateAge: 60 * 60 * 24, // refresh the cookie at most once a day
+  },
+
+  // Scope cookies to /cases when sharing one Cloudflare host with SecureScan.
+  advanced: {
+    defaultCookieAttributes: {
+      path: process.env.BASE_PATH?.replace(/\/$/, "") || "/",
+    },
   },
 
   user: {
