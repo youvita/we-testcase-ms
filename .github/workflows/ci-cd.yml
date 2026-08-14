@@ -53,6 +53,7 @@ jobs:
     needs: ci
     if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     runs-on: [self-hosted, macOS, macmini]
+    environment: Production
     timeout-minutes: 45
     concurrency:
       group: macmini-we-testcase
