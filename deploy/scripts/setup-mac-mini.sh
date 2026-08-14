@@ -62,7 +62,7 @@ echo "    2. brew install cloudflared   # once"
 echo "    3. npm run docker:stack:up"
 echo "    4. Terminal 1 (leave running): npm run tunnel:free"
 echo "       → open the https://….trycloudflare.com URL it prints"
-echo "    5. Later redeploys (tunnel stays up): npm run docker:stack:up"
+echo "    5. Later redeploys: merge to main (GitHub Actions). Manual: npm run docker:stack:up"
 echo
 echo "    Later, for a fixed URL: buy/add any domain to Cloudflare"
 echo "    (see deploy/README.md — named tunnel section)."

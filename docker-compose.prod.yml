@@ -13,7 +13,12 @@
 #   4. docker compose -f docker-compose.prod.yml --env-file .env.production up -d --build
 #
 # Day-to-day deploy:
-#   ./deploy/scripts/deploy.sh
+#   push to main (GitHub Actions) or ./deploy/scripts/deploy.sh
+#
+# Stable compose project name so CI checkouts in the runner workspace
+# still attach to the same containers/volumes as a local clone.
+
+name: we-testcase-ms
 
 services:
   postgres:

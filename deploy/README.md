@@ -154,11 +154,53 @@ Change demo passwords immediately.
 
 ---
 
+## CI/CD (GitHub Actions)
+
+Pushes and merges to `main` lint/typecheck on GitHub, then deploy on this Mac mini.
+The workflow rebuilds the **app** only — the Cloudflare tunnel is not touched.
+
+### One-time runner
+
+1. Docker Desktop running, stack already set up (`setup-mac-mini.sh`).
+2. Create a runner registration token:
+   - **Org (preferred):** GitHub org → Settings → Actions → Runners → New runner  
+     One runner serves both `we-testcase-ms` and `secure-scanner`.
+   - **Repo:** this repo → Settings → Actions → Runners → New runner
+3. On the Mac mini, as the Docker Desktop user (not root):
+
+```bash
+./deploy/scripts/install-github-runner.sh \
+  --url https://github.com/youvita \
+  --token <registration-token>
+```
+
+That installs a user LaunchAgent labeled `macmini`. Keep Docker Desktop running.
+
+4. If `.env.production` is **not** at `~/Apps/we-testcase-ms/` or
+   `~/Projects/we-testcase-ms/`, add a repository variable:
+
+   - `DEPLOY_ENV_FILE` = absolute path to `.env.production` on this Mac
+
+Secrets stay on disk. Do not put `.env.production` in GitHub secrets.
+
+### After that
+
+| Task | How |
+| --- | --- |
+| Deploy | Merge / push to `main` |
+| Deploy without a new commit | GitHub → Actions → CI/CD → Run workflow |
+| Manual fallback | `npm run docker:stack:up` |
+
+The Actions checkout is a separate work folder. Named Docker volumes and
+containers stay the same (`name: we-testcase-ms` in `docker-compose.prod.yml`).
+
+---
+
 ## Day-to-day
 
 | Task | Command |
 | --- | --- |
-| Redeploy app only (tunnel stays up) | `npm run docker:stack:up` |
+| Redeploy app only (tunnel stays up) | push to `main` (or `npm run docker:stack:up`) |
 | Edge proxy (many apps, one port) | `npm run edge:up` |
 | Free public URL via edge (once, leave running) | `npm run tunnel:edge` |
 | Free public URL — this app only | `npm run tunnel:free` |

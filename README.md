@@ -128,6 +128,12 @@ Open http://localhost:3000.
 Self-host on a Mac mini. **No domain purchase required** for the free path
 (Cloudflare `*.trycloudflare.com`).
 
+Day-to-day deploys are **GitHub Actions**: push (or merge) to `main` and the
+Mac mini self-hosted runner rebuilds the app. The Cloudflare tunnel is not
+restarted.
+
+First-time host setup:
+
 ```bash
 chmod +x deploy/scripts/*.sh deploy/entrypoint.sh
 ./deploy/scripts/setup-mac-mini.sh
@@ -138,11 +144,16 @@ npm run docker:stack:up
 npm run tunnel:free
 # copy the https://….trycloudflare.com URL
 
-# Later — redeploy app only (tunnel stays up → same URL)
-npm run docker:stack:up
+# One-time: register the GitHub Actions runner (see deploy/README.md)
+./deploy/scripts/install-github-runner.sh \
+  --url https://github.com/youvita \
+  --token <registration-token>
 ```
 
-Full guide (free + optional fixed domain): [deploy/README.md](deploy/README.md).
+After that, merge to `main` instead of running `docker:stack:up` by hand.
+Manual fallback: **Actions → CI/CD → Run workflow**, or `npm run docker:stack:up`.
+
+Full guide (CI/CD, free tunnel, optional fixed domain): [deploy/README.md](deploy/README.md).
 
 ---
 
@@ -308,12 +319,13 @@ npm run db:migrate   # create/apply a migration
 npm run db:push      # push the schema without a migration
 npm run db:seed      # demo data
 npm run db:studio    # Prisma Studio
-npm run docker:stack:up   # rebuild/restart app only (does not touch tunnel)
+npm run docker:stack:up   # manual rebuild/restart app only (does not touch tunnel)
 npm run tunnel:free       # free Cloudflare URL — leave this terminal running
 ```
 
-Mac mini Docker helpers: `npm run docker:stack:up`, `npm run tunnel:free`,
-`./deploy/scripts/backup-db.sh` — see [deploy/README.md](deploy/README.md).
+Mac mini: push to `main` deploys via GitHub Actions. Manual helpers remain
+`npm run docker:stack:up`, `npm run tunnel:free`, `./deploy/scripts/backup-db.sh`
+— see [deploy/README.md](deploy/README.md).
 
 ---
 
