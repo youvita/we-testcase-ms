@@ -101,6 +101,7 @@ jobs:
           Branch: $BRANCH
           By: $ACTOR
           Commit: ${COMMIT_MESSAGE:-(manual run)}
+          Run: $RUN_URL"
 
           curl -sS -X POST \
             "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
