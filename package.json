@@ -22,8 +22,10 @@
     "db:seed": "npm run db:seed -w @wetestcase/web",
     "tunnel:free": "./deploy/scripts/run-free-tunnel.sh",
     "tunnel:edge": "./deploy/scripts/run-edge-free-tunnel.sh",
+    "tunnel:edge:url": "docker logs macmini-tunnel 2>&1 | grep -oE 'https://[a-z0-9-]+\\.trycloudflare\\.com' | tail -1",
+    "tunnel:edge:down": "docker compose -f deploy/edge/docker-compose.yml --profile tunnel stop tunnel && docker compose -f deploy/edge/docker-compose.yml --profile tunnel rm -f tunnel",
     "edge:up": "./deploy/scripts/run-edge.sh",
-    "edge:down": "docker compose -f deploy/edge/docker-compose.yml down",
+    "edge:down": "docker compose -f deploy/edge/docker-compose.yml --profile tunnel down",
     "docker:stack:up": "./deploy/scripts/stack-up.sh"
   },
   "engines": {

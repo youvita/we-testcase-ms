@@ -19,7 +19,7 @@ for _ in $(seq 1 20); do
     echo "Edge is up: http://127.0.0.1:8080/"
     echo "  we-testcase path:  http://127.0.0.1:8080/cases/"
     echo "  SecureScan path:   http://127.0.0.1:8080/securescan/"
-    echo "Next: npm run tunnel:edge   (one free Cloudflare URL → this proxy)"
+    echo "Next: npm run tunnel:edge   (Docker Quick Tunnel → this proxy)"
     exit 0
   fi
   sleep 0.5

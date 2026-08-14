@@ -3,7 +3,13 @@
 #   docker compose -f deploy/edge/docker-compose.yml up -d
 #   curl -sI http://127.0.0.1:8080/healthz
 #
-# Shared with secure-scanner (same container name). Run from ONE repo only.
+# Shared with secure-scanner (same container names). Run from ONE repo only.
+#
+# Free public URL (no domain, no token):
+#   docker compose -f deploy/edge/docker-compose.yml --profile tunnel up -d
+#   docker logs macmini-tunnel   # copy the https://….trycloudflare.com URL
+#
+# Restarting macmini-tunnel mints a new random URL. Leave it running.
 
 services:
   edge:
@@ -23,3 +29,20 @@ services:
       interval: 15s
       timeout: 3s
       retries: 3
+
+  # Free Quick Tunnel in Docker — no host cloudflared process, no extra terminal.
+  # Talks to nginx on the compose network (not host :8080).
+  tunnel:
+    image: cloudflare/cloudflared:latest
+    container_name: macmini-tunnel
+    restart: unless-stopped
+    profiles: ["tunnel"]
+    command: tunnel --no-autoupdate --protocol http2 --url http://edge:8080
+    depends_on:
+      edge:
+        condition: service_healthy
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "3"

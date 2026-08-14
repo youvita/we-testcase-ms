@@ -8,11 +8,12 @@ Internet → Cloudflare → cloudflared (1 process)
                                 └─ (add more upstreams in nginx.conf)
 ```
 
-**One terminal, one public URL** (free Quick Tunnel):
+**One Docker tunnel, one public URL** (free Quick Tunnel):
 
 ```bash
 npm run edge:up
-npm run tunnel:edge   # leave running — do NOT also run tunnel:free
+npm run tunnel:edge          # starts macmini-tunnel; no extra terminal
+npm run tunnel:edge:url      # print the URL later
 ```
 
 Then open:
