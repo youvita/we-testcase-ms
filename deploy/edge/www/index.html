@@ -12,10 +12,11 @@
 </head>
 <body>
   <h1>Mac mini edge</h1>
-  <p>One nginx + one Cloudflare tunnel for both apps (Next.js <code>basePath</code>).</p>
+  <p>One nginx + one Cloudflare tunnel for the Mini Mac apps.</p>
   <ul>
     <li><a href="/cases/">/cases/</a> → we-testcase <code>:3000</code></li>
     <li><a href="/securescan/">/securescan/</a> → SecureScan <code>:3001</code></li>
+    <li><a href="/ptas168/">/ptas168/</a> → PTAS168 <code>:8082</code></li>
   </ul>
   <p>
     Public: <code>npm run tunnel:edge</code> starts a Docker Quick Tunnel. Open those
@@ -24,7 +25,8 @@
   <p>
     Direct (no nginx):
     <a href="http://127.0.0.1:3000/cases">:3000/cases</a> ·
-    <a href="http://127.0.0.1:3001/securescan/login">:3001/securescan/login</a>
+    <a href="http://127.0.0.1:3001/securescan/login">:3001/securescan/login</a> ·
+    <a href="http://127.0.0.1:8082/ptas168/">:8082/ptas168</a>
   </p>
 </body>
 </html>
