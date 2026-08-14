@@ -3,6 +3,8 @@ import * as XLSX from "xlsx";
 import { prisma } from "@/lib/prisma";
 import { badRequest } from "@/lib/api";
 import {
+  PLATFORMS,
+  PLATFORM_LABELS,
   PRIORITIES,
   PRIORITY_LABELS,
   TEST_TYPES,
@@ -13,6 +15,7 @@ import {
   cellToString,
   isRowEmpty,
   mapHeaders,
+  parsePlatform,
   parsePriority,
   parseTestType,
   type CanonicalField,
@@ -45,6 +48,7 @@ type ParsedRow = {
   expectedResult: string;
   testType: ReturnType<typeof parseTestType>;
   priority: ReturnType<typeof parsePriority>;
+  platform: ReturnType<typeof parsePlatform>;
 };
 
 /**
@@ -182,6 +186,7 @@ export function parseWorkbook(buffer: Buffer): {
       expectedResult: read(row, "expectedResult"),
       testType: parseTestType(read(row, "testType")),
       priority: parsePriority(read(row, "priority")),
+      platform: parsePlatform(read(row, "platform")),
     });
   });
 
@@ -300,6 +305,7 @@ export async function importTestCases(
             expectedResult: row.expectedResult || null,
             testType: row.testType,
             priority: row.priority,
+            platform: row.platform,
           },
         });
         updated += 1;
@@ -317,6 +323,7 @@ export async function importTestCases(
           expectedResult: row.expectedResult || null,
           testType: row.testType,
           priority: row.priority,
+          platform: row.platform,
         },
       });
       created += 1;
@@ -428,6 +435,7 @@ export function buildImportTemplate(options?: {
     "Expected Result",
     "Test Type",
     "Priority",
+    "Platform",
   ];
 
   const rows = [
@@ -441,6 +449,7 @@ export function buildImportTemplate(options?: {
       "The user reaches the dashboard.",
       "Functional",
       "High",
+      "Web",
     ],
     [
       "TC-LOGIN-002",
@@ -451,6 +460,7 @@ export function buildImportTemplate(options?: {
       "An invalid-credentials message is shown.",
       "Negative",
       "Medium",
+      "Android",
     ],
   ];
 
@@ -463,6 +473,7 @@ export function buildImportTemplate(options?: {
     { wch: 44 },
     { wch: 36 },
     { wch: 12 },
+    { wch: 10 },
     { wch: 10 },
   ];
 
@@ -517,6 +528,13 @@ export function buildImportTemplate(options?: {
       errorTitle: "Unknown priority",
       error:
         "Pick a value from the list, or keep yours — the import maps common spellings and falls back to Medium.",
+    },
+    {
+      column: XLSX.utils.encode_col(headers.indexOf("Platform")),
+      values: PLATFORMS.map((platform) => PLATFORM_LABELS[platform]),
+      errorTitle: "Unknown platform",
+      error:
+        "Pick a value from the list, or keep yours — the import maps common spellings and falls back to Web.",
     },
   ]);
 }

@@ -35,6 +35,7 @@ import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { EmptyState } from "@/components/shared/empty-state";
 import { PaginationControls } from "@/components/shared/pagination-controls";
 import {
+  PlatformBadge,
   PriorityBadge,
   TestTypeBadge,
 } from "@/components/shared/priority-badge";
@@ -297,6 +298,8 @@ export function TestCaseTable({
                 </button>
               </TableHead>
 
+              <TableHead className="w-[100px]">Platform</TableHead>
+
               <TableHead className="w-[210px]">Status</TableHead>
 
               <TableHead className="w-[140px]">
@@ -367,6 +370,10 @@ export function TestCaseTable({
 
                 <TableCell>
                   <PriorityBadge priority={testCase.priority} />
+                </TableCell>
+
+                <TableCell>
+                  <PlatformBadge platform={testCase.platform} />
                 </TableCell>
 
                 <TableCell>

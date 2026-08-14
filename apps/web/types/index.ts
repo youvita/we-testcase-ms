@@ -91,6 +91,7 @@ export type TestCaseListItem = Pick<
   | "title"
   | "testType"
   | "priority"
+  | "platform"
   | "status"
   | "fixStatus"
   | "lastExecutedAt"

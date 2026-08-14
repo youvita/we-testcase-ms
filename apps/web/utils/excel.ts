@@ -1,4 +1,4 @@
-import type { Priority, TestType } from "@prisma/client";
+import type { Platform, Priority, TestType } from "@prisma/client";
 
 /**
  * Header matching for imported sheets.
@@ -16,6 +16,7 @@ export const CANONICAL_FIELDS = [
   "expectedResult",
   "testType",
   "priority",
+  "platform",
 ] as const;
 
 export type CanonicalField = (typeof CANONICAL_FIELDS)[number];
@@ -96,6 +97,7 @@ const HEADER_ALIASES: Record<CanonicalField, string[]> = {
     "importance",
     "criticality",
   ],
+  platform: ["platform", "device", "os", "environment"],
 };
 
 /** Strip everything but letters and digits so "TC ID" == "tc_id" == "TC-Id". */
@@ -239,6 +241,32 @@ export function parsePriority(value: unknown): Priority {
   const key = normalizeHeader(value.toString());
   if (!key) return "MEDIUM";
   return PRIORITY_ALIASES[key] ?? "MEDIUM";
+}
+
+const PLATFORM_ALIASES: Record<string, Platform> = {
+  web: "WEB",
+  website: "WEB",
+  browser: "WEB",
+  desktop: "WEB",
+  ios: "IOS",
+  iphone: "IOS",
+  ipad: "IOS",
+  apple: "IOS",
+  android: "ANDROID",
+  androidos: "ANDROID",
+};
+
+/**
+ * Coerce a spreadsheet platform cell into the Platform enum.
+ *
+ * Blank or unrecognised values fall back to WEB — same default as a newly
+ * created case in the UI.
+ */
+export function parsePlatform(value: unknown): Platform {
+  if (value === null || value === undefined) return "WEB";
+  const key = normalizeHeader(value.toString());
+  if (!key) return "WEB";
+  return PLATFORM_ALIASES[key] ?? "WEB";
 }
 
 /**

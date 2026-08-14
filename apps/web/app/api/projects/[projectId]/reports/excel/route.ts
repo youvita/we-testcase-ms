@@ -1,7 +1,9 @@
 import { badRequest, route } from "@/lib/api";
 import {
   EXCEL_REPORT_SCOPES,
+  PLATFORMS,
   type ExcelReportScope,
+  type Platform,
 } from "@/lib/constants";
 import { assertProjectAccess } from "@/lib/project-access";
 import { getProject } from "@/services/project.service";
@@ -26,8 +28,18 @@ export const GET = route<Ctx>({}, async (request, { params, user }) => {
   }
   const scope = requested as ExcelReportScope;
 
+  const platformParam = new URL(request.url).searchParams.get("platform");
+  let platforms: Platform[] | undefined;
+  if (platformParam) {
+    const tokens = platformParam.split(",").map((token) => token.trim());
+    if (!tokens.every((token) => (PLATFORMS as readonly string[]).includes(token))) {
+      throw badRequest('platform must be a comma-separated list of "WEB", "IOS", "ANDROID"');
+    }
+    platforms = tokens as Platform[];
+  }
+
   const project = await getProject(projectId);
-  const buffer = await buildExcelReport(projectId, scope);
+  const buffer = await buildExcelReport(projectId, scope, platforms);
   const filename = `${reportFileSlug(project.name)}-${excelReportFilenameSuffix(scope)}.xlsx`;
 
   return new Response(new Uint8Array(buffer), {

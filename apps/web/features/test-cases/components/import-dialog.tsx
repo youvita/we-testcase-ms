@@ -47,6 +47,7 @@ const TEMPLATE_COLUMNS = [
   "Expected Result",
   "Test Type",
   "Priority",
+  "Platform",
 ];
 
 /**

@@ -4,6 +4,7 @@ import {
   CLOSING_FIX_STATUSES,
   EXECUTION_STATUSES,
   FIX_STATUSES,
+  PLATFORMS,
   PRIORITIES,
   PROJECT_STATUSES,
   ROLE_VALUES,
@@ -21,6 +22,7 @@ export const roleSchema = z.enum(
 export const executionStatusSchema = z.enum(EXECUTION_STATUSES);
 export const testTypeSchema = z.enum(TEST_TYPES);
 export const prioritySchema = z.enum(PRIORITIES);
+export const platformSchema = z.enum(PLATFORMS);
 export const projectStatusSchema = z.enum(PROJECT_STATUSES);
 
 const trimmed = (max: number) => z.string().trim().max(max);
@@ -171,6 +173,7 @@ export const testCaseSchema = z.object({
   expectedResult: optionalText(4000),
   testType: testTypeSchema.default("FUNCTIONAL"),
   priority: prioritySchema.default("MEDIUM"),
+  platform: platformSchema.default("WEB"),
 });
 
 export type TestCaseInput = z.input<typeof testCaseSchema>;

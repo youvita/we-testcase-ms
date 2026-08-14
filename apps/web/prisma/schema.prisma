@@ -57,6 +57,13 @@ enum Priority {
   LOW
 }
 
+/// Which platform a case targets.
+enum Platform {
+  WEB
+  IOS
+  ANDROID
+}
+
 enum ExecutionStatus {
   NOT_RUN
   PASSED
@@ -240,6 +247,7 @@ model TestCase {
   expectedResult String?
   testType       TestType @default(FUNCTIONAL)
   priority       Priority @default(MEDIUM)
+  platform       Platform @default(WEB)
 
   /// Latest execution outcome, denormalized from TestExecution so the test-case
   /// list can filter/sort by status and the dashboard can aggregate with a
