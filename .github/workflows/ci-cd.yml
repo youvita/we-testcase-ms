@@ -97,11 +97,10 @@ jobs:
 
           MESSAGE="$STATUS
 
-          📦 Project: $REPO_NAME
-          🌿 Branch: $BRANCH
-          👤 By: $ACTOR
-          📝 Commit: ${COMMIT_MESSAGE:-(manual run)}
-          🔗 $RUN_URL"
+          Project: $REPO_NAME
+          Branch: $BRANCH
+          By: $ACTOR
+          Commit: ${COMMIT_MESSAGE:-(manual run)}
 
           curl -sS -X POST \
             "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
