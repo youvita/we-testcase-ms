@@ -82,7 +82,6 @@ jobs:
           BRANCH: ${{ github.ref_name }}
           ACTOR: ${{ github.actor }}
           COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
-          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           if [ -z "$TELEGRAM_BOT_TOKEN" ] || [ -z "$TELEGRAM_CHAT_ID" ]; then
             echo "Telegram secrets not configured; skipping notification."
@@ -95,13 +94,14 @@ jobs:
             STATUS="❌ Deployment failed"
           fi
 
+          COMMIT_LINE="${COMMIT_MESSAGE%%$'\n'*}"
+
           MESSAGE="$STATUS
 
           Project: $REPO_NAME
           Branch: $BRANCH
           By: $ACTOR
-          Commit: ${COMMIT_MESSAGE:-(manual run)}
-          Run: $RUN_URL"
+          Commit: ${COMMIT_LINE:-(manual run)}"
 
           curl -sS -X POST \
             "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
