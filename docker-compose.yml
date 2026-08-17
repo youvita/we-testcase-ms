@@ -1,6 +1,7 @@
 # docker-compose.yml at monorepo root — dev Postgres only.
-# Host port 5433 avoids clashing with other stacks (e.g. devone-postgres on :5432).
-# App: apps/web — DATABASE_URL must use localhost:5433 (see apps/web/.env.example).
+# Host port 5434 avoids clashing with other stacks on this machine (5432/5433
+# are already taken by unrelated projects' Postgres containers).
+# App: apps/web — DATABASE_URL must use localhost:5434 (see apps/web/.env.example).
 
 services:
   postgres:
@@ -12,7 +13,7 @@ services:
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: wetestcase
     ports:
-      - "5433:5432"
+      - "5434:5432"
     volumes:
       - wetestcase-pgdata:/var/lib/postgresql/data
     healthcheck:
