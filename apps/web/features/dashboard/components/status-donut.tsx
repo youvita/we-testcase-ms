@@ -3,6 +3,8 @@
 import { PieChartIcon } from "lucide-react";
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts";
 
+import { useMounted } from "@/hooks/use-mounted";
+
 import { EmptyState } from "@/components/shared/empty-state";
 import {
   Card,
@@ -85,6 +87,7 @@ export function StatusDonut({
   stats: StatusBreakdown;
   className?: string;
 }) {
+  const mounted = useMounted();
   // A zero-value slice would render a hairline artefact, so drop it entirely.
   const slices: Slice[] = EXECUTION_STATUSES.map((status) => ({
     status,
@@ -92,6 +95,9 @@ export function StatusDonut({
     value: countFor(stats, status),
     color: EXECUTION_STATUS_COLORS[status],
   })).filter((slice) => slice.value > 0);
+  // One slice + paddingAngle makes Recharts emit an invalid arc and React
+  // throws — every current project is 100% NOT_RUN, so this is the live path.
+  const paddingAngle = slices.length > 1 ? 2 : 0;
 
   return (
     <Card className={cn("flex flex-col", className)}>
@@ -115,28 +121,30 @@ export function StatusDonut({
             {/* Recharts measures its parent: the wrapper needs a real height,
                 otherwise ResponsiveContainer resolves to 0 and nothing paints. */}
             <div className="relative h-[240px] w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={slices}
-                    dataKey="value"
-                    nameKey="label"
-                    innerRadius={62}
-                    outerRadius={92}
-                    paddingAngle={2}
-                    strokeWidth={0}
-                    isAnimationActive={false}
-                  >
-                    {slices.map((slice) => (
-                      <Cell key={slice.status} fill={slice.color} />
-                    ))}
-                  </Pie>
-                  <Tooltip
-                    content={<DonutTooltip total={stats.total} />}
-                    cursor={false}
-                  />
-                </PieChart>
-              </ResponsiveContainer>
+              {mounted ? (
+                <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
+                  <PieChart>
+                    <Pie
+                      data={slices}
+                      dataKey="value"
+                      nameKey="label"
+                      innerRadius={62}
+                      outerRadius={92}
+                      paddingAngle={paddingAngle}
+                      strokeWidth={0}
+                      isAnimationActive={false}
+                    >
+                      {slices.map((slice) => (
+                        <Cell key={slice.status} fill={slice.color} />
+                      ))}
+                    </Pie>
+                    <Tooltip
+                      content={<DonutTooltip total={stats.total} />}
+                      cursor={false}
+                    />
+                  </PieChart>
+                </ResponsiveContainer>
+              ) : null}
 
               {/* Centre overlay — positioned in CSS rather than as a Recharts
                   label so it stays crisp and inherits theme tokens. */}

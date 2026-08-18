@@ -22,6 +22,7 @@ import {
   EXECUTION_STATUS_COLORS,
   EXECUTION_STATUS_LABELS,
 } from "@/lib/constants";
+import { useMounted } from "@/hooks/use-mounted";
 import { cn } from "@/lib/utils";
 import type { DailyExecutionPoint } from "@/types";
 
@@ -123,6 +124,7 @@ export function DailyExecutionChart({
   data: DailyExecutionPoint[];
   className?: string;
 }) {
+  const mounted = useMounted();
   const hasExecutions = data.some((point) => point.total > 0);
 
   return (
@@ -142,52 +144,54 @@ export function DailyExecutionChart({
           // `min-h` is the floor that keeps ResponsiveContainer measurable when
           // the row height is content-driven instead (single-column layout).
           <div className="min-h-[240px] w-full flex-1">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart
-                data={data}
-                margin={{ top: 4, right: 8, bottom: 0, left: -16 }}
-                barCategoryGap="22%"
-              >
-                <CartesianGrid
-                  vertical={false}
-                  stroke={GRID_COLOR}
-                  strokeDasharray="3 3"
-                />
-                <XAxis
-                  dataKey="date"
-                  tickFormatter={formatAxisDate}
-                  tickLine={false}
-                  axisLine={{ stroke: GRID_COLOR }}
-                  tick={{ fill: AXIS_COLOR, fontSize: 11 }}
-                  interval="preserveStartEnd"
-                  minTickGap={8}
-                />
-                <YAxis
-                  allowDecimals={false}
-                  tickLine={false}
-                  axisLine={false}
-                  tick={{ fill: AXIS_COLOR, fontSize: 11 }}
-                  width={40}
-                />
-                <Tooltip
-                  content={<ChartTooltip />}
-                  cursor={{ fill: GRID_COLOR, fillOpacity: 0.35 }}
-                />
-                {SERIES.map((series, index) => (
-                  <Bar
-                    key={series.key}
-                    dataKey={series.key}
-                    name={series.label}
-                    stackId="executions"
-                    fill={series.color}
-                    isAnimationActive={false}
-                    radius={
-                      index === SERIES.length - 1 ? [3, 3, 0, 0] : undefined
-                    }
+            {mounted ? (
+              <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
+                <BarChart
+                  data={data}
+                  margin={{ top: 4, right: 8, bottom: 0, left: -16 }}
+                  barCategoryGap="22%"
+                >
+                  <CartesianGrid
+                    vertical={false}
+                    stroke={GRID_COLOR}
+                    strokeDasharray="3 3"
                   />
-                ))}
-              </BarChart>
-            </ResponsiveContainer>
+                  <XAxis
+                    dataKey="date"
+                    tickFormatter={formatAxisDate}
+                    tickLine={false}
+                    axisLine={{ stroke: GRID_COLOR }}
+                    tick={{ fill: AXIS_COLOR, fontSize: 11 }}
+                    interval="preserveStartEnd"
+                    minTickGap={8}
+                  />
+                  <YAxis
+                    allowDecimals={false}
+                    tickLine={false}
+                    axisLine={false}
+                    tick={{ fill: AXIS_COLOR, fontSize: 11 }}
+                    width={40}
+                  />
+                  <Tooltip
+                    content={<ChartTooltip />}
+                    cursor={{ fill: GRID_COLOR, fillOpacity: 0.35 }}
+                  />
+                  {SERIES.map((series, index) => (
+                    <Bar
+                      key={series.key}
+                      dataKey={series.key}
+                      name={series.label}
+                      stackId="executions"
+                      fill={series.color}
+                      isAnimationActive={false}
+                      radius={
+                        index === SERIES.length - 1 ? [3, 3, 0, 0] : undefined
+                      }
+                    />
+                  ))}
+                </BarChart>
+              </ResponsiveContainer>
+            ) : null}
           </div>
         )}
       </CardContent>
