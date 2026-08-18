@@ -35,7 +35,8 @@ export default function GlobalError({
           <p className="text-sm text-muted-foreground">
             {looksLikeDbIssue
               ? "The app could not reach the database. Check that PostgreSQL is running and that DATABASE_URL is correct, then try again."
-              : "An unexpected error occurred while rendering this page."}
+              : (error.message ||
+                "An unexpected error occurred while rendering this page.")}
           </p>
           {error.digest && (
             <p className="font-mono text-xs text-muted-foreground">
