@@ -1,9 +1,4 @@
-"use client";
-
 import { PieChartIcon } from "lucide-react";
-import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts";
-
-import { useMounted } from "@/hooks/use-mounted";
 
 import { EmptyState } from "@/components/shared/empty-state";
 import {
@@ -29,7 +24,6 @@ type Slice = {
   color: string;
 };
 
-/** Maps a status onto the matching count in the breakdown. */
 function countFor(stats: StatusBreakdown, status: ExecutionStatus): number {
   switch (status) {
     case "PASSED":
@@ -46,36 +40,32 @@ function countFor(stats: StatusBreakdown, status: ExecutionStatus): number {
 }
 
 /**
- * Recharts hands the tooltip an untyped payload array, so keep the shape we
- * actually read narrow and guard the index access (noUncheckedIndexedAccess).
+ * CSS donut — Recharts Pie + ResponsiveContainer throws on a 0×0 box and on a
+ * single 360° slice (every current project is 100% Not Run). A conic-gradient
+ * does not.
  */
-type DonutTooltipProps = {
-  active?: boolean;
-  payload?: Array<{ payload?: Slice }>;
-  total: number;
-};
-
-function DonutTooltip({ active, payload, total }: DonutTooltipProps) {
-  if (!active) return null;
-  const slice = payload?.[0]?.payload;
-  if (!slice) return null;
-
-  const share = total > 0 ? (slice.value / total) * 100 : 0;
+function CssDonut({ slices }: { slices: Slice[] }) {
+  const total = slices.reduce((sum, slice) => sum + slice.value, 0);
+  let start = 0;
+  const stops = slices.map((slice) => {
+    const end = start + (slice.value / total) * 360;
+    const stop = `${slice.color} ${start}deg ${end}deg`;
+    start = end;
+    return stop;
+  });
 
   return (
-    <div className="rounded-lg border bg-card px-3 py-2 text-xs shadow-md">
-      <div className="flex items-center gap-2">
-        <span
-          className="size-2 shrink-0 rounded-full"
-          style={{ backgroundColor: slice.color }}
-          aria-hidden
-        />
-        <span className="text-muted-foreground">{slice.label}:</span>
-        <span className="font-medium tabular-nums text-card-foreground">
-          {slice.value} ({formatPercent(share)})
-        </span>
-      </div>
-    </div>
+    <div
+      className="mx-auto size-[184px] rounded-full"
+      style={{
+        background: `conic-gradient(${stops.join(", ")})`,
+        maskImage:
+          "radial-gradient(farthest-side, transparent 61px, #000 62px)",
+        WebkitMaskImage:
+          "radial-gradient(farthest-side, transparent 61px, #000 62px)",
+      }}
+      aria-hidden
+    />
   );
 }
 
@@ -87,17 +77,12 @@ export function StatusDonut({
   stats: StatusBreakdown;
   className?: string;
 }) {
-  const mounted = useMounted();
-  // A zero-value slice would render a hairline artefact, so drop it entirely.
   const slices: Slice[] = EXECUTION_STATUSES.map((status) => ({
     status,
     label: EXECUTION_STATUS_LABELS[status],
     value: countFor(stats, status),
     color: EXECUTION_STATUS_COLORS[status],
   })).filter((slice) => slice.value > 0);
-  // One slice + paddingAngle makes Recharts emit an invalid arc and React
-  // throws — every current project is 100% NOT_RUN, so this is the live path.
-  const paddingAngle = slices.length > 1 ? 2 : 0;
 
   return (
     <Card className={cn("flex flex-col", className)}>
@@ -118,36 +103,10 @@ export function StatusDonut({
           />
         ) : (
           <>
-            {/* Recharts measures its parent: the wrapper needs a real height,
-                otherwise ResponsiveContainer resolves to 0 and nothing paints. */}
             <div className="relative h-[240px] w-full">
-              {mounted ? (
-                <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
-                  <PieChart>
-                    <Pie
-                      data={slices}
-                      dataKey="value"
-                      nameKey="label"
-                      innerRadius={62}
-                      outerRadius={92}
-                      paddingAngle={paddingAngle}
-                      strokeWidth={0}
-                      isAnimationActive={false}
-                    >
-                      {slices.map((slice) => (
-                        <Cell key={slice.status} fill={slice.color} />
-                      ))}
-                    </Pie>
-                    <Tooltip
-                      content={<DonutTooltip total={stats.total} />}
-                      cursor={false}
-                    />
-                  </PieChart>
-                </ResponsiveContainer>
-              ) : null}
-
-              {/* Centre overlay — positioned in CSS rather than as a Recharts
-                  label so it stays crisp and inherits theme tokens. */}
+              <div className="flex h-full items-center justify-center">
+                <CssDonut slices={slices} />
+              </div>
               <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
                 <span className="text-3xl font-semibold tabular-nums leading-none">
                   {formatPercent(stats.executionRate)}
