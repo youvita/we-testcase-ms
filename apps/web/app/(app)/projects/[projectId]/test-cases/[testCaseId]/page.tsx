@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { PageHeader } from "@/components/shared/page-header";
 import {
+  PlatformBadge,
   PriorityBadge,
   TestTypeBadge,
 } from "@/components/shared/priority-badge";
@@ -190,6 +191,7 @@ export default async function TestCaseDetailPage({
                 <StatusBadge status={testCase.status} />
                 <TestTypeBadge testType={testCase.testType} />
                 <PriorityBadge priority={testCase.priority} />
+                <PlatformBadge platform={testCase.platform} />
                 {testCase.lastExecutedAt && (
                   <span className="text-xs text-muted-foreground">
                     · Last executed {formatDateTime(testCase.lastExecutedAt)}

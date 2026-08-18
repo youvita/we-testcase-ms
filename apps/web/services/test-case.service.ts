@@ -86,6 +86,7 @@ export async function listTestCases(
         title: true,
         testType: true,
         priority: true,
+        platform: true,
         status: true,
         fixStatus: true,
         lastExecutedAt: true,
@@ -254,6 +255,7 @@ export async function createTestCase(projectId: string, input: TestCaseInput) {
       expectedResult: input.expectedResult ?? null,
       testType: input.testType ?? "FUNCTIONAL",
       priority: input.priority ?? "MEDIUM",
+      platform: input.platform ?? "WEB",
     },
   });
 }
@@ -298,6 +300,7 @@ export async function updateTestCase(
       expectedResult: input.expectedResult ?? null,
       testType: input.testType ?? "FUNCTIONAL",
       priority: input.priority ?? "MEDIUM",
+      platform: input.platform ?? "WEB",
     },
   });
 }

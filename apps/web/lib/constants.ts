@@ -1,6 +1,7 @@
 import type {
   ExecutionStatus,
   FixStatus,
+  Platform,
   Priority,
   ProjectStatus,
   TestType,
@@ -20,10 +21,12 @@ export {
   isProgressFixStatus,
   TEST_TYPES,
   PRIORITIES,
+  PLATFORMS,
   PROJECT_STATUSES,
   PROJECT_ENVIRONMENTS,
   EXCEL_REPORT_SCOPES,
   type Role,
+  type Platform,
   type ExcelReportScope,
 } from "@wetestcase/dto";
 
@@ -115,6 +118,12 @@ export const PRIORITY_LABELS: Record<Priority, string> = {
   HIGH: "High",
   MEDIUM: "Medium",
   LOW: "Low",
+};
+
+export const PLATFORM_LABELS: Record<Platform, string> = {
+  WEB: "Web",
+  IOS: "iOS",
+  ANDROID: "Android",
 };
 
 export const PROJECT_STATUS_LABELS: Record<ProjectStatus, string> = {

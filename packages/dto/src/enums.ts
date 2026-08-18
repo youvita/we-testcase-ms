@@ -106,6 +106,10 @@ export const PRIORITIES = ["CRITICAL", "HIGH", "MEDIUM", "LOW"] as const;
 
 export type Priority = (typeof PRIORITIES)[number];
 
+export const PLATFORMS = ["WEB", "IOS", "ANDROID"] as const;
+
+export type Platform = (typeof PLATFORMS)[number];
+
 export const PROJECT_STATUSES = [
   "PLANNING",
   "ACTIVE",

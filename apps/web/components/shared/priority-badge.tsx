@@ -1,6 +1,7 @@
-import type { Priority, ProjectStatus, TestType } from "@prisma/client";
+import type { Platform, Priority, ProjectStatus, TestType } from "@prisma/client";
 
 import {
+  PLATFORM_LABELS,
   PRIORITY_LABELS,
   PROJECT_STATUS_LABELS,
   ROLE_LABELS,
@@ -75,6 +76,34 @@ export function PriorityBadge({
       )}
     >
       {PRIORITY_LABELS[priority]}
+    </span>
+  );
+}
+
+/** Platforms are categories, not a severity scale — hues just need to differ. */
+const PLATFORM_STYLES: Record<Platform, string> = {
+  WEB: "border-sky-500/30 bg-sky-500/10 text-sky-600 dark:text-sky-400",
+  IOS: "border-slate-500/30 bg-slate-500/10 text-slate-600 dark:text-slate-400",
+  ANDROID:
+    "border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
+};
+
+export function PlatformBadge({
+  platform,
+  className,
+}: {
+  platform: Platform;
+  className?: string;
+}) {
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center whitespace-nowrap rounded-full border px-2 py-0.5 text-xs font-medium",
+        PLATFORM_STYLES[platform],
+        className,
+      )}
+    >
+      {PLATFORM_LABELS[platform]}
     </span>
   );
 }

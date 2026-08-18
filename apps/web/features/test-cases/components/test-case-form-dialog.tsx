@@ -28,6 +28,8 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import {
+  PLATFORMS,
+  PLATFORM_LABELS,
   PRIORITIES,
   PRIORITY_LABELS,
   TEST_TYPES,
@@ -105,6 +107,7 @@ export function TestCaseFormDialog({
       expectedResult: "",
       testType: "FUNCTIONAL",
       priority: "MEDIUM",
+      platform: "WEB",
     },
   });
 
@@ -124,6 +127,7 @@ export function TestCaseFormDialog({
         expectedResult: "",
         testType: "FUNCTIONAL",
         priority: "MEDIUM",
+        platform: "WEB",
       });
       // Nothing to pick from yet — go straight to naming the first module.
       setCreatingModule(options.length === 0);
@@ -148,6 +152,7 @@ export function TestCaseFormDialog({
           expectedResult: testCase.expectedResult ?? "",
           testType: testCase.testType,
           priority: testCase.priority,
+          platform: testCase.platform,
         });
       })
       .catch((error) => {
@@ -228,6 +233,7 @@ export function TestCaseFormDialog({
   const moduleId = watch("moduleId");
   const testType = watch("testType");
   const priority = watch("priority");
+  const platform = watch("platform");
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
@@ -405,6 +411,29 @@ export function TestCaseFormDialog({
                     {PRIORITIES.map((option) => (
                       <SelectItem key={option} value={option}>
                         {PRIORITY_LABELS[option]}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="platform">Platform</Label>
+                <Select
+                  value={platform ?? "WEB"}
+                  onValueChange={(value) =>
+                    setValue("platform", value as TestCaseInput["platform"], {
+                      shouldDirty: true,
+                    })
+                  }
+                >
+                  <SelectTrigger id="platform">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {PLATFORMS.map((option) => (
+                      <SelectItem key={option} value={option}>
+                        {PLATFORM_LABELS[option]}
                       </SelectItem>
                     ))}
                   </SelectContent>

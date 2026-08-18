@@ -11,6 +11,7 @@ import {
   TEST_TYPE_LABELS,
   PROJECT_STATUS_LABELS,
   type ExcelReportScope,
+  type Platform,
 } from "@/lib/constants";
 
 export type { ExcelReportScope };
@@ -97,9 +98,18 @@ export function excelReportFilenameSuffix(scope: ExcelReportScope) {
 export async function buildExcelReport(
   projectId: string,
   scope: ExcelReportScope = "summary",
+  platforms?: Platform[],
 ): Promise<Buffer> {
   const { project, testCases, moduleProgress, stats } =
     await loadReportData(projectId);
+
+  // Narrows which rows land in the Test Cases / Failed & Blocked sheets only —
+  // Summary keeps reporting whole-project numbers regardless of this filter,
+  // since it is a row-selection criterion for export, not a project-wide slice.
+  const rows =
+    platforms && platforms.length > 0
+      ? testCases.filter((tc) => platforms.includes(tc.platform))
+      : testCases;
 
   const workbook = XLSX.utils.book_new();
   // 1-based sheet positions that hold a case table, for the styling pass below.
@@ -200,7 +210,7 @@ export async function buildExcelReport(
       "Status",
     ];
 
-    const caseRows = testCases.map((tc) => [
+    const caseRows = rows.map((tc) => [
       tc.tcId,
       tc.module.name,
       tc.title,
@@ -235,7 +245,7 @@ export async function buildExcelReport(
   }
 
   if (scope === "failed") {
-    const problem = testCases.filter(
+    const problem = rows.filter(
       (tc) => tc.status === "FAILED" || tc.status === "BLOCKED",
     );
 

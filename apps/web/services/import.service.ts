@@ -3,6 +3,8 @@ import * as XLSX from "xlsx";
 import { prisma } from "@/lib/prisma";
 import { badRequest } from "@/lib/api";
 import {
+  PLATFORMS,
+  PLATFORM_LABELS,
   PRIORITIES,
   PRIORITY_LABELS,
   TEST_TYPES,
@@ -13,6 +15,7 @@ import {
   cellToString,
   isRowEmpty,
   mapHeaders,
+  parsePlatform,
   parsePriority,
   parseTestType,
   type CanonicalField,
@@ -45,6 +48,7 @@ type ParsedRow = {
   expectedResult: string;
   testType: ReturnType<typeof parseTestType>;
   priority: ReturnType<typeof parsePriority>;
+  platform: ReturnType<typeof parsePlatform>;
 };
 
 /**
@@ -71,40 +75,64 @@ export function parseWorkbook(buffer: Buffer): {
     );
   }
 
-  const sheetName = workbook.SheetNames[0];
-  if (!sheetName) throw badRequest("The workbook has no sheets");
+  if (workbook.SheetNames.length === 0) throw badRequest("The workbook has no sheets");
 
-  const sheet = workbook.Sheets[sheetName];
-  if (!sheet) throw badRequest("The first sheet could not be read");
-
-  // header:1 gives raw rows so we can locate the header row ourselves — many
-  // real templates carry a title/logo row above the actual headings.
-  const matrix = XLSX.utils.sheet_to_json<unknown[]>(sheet, {
-    header: 1,
-    blankrows: false,
-    defval: "",
-    raw: false,
-  });
-
-  if (matrix.length === 0) throw badRequest("The sheet is empty");
-
-  // Find the first row that maps at least a TC ID or a title — that's the header.
+  // Workbooks often carry extra sheets (an "Info"/instructions tab, a hidden
+  // dropdown-source sheet) alongside the actual data. Scan every sheet and
+  // prefer the first one whose header row maps a title column, instead of
+  // assuming the data lives on SheetNames[0].
+  let sheetName: string | null = null;
+  let matrix: unknown[][] = [];
   let headerIndex = -1;
   let headerInfo: ReturnType<typeof mapHeaders> | null = null;
 
-  for (let i = 0; i < Math.min(matrix.length, 20); i += 1) {
-    const candidate = (matrix[i] ?? []).map((c) => cellToString(c));
-    if (candidate.every((c) => c === "")) continue;
+  let fallback: {
+    sheetName: string;
+    matrix: unknown[][];
+    headerIndex: number;
+    headerInfo: ReturnType<typeof mapHeaders>;
+  } | null = null;
 
-    const info = mapHeaders(candidate);
-    if (info.mapping.tcId !== undefined || info.mapping.title !== undefined) {
-      headerIndex = i;
-      headerInfo = info;
-      break;
+  for (const candidateSheetName of workbook.SheetNames) {
+    const sheet = workbook.Sheets[candidateSheetName];
+    if (!sheet) continue;
+
+    // header:1 gives raw rows so we can locate the header row ourselves — many
+    // real templates carry a title/logo row above the actual headings.
+    const candidateMatrix = XLSX.utils.sheet_to_json<unknown[]>(sheet, {
+      header: 1,
+      blankrows: false,
+      defval: "",
+      raw: false,
+    });
+
+    // Find the first row that maps at least a TC ID or a title — that's the header.
+    for (let i = 0; i < Math.min(candidateMatrix.length, 20); i += 1) {
+      const candidateRow = (candidateMatrix[i] ?? []).map((c) => cellToString(c));
+      if (candidateRow.every((c) => c === "")) continue;
+
+      const info = mapHeaders(candidateRow);
+      if (info.mapping.tcId !== undefined || info.mapping.title !== undefined) {
+        if (info.mapping.title !== undefined) {
+          sheetName = candidateSheetName;
+          matrix = candidateMatrix;
+          headerIndex = i;
+          headerInfo = info;
+        } else if (!fallback) {
+          fallback = { sheetName: candidateSheetName, matrix: candidateMatrix, headerIndex: i, headerInfo: info };
+        }
+        break;
+      }
     }
+
+    if (headerInfo) break;
   }
 
-  if (headerIndex === -1 || !headerInfo) {
+  if (!headerInfo && fallback) {
+    ({ sheetName, matrix, headerIndex, headerInfo } = fallback);
+  }
+
+  if (!sheetName || headerIndex === -1 || !headerInfo) {
     throw badRequest(
       "Could not find a header row. The sheet needs a column for the test case ID or the test case description.",
     );
@@ -182,6 +210,7 @@ export function parseWorkbook(buffer: Buffer): {
       expectedResult: read(row, "expectedResult"),
       testType: parseTestType(read(row, "testType")),
       priority: parsePriority(read(row, "priority")),
+      platform: parsePlatform(read(row, "platform")),
     });
   });
 
@@ -300,6 +329,7 @@ export async function importTestCases(
             expectedResult: row.expectedResult || null,
             testType: row.testType,
             priority: row.priority,
+            platform: row.platform,
           },
         });
         updated += 1;
@@ -317,6 +347,7 @@ export async function importTestCases(
           expectedResult: row.expectedResult || null,
           testType: row.testType,
           priority: row.priority,
+          platform: row.platform,
         },
       });
       created += 1;
@@ -428,6 +459,7 @@ export function buildImportTemplate(options?: {
     "Expected Result",
     "Test Type",
     "Priority",
+    "Platform",
   ];
 
   const rows = [
@@ -441,6 +473,7 @@ export function buildImportTemplate(options?: {
       "The user reaches the dashboard.",
       "Functional",
       "High",
+      "Web",
     ],
     [
       "TC-LOGIN-002",
@@ -451,6 +484,7 @@ export function buildImportTemplate(options?: {
       "An invalid-credentials message is shown.",
       "Negative",
       "Medium",
+      "Android",
     ],
   ];
 
@@ -463,6 +497,7 @@ export function buildImportTemplate(options?: {
     { wch: 44 },
     { wch: 36 },
     { wch: 12 },
+    { wch: 10 },
     { wch: 10 },
   ];
 
@@ -517,6 +552,13 @@ export function buildImportTemplate(options?: {
       errorTitle: "Unknown priority",
       error:
         "Pick a value from the list, or keep yours — the import maps common spellings and falls back to Medium.",
+    },
+    {
+      column: XLSX.utils.encode_col(headers.indexOf("Platform")),
+      values: PLATFORMS.map((platform) => PLATFORM_LABELS[platform]),
+      errorTitle: "Unknown platform",
+      error:
+        "Pick a value from the list, or keep yours — the import maps common spellings and falls back to Web.",
     },
   ]);
 }
