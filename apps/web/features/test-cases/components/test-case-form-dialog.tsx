@@ -37,7 +37,7 @@ import {
 } from "@/lib/constants";
 import { testCaseSchema, type TestCaseInput } from "@/lib/validations";
 import { ApiError, api, errorMessage } from "@/utils/api-client";
-import type { TestCaseWithDetails } from "@/types";
+import type { Platform, TestCaseWithDetails } from "@/types";
 
 export type ModuleOption = { id: string; name: string };
 
@@ -57,12 +57,15 @@ const NEW_MODULE = "__new-module__";
 export function TestCaseFormDialog({
   projectId,
   modules,
+  platforms,
   testCaseId,
   open,
   onOpenChange,
 }: {
   projectId: string;
   modules: ModuleOption[];
+  /** The project's platforms — the only ones offered. */
+  platforms: Platform[];
   /** Omitted for create. */
   testCaseId?: string;
   open: boolean;
@@ -87,6 +90,8 @@ export function TestCaseFormDialog({
   // reorders modules must not re-run the reset and wipe what has been typed.
   const moduleOptionsRef = useRef(moduleOptions);
   moduleOptionsRef.current = moduleOptions;
+  const platformsRef = useRef(platforms);
+  platformsRef.current = platforms;
 
   const {
     register,
@@ -107,7 +112,7 @@ export function TestCaseFormDialog({
       expectedResult: "",
       testType: "FUNCTIONAL",
       priority: "MEDIUM",
-      platform: "WEB",
+      platform: platforms[0] ?? "WEB",
     },
   });
 
@@ -127,7 +132,7 @@ export function TestCaseFormDialog({
         expectedResult: "",
         testType: "FUNCTIONAL",
         priority: "MEDIUM",
-        platform: "WEB",
+        platform: platformsRef.current[0] ?? "WEB",
       });
       // Nothing to pick from yet — go straight to naming the first module.
       setCreatingModule(options.length === 0);
@@ -234,6 +239,11 @@ export function TestCaseFormDialog({
   const testType = watch("testType");
   const priority = watch("priority");
   const platform = watch("platform");
+  // A case being edited keeps its own platform as an option even if the
+  // project no longer lists it, so opening the form cannot silently change it.
+  const platformOptions = PLATFORMS.filter(
+    (option) => platforms.includes(option) || option === platform,
+  );
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
@@ -420,7 +430,7 @@ export function TestCaseFormDialog({
               <div className="space-y-2">
                 <Label htmlFor="platform">Platform</Label>
                 <Select
-                  value={platform ?? "WEB"}
+                  value={platform ?? platforms[0] ?? "WEB"}
                   onValueChange={(value) =>
                     setValue("platform", value as TestCaseInput["platform"], {
                       shouldDirty: true,
@@ -431,7 +441,7 @@ export function TestCaseFormDialog({
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {PLATFORMS.map((option) => (
+                    {platformOptions.map((option) => (
                       <SelectItem key={option} value={option}>
                         {PLATFORM_LABELS[option]}
                       </SelectItem>

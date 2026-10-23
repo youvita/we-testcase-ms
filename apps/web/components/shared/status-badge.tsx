@@ -27,10 +27,13 @@ export function StatusBadge({
   status,
   className,
   showIcon = true,
+  label,
 }: {
   status: ExecutionStatus;
   className?: string;
   showIcon?: boolean;
+  /** Text in place of the status name, e.g. a TC ID coloured by its status. */
+  label?: string;
 }) {
   const Icon = ICONS[status];
 
@@ -43,7 +46,7 @@ export function StatusBadge({
       )}
     >
       {showIcon && <Icon className="size-3.5 shrink-0" aria-hidden />}
-      {EXECUTION_STATUS_LABELS[status]}
+      {label ?? EXECUTION_STATUS_LABELS[status]}
     </span>
   );
 }

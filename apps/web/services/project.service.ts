@@ -1,8 +1,8 @@
-import type { Prisma, ProjectStatus } from "@prisma/client";
+import type { Platform, Prisma, ProjectStatus } from "@prisma/client";
 
 import { prisma } from "@/lib/prisma";
-import { notFound } from "@/lib/api";
-import { PROJECT_ENVIRONMENTS } from "@/lib/constants";
+import { badRequest, conflict, notFound } from "@/lib/api";
+import { PLATFORM_LABELS, PROJECT_ENVIRONMENTS } from "@/lib/constants";
 import type { ProjectOutput } from "@/lib/validations";
 import type { ProjectWithStats, StatusBreakdown } from "@/types";
 import { buildBreakdown } from "@/utils/stats";
@@ -135,7 +135,33 @@ function toProjectData(input: ProjectOutput) {
     startDate: input.startDate,
     endDate: input.endDate,
     qaOwnerId: input.qaOwnerId,
+    // Absent on update means "leave as is" — see projectSchema.
+    ...(input.platforms ? { platforms: input.platforms } : {}),
   };
+}
+
+/**
+ * Refuse to drop a platform that test cases still use. Their platform would
+ * no longer be one the project offers, and filters and coverage would hide
+ * them — QA should move or delete those cases first.
+ */
+async function assertPlatformsCoverCases(
+  projectId: string,
+  platforms: ProjectOutput["platforms"],
+) {
+  if (!platforms) return;
+  const orphaned = await prisma.testCase.groupBy({
+    by: ["platform"],
+    where: { projectId, platform: { notIn: platforms } },
+    _count: { _all: true },
+  });
+  if (orphaned.length === 0) return;
+  const detail = orphaned
+    .map((row) => `${row._count._all} ${PLATFORM_LABELS[row.platform]}`)
+    .join(", ");
+  throw conflict(
+    `Test cases still use the platforms you removed (${detail}). Change or delete those cases first.`,
+  );
 }
 
 /**
@@ -169,6 +195,7 @@ export async function createProject(input: ProjectOutput, createdById: string) {
 
 export async function updateProject(projectId: string, input: ProjectOutput) {
   await assertProjectExists(projectId);
+  await assertPlatformsCoverCases(projectId, input.platforms);
 
   // Omitted means "do not touch who is in charge" — see memberIds in the schema.
   if (input.memberIds === undefined) {
@@ -215,6 +242,30 @@ export async function updateProject(projectId: string, input: ProjectOutput) {
 export async function deleteProject(projectId: string) {
   await assertProjectExists(projectId);
   await prisma.project.delete({ where: { id: projectId } });
+}
+
+/**
+ * The platform to store on a case in this project.
+ *
+ * A case's platform is always one its project has enabled. Omitted means the
+ * project's first platform.
+ */
+export async function resolveProjectPlatform(
+  projectId: string,
+  platform: Platform | undefined,
+): Promise<Platform> {
+  const project = await prisma.project.findUnique({
+    where: { id: projectId },
+    select: { platforms: true },
+  });
+  if (!project) throw notFound("Project");
+  if (!platform) return project.platforms[0] ?? "WEB";
+  if (!project.platforms.includes(platform)) {
+    throw badRequest(
+      `${PLATFORM_LABELS[platform]} is not one of this project's platforms. Add it in the project settings first.`,
+    );
+  }
+  return platform;
 }
 
 export async function assertProjectExists(projectId: string) {

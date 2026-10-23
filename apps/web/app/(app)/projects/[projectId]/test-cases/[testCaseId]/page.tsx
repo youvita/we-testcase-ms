@@ -21,20 +21,25 @@ import { RecordResultButton } from "@/features/executions/components/record-resu
 import { RetestButton } from "@/features/executions/components/retest-button";
 import { ExecutionHistory } from "@/features/executions/components/execution-history";
 import { ExecutionPanel } from "@/features/executions/components/execution-panel";
+import { AutomationScriptCard } from "@/features/automation/components/automation-script-card";
 import { TestCaseDetailShell } from "@/features/executions/components/test-case-detail-shell";
 import {
   canComment,
   canExecuteTests,
+  canManageTestCases,
   canMarkRetesting,
   canSetFixStatus,
   isAdmin,
 } from "@/lib/permissions";
+import { prisma } from "@/lib/prisma";
 import {
   hasTestCaseAccess,
   requireProjectAccess,
 } from "@/lib/project-access";
 import { getSessionUser, requireUser } from "@/lib/session";
+import { getAutomationScript } from "@/services/automation-script.service";
 import { listComments } from "@/services/comment.service";
+import { listRunEnvironments } from "@/services/run-environment.service";
 import {
   getTestCase,
   getTestCaseNeighbours,
@@ -79,9 +84,17 @@ export default async function TestCaseDetailPage({
   // project's URL.
   if (testCase.projectId !== projectId) notFound();
 
-  const [neighbours, comments] = await Promise.all([
+  const [neighbours, comments, script, environments, lastRunItem] = await Promise.all([
     getTestCaseNeighbours(projectId, testCase.tcId),
     listComments(testCaseId),
+    getAutomationScript(testCaseId),
+    listRunEnvironments(projectId),
+    prisma.testRunItem.findFirst({
+      // Only results that ran — a skip from a cancelled run is not a result.
+      where: { testCaseId, status: { in: ["PASSED", "FAILED", "ERROR"] } },
+      orderBy: { finishedAt: "desc" },
+      select: { status: true, finishedAt: true, run: { select: { id: true, number: true } } },
+    }),
   ]);
 
   const canExecute = canExecuteTests(user.role);
@@ -226,10 +239,56 @@ export default async function TestCaseDetailPage({
                     ) : null,
                   )
                 )}
+                {testCase.requirements.length > 0 && (
+                  <div className="space-y-1.5">
+                    <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                      Verifies requirements
+                    </h3>
+                    <ul className="space-y-1 text-sm">
+                      {testCase.requirements.map(({ requirement }) => (
+                        <li key={requirement.id}>
+                          <Link
+                            href={`/projects/${projectId}/requirements`}
+                            className="hover:underline"
+                          >
+                            <span className="font-mono text-xs">
+                              {requirement.code}
+                            </span>{" "}
+                            {requirement.title}
+                          </Link>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
               </CardContent>
             </Card>
 
+            <AutomationScriptCard
+              projectId={projectId}
+              testCaseId={testCase.id}
+              platform={testCase.platform}
+              canManage={canManageTestCases(user.role)}
+              environments={environments}
+              script={
+                script && {
+                  code: script.code,
+                  updatedAt: script.updatedAt.toISOString(),
+                  updatedBy: script.updatedBy,
+                }
+              }
+              lastResult={
+                lastRunItem && {
+                  status: lastRunItem.status,
+                  runId: lastRunItem.run.id,
+                  runNumber: lastRunItem.run.number,
+                  finishedAt: lastRunItem.finishedAt?.toISOString() ?? null,
+                }
+              }
+            />
+
             <ExecutionHistory
+              projectId={projectId}
               executions={testCase.executions}
               currentUserId={user.id}
               canModerate={isAdmin(user.role)}

@@ -12,6 +12,9 @@ RUN apk add --no-cache libc6-compat
 COPY package.json package-lock.json ./
 COPY apps/web/package.json ./apps/web/
 COPY packages/dto/package.json ./packages/dto/
+# Every workspace's manifest, or `npm ci` rejects the lockfile. The runner has
+# its own image (apps/runner/Dockerfile); its packages are unused here.
+COPY apps/runner/package.json ./apps/runner/
 RUN npm ci
 
 FROM node:22-alpine AS builder

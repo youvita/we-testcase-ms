@@ -34,6 +34,8 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import {
+  PLATFORMS,
+  PLATFORM_LABELS,
   PROJECT_ENVIRONMENTS,
   PROJECT_STATUSES,
   PROJECT_STATUS_LABELS,
@@ -91,6 +93,7 @@ export function ProjectFormDialog({
       status: "PLANNING",
       qaOwnerId: NO_OWNER,
       memberIds: [],
+      platforms: ["WEB"],
       startDate: "",
       endDate: "",
     },
@@ -119,6 +122,7 @@ export function ProjectFormDialog({
       status: project?.status ?? "PLANNING",
       qaOwnerId: project?.qaOwnerId ?? NO_OWNER,
       memberIds: project?.members?.map((member) => member.id) ?? [],
+      platforms: project?.platforms ?? ["WEB"],
       startDate: toDateInputValue(project?.startDate),
       endDate: toDateInputValue(project?.endDate),
     });
@@ -161,6 +165,14 @@ export function ProjectFormDialog({
   const qaOwnerId = watch("qaOwnerId");
   const environment = watch("environment");
   const memberIds = watch("memberIds") ?? [];
+  const platforms = watch("platforms") ?? [];
+
+  function togglePlatform(platform: (typeof PLATFORMS)[number]) {
+    const next = platforms.includes(platform)
+      ? platforms.filter((p) => p !== platform)
+      : [...platforms, platform];
+    setValue("platforms", next, { shouldDirty: true, shouldValidate: true });
+  }
 
   const selectedMembers = memberCandidates.filter((candidate) =>
     memberIds.includes(candidate.id),
@@ -226,6 +238,38 @@ export function ProjectFormDialog({
               placeholder="What this test cycle covers…"
               {...register("description")}
             />
+          </div>
+
+          <div className="space-y-2">
+            <Label>
+              Platforms <span className="text-destructive">*</span>
+            </Label>
+            <div className="flex flex-wrap gap-2" role="group" aria-label="Platforms">
+              {PLATFORMS.map((platform) => {
+                const on = platforms.includes(platform);
+                return (
+                  <Button
+                    key={platform}
+                    type="button"
+                    size="sm"
+                    variant={on ? "default" : "outline"}
+                    aria-pressed={on}
+                    onClick={() => togglePlatform(platform)}
+                  >
+                    {on && <Check className="mr-1.5 size-3.5" />}
+                    {PLATFORM_LABELS[platform]}
+                  </Button>
+                );
+              })}
+            </div>
+            {errors.platforms ? (
+              <p className="text-xs text-destructive">{errors.platforms.message}</p>
+            ) : (
+              <p className="text-xs text-muted-foreground">
+                Where this project is tested. Test case forms, filters and AI
+                drafting offer only these.
+              </p>
+            )}
           </div>
 
           <div className="grid gap-4 sm:grid-cols-2">

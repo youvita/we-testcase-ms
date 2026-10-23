@@ -16,12 +16,14 @@ import {
   EXECUTION_STATUS_LABELS,
   FIX_STATUSES,
   FIX_STATUS_SHORT_LABELS,
+  PLATFORM_LABELS,
   PRIORITIES,
   PRIORITY_LABELS,
   TEST_TYPES,
   TEST_TYPE_LABELS,
 } from "@/lib/constants";
 import { useQueryParams } from "@/hooks/use-query-params";
+import type { Platform } from "@/types";
 
 export type ModuleOption = { id: string; name: string };
 
@@ -31,7 +33,14 @@ export type ModuleOption = { id: string; name: string };
  * State lives in the URL so the server component refetches, and a filtered view
  * is shareable and survives a reload.
  */
-export function TestCaseFilters({ modules }: { modules: ModuleOption[] }) {
+export function TestCaseFilters({
+  modules,
+  platforms,
+}: {
+  modules: ModuleOption[];
+  /** The project's platforms. The filter is hidden when there is only one. */
+  platforms: Platform[];
+}) {
   const { get, setParams, isPending } = useQueryParams();
 
   const search = get("search");
@@ -40,6 +49,8 @@ export function TestCaseFilters({ modules }: { modules: ModuleOption[] }) {
   const priority = get("priority", "ALL");
   const status = get("status", "ALL");
   const fixStatus = get("fixStatus", "ALL");
+  const platform = get("platform", "ALL");
+  const automated = get("automated", "ALL");
 
   const hasFilters =
     Boolean(search) ||
@@ -47,7 +58,9 @@ export function TestCaseFilters({ modules }: { modules: ModuleOption[] }) {
     testType !== "ALL" ||
     priority !== "ALL" ||
     status !== "ALL" ||
-    fixStatus !== "ALL";
+    fixStatus !== "ALL" ||
+    platform !== "ALL" ||
+    automated !== "ALL";
 
   return (
     <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
@@ -77,6 +90,39 @@ export function TestCaseFilters({ modules }: { modules: ModuleOption[] }) {
                 {mod.name}
               </SelectItem>
             ))}
+          </SelectContent>
+        </Select>
+
+        {(platforms.length > 1 || platform !== "ALL") && (
+          <Select
+            value={platform}
+            onValueChange={(value) => setParams({ platform: value })}
+          >
+            <SelectTrigger className="lg:w-[150px]" aria-label="Filter by platform">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="ALL">All platforms</SelectItem>
+              {platforms.map((option) => (
+                <SelectItem key={option} value={option}>
+                  {PLATFORM_LABELS[option]}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
+
+        <Select
+          value={automated}
+          onValueChange={(value) => setParams({ automated: value })}
+        >
+          <SelectTrigger className="lg:w-[150px]" aria-label="Filter by automation">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="ALL">Manual &amp; automated</SelectItem>
+            <SelectItem value="yes">Automated</SelectItem>
+            <SelectItem value="no">Not automated</SelectItem>
           </SelectContent>
         </Select>
 
@@ -169,6 +215,8 @@ export function TestCaseFilters({ modules }: { modules: ModuleOption[] }) {
               priority: null,
               status: null,
               fixStatus: null,
+              platform: null,
+              automated: null,
             })
           }
         >

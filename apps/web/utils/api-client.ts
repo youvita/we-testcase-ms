@@ -72,6 +72,8 @@ export const api = {
     }),
   patch: <T>(url: string, body?: unknown) =>
     apiFetch<T>(url, { method: "PATCH", body: JSON.stringify(body ?? {}) }),
+  put: <T>(url: string, body?: unknown) =>
+    apiFetch<T>(url, { method: "PUT", body: JSON.stringify(body ?? {}) }),
   /** `body` is for collection deletes (e.g. "delete these ids"). */
   delete: <T>(url: string, body?: unknown) =>
     apiFetch<T>(url, {

@@ -202,6 +202,76 @@ export async function assertCommentAccess(
 }
 
 /**
+ * As above, for the requirements side: documents, requirements, AI drafts and
+ * AI jobs. Each carries its projectId directly, so one lookup covers them.
+ */
+async function assertProjectScopedAccess(
+  found: { project: ProjectAccessRow } | null,
+  what: string,
+  user: SessionUser,
+): Promise<void> {
+  if (!found) throw notFound(what);
+  if (!canAccessProject(found.project, user)) throw notFound(what);
+}
+
+export async function assertRequirementDocAccess(docId: string, user: SessionUser) {
+  const found = await prisma.requirementDoc.findUnique({
+    where: { id: docId },
+    select: { project: { select: accessSelect } },
+  });
+  await assertProjectScopedAccess(found, "Document", user);
+}
+
+export async function assertRequirementAccess(requirementId: string, user: SessionUser) {
+  const found = await prisma.requirement.findUnique({
+    where: { id: requirementId },
+    select: { project: { select: accessSelect } },
+  });
+  await assertProjectScopedAccess(found, "Requirement", user);
+}
+
+export async function assertDraftAccess(draftId: string, user: SessionUser) {
+  const found = await prisma.testCaseDraft.findUnique({
+    where: { id: draftId },
+    select: { project: { select: accessSelect } },
+  });
+  await assertProjectScopedAccess(found, "Draft", user);
+}
+
+export async function assertAiJobAccess(jobId: string, user: SessionUser) {
+  const found = await prisma.aiJob.findUnique({
+    where: { id: jobId },
+    select: { project: { select: accessSelect } },
+  });
+  await assertProjectScopedAccess(found, "Job", user);
+}
+
+export async function assertRunEnvironmentAccess(environmentId: string, user: SessionUser) {
+  const found = await prisma.runEnvironment.findUnique({
+    where: { id: environmentId },
+    select: { project: { select: accessSelect } },
+  });
+  await assertProjectScopedAccess(found, "Environment", user);
+}
+
+export async function assertTestRunAccess(runId: string, user: SessionUser) {
+  const found = await prisma.testRun.findUnique({
+    where: { id: runId },
+    select: { project: { select: accessSelect } },
+  });
+  await assertProjectScopedAccess(found, "Run", user);
+}
+
+/** Run evidence can show anything the app under test displayed — same rule. */
+export async function assertRunItemAccess(itemId: string, user: SessionUser) {
+  const found = await prisma.testRunItem.findUnique({
+    where: { id: itemId },
+    select: { run: { select: { project: { select: accessSelect } } } },
+  });
+  await assertProjectScopedAccess(found && found.run, "Run item", user);
+}
+
+/**
  * Access guard for a server page.
  *
  * Redirects to /forbidden rather than throwing, matching `requireRole`: the

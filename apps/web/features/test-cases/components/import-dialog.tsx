@@ -31,6 +31,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { PLATFORM_LABELS } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 import { withBasePath } from "@/lib/base-path";
 import { api, errorMessage } from "@/utils/api-client";
@@ -198,6 +199,8 @@ export function ImportDialog({
               `${result.rowsRead} rows read from “${result.sheetName}”`,
               result.modulesCreated.length > 0 &&
                 `${result.modulesCreated.length} module${result.modulesCreated.length === 1 ? "" : "s"} created`,
+              result.platformsAdded.length > 0 &&
+                `${result.platformsAdded.map((p) => PLATFORM_LABELS[p]).join(", ")} added to the project's platforms`,
             ]
               .filter(Boolean)
               .join(" · "),
@@ -467,6 +470,7 @@ function ImportPreviewPanel({ preview }: { preview: ImportPreview }) {
       </dl>
 
       {(preview.newModules > 0 ||
+        preview.platformsAdded.length > 0 ||
         preview.duplicatesInFile > 0 ||
         preview.skippedEmpty > 0 ||
         preview.unmappedColumns.length > 0) && (
@@ -475,6 +479,12 @@ function ImportPreviewPanel({ preview }: { preview: ImportPreview }) {
             <li>
               {preview.newModules} module
               {preview.newModules === 1 ? "" : "s"} will be created
+            </li>
+          )}
+          {preview.platformsAdded.length > 0 && (
+            <li>
+              {preview.platformsAdded.map((p) => PLATFORM_LABELS[p]).join(", ")}{" "}
+              will be added to this project&apos;s platforms
             </li>
           )}
           {preview.duplicatesInFile > 0 && (
@@ -533,6 +543,15 @@ function ImportSummaryView({ summary }: { summary: ImportSummary }) {
           </div>
         ))}
       </dl>
+
+      {summary.platformsAdded.length > 0 && (
+        <div className="space-y-1.5">
+          <p className="text-sm font-medium">Platforms added to the project</p>
+          <p className="text-sm text-muted-foreground">
+            {summary.platformsAdded.map((p) => PLATFORM_LABELS[p]).join(", ")}
+          </p>
+        </div>
+      )}
 
       {summary.modulesCreated.length > 0 && (
         <div className="space-y-1.5">

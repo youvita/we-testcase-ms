@@ -1,6 +1,7 @@
 "use client";
 
-import { History, Pencil } from "lucide-react";
+import Link from "next/link";
+import { Bot, History, Pencil } from "lucide-react";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
@@ -31,10 +32,13 @@ import { useExecutionEditor } from "./execution-editor-context";
  * change. Every correction is stamped and shown as "edited".
  */
 export function ExecutionHistory({
+  projectId,
   executions,
   currentUserId,
   canModerate = false,
 }: {
+  /** Needed to link automated results to their run. */
+  projectId?: string;
   executions: ExecutionWithDetails[];
   currentUserId?: string;
   canModerate?: boolean;
@@ -66,6 +70,7 @@ export function ExecutionHistory({
             {executions.map((execution, index) => (
               <ExecutionEntry
                 key={execution.id}
+                projectId={projectId}
                 execution={execution}
                 isLatest={index === 0}
                 editable={
@@ -83,11 +88,13 @@ export function ExecutionHistory({
 }
 
 function ExecutionEntry({
+  projectId,
   execution,
   isLatest,
   editable,
   onEdit,
 }: {
+  projectId?: string;
   execution: ExecutionWithDetails;
   isLatest: boolean;
   editable: boolean;
@@ -131,6 +138,26 @@ function ExecutionEntry({
                 <span title={`Edited ${formatDateTime(execution.editedAt)}`}>
                   {" \u00b7 edited"}
                 </span>
+              )}
+              {execution.runItem && (
+                <>
+                  {" \u00b7 "}
+                  {projectId ? (
+                    <Link
+                      href={`/projects/${projectId}/automation/runs/${execution.runItem.run.id}`}
+                      className="inline-flex items-center gap-1 text-primary hover:underline"
+                      onClick={(event) => event.stopPropagation()}
+                    >
+                      <Bot className="size-3" />
+                      Automated · Run #{execution.runItem.run.number}
+                    </Link>
+                  ) : (
+                    <span className="inline-flex items-center gap-1">
+                      <Bot className="size-3" />
+                      Automated · Run #{execution.runItem.run.number}
+                    </span>
+                  )}
+                </>
               )}
             </p>
           </div>

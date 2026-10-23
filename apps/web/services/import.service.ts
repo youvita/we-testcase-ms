@@ -1,4 +1,5 @@
 import * as XLSX from "xlsx";
+import type { Platform } from "@prisma/client";
 
 import { prisma } from "@/lib/prisma";
 import { badRequest } from "@/lib/api";
@@ -15,6 +16,7 @@ import {
   cellToString,
   isRowEmpty,
   mapHeaders,
+  isApiTestTypeLabel,
   parsePlatform,
   parsePriority,
   parseTestType,
@@ -36,6 +38,26 @@ const MODULE_LIST_SHEET = "Lists";
 const MAX_ROWS = 5000;
 
 export type ImportMode = "skip" | "update";
+
+/**
+ * Where each row lands and which platforms the project gains.
+ *
+ * A blank platform cell means the project's first platform. A platform the
+ * project has not enabled is added to it — as a missing module is created —
+ * because the sheet is QA's own statement of what they test; rejecting those
+ * rows would only send them to project settings and back.
+ */
+function resolvePlatforms(rows: ParsedRow[], projectPlatforms: Platform[]) {
+  const fallback = projectPlatforms[0] ?? "WEB";
+  const used = new Set(rows.map((row) => row.platform ?? fallback));
+  const added = PLATFORMS.filter(
+    (platform) => used.has(platform) && !projectPlatforms.includes(platform),
+  );
+  const all = PLATFORMS.filter(
+    (platform) => used.has(platform) || projectPlatforms.includes(platform),
+  );
+  return { fallback, added, all };
+}
 
 type ParsedRow = {
   /** 1-based row number in the sheet, header included, for error reporting. */
@@ -210,7 +232,10 @@ export function parseWorkbook(buffer: Buffer): {
       expectedResult: read(row, "expectedResult"),
       testType: parseTestType(read(row, "testType")),
       priority: parsePriority(read(row, "priority")),
-      platform: parsePlatform(read(row, "platform")),
+      // A sheet from before API was a platform says so in Test Type.
+      platform:
+        parsePlatform(read(row, "platform")) ??
+        (isApiTestTypeLabel(read(row, "testType")) ? "API" : null),
     });
   });
 
@@ -242,6 +267,10 @@ export async function importTestCases(
   mode: ImportMode = "skip",
 ): Promise<ImportSummary> {
   await assertProjectExists(projectId);
+  const project = await prisma.project.findUniqueOrThrow({
+    where: { id: projectId },
+    select: { platforms: true },
+  });
 
   const parsed = parseWorkbook(file.buffer);
   const errors = [...parsed.errors];
@@ -274,8 +303,16 @@ export async function importTestCases(
   const modulesCreated: string[] = [];
   let created = 0;
   let updated = 0;
+  const platforms = resolvePlatforms(rows, project.platforms);
 
   await prisma.$transaction(async (tx) => {
+    if (platforms.added.length > 0) {
+      await tx.project.update({
+        where: { id: projectId },
+        data: { platforms: platforms.all },
+      });
+    }
+
     // Resolve every distinct module name up front.
     const moduleNames = [...new Set(rows.map((r) => r.module))];
     const moduleIdByName = new Map<string, string>();
@@ -329,7 +366,7 @@ export async function importTestCases(
             expectedResult: row.expectedResult || null,
             testType: row.testType,
             priority: row.priority,
-            platform: row.platform,
+            platform: row.platform ?? platforms.fallback,
           },
         });
         updated += 1;
@@ -347,7 +384,7 @@ export async function importTestCases(
           expectedResult: row.expectedResult || null,
           testType: row.testType,
           priority: row.priority,
-          platform: row.platform,
+          platform: row.platform ?? platforms.fallback,
         },
       });
       created += 1;
@@ -363,6 +400,7 @@ export async function importTestCases(
     skippedEmpty: parsed.skippedEmpty,
     duplicatesInFile,
     modulesCreated,
+    platformsAdded: platforms.added,
     errors: errors.sort((a, b) => a.row - b.row),
     mappedColumns: parsed.mappedColumns,
     unmappedColumns: parsed.unmappedColumns,
@@ -411,12 +449,16 @@ export async function previewImport(
   }
   const rows = [...byTcId.values()];
 
-  const [existing, projectModules] = await Promise.all([
+  const [existing, projectModules, project] = await Promise.all([
     prisma.testCase.findMany({
       where: { projectId, tcId: { in: rows.map((row) => row.tcId) } },
       select: { tcId: true },
     }),
     prisma.module.findMany({ where: { projectId }, select: { name: true } }),
+    prisma.project.findUniqueOrThrow({
+      where: { id: projectId },
+      select: { platforms: true },
+    }),
   ]);
 
   const existingTcIds = new Set(existing.map((row) => row.tcId));
@@ -432,6 +474,7 @@ export async function previewImport(
     testCases: rows.length,
     modules: moduleNames.length,
     newModules: moduleNames.filter((name) => !known.has(name)).length,
+    platformsAdded: resolvePlatforms(rows, project.platforms).added,
     duplicates,
     duplicatesInFile,
     newCases: rows.length - duplicates,

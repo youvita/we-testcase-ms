@@ -31,7 +31,10 @@ import {
 } from "@/components/ui/select";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { EmptyState } from "@/components/shared/empty-state";
-import { ProjectStatusBadge } from "@/components/shared/priority-badge";
+import {
+  PlatformBadge,
+  ProjectStatusBadge,
+} from "@/components/shared/priority-badge";
 import {
   StatusMeter,
   StatusMeterLegend,
@@ -215,6 +218,9 @@ export function ProjectList({
                       <ProjectStatusBadge status={project.status} />
                       {project.version && <span>v{project.version}</span>}
                       {project.environment && <span>{project.environment}</span>}
+                      {project.platforms.map((platform) => (
+                        <PlatformBadge key={platform} platform={platform} />
+                      ))}
                     </div>
                   </div>
 
@@ -310,6 +316,9 @@ export function ProjectList({
                         {project.environment && (
                           <span>{project.environment}</span>
                         )}
+                        {project.platforms.map((platform) => (
+                          <PlatformBadge key={platform} platform={platform} />
+                        ))}
                       </div>
                     </div>
                   </TableCell>

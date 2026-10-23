@@ -4,6 +4,7 @@ import { useState } from "react";
 import { FileUp, Plus } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import type { Platform } from "@/types";
 
 import { ImportDialog } from "./import-dialog";
 import {
@@ -19,9 +20,11 @@ import {
 export function TestCaseToolbar({
   projectId,
   modules,
+  platforms,
 }: {
   projectId: string;
   modules: ModuleOption[];
+  platforms: Platform[];
 }) {
   const [importOpen, setImportOpen] = useState(false);
   const [formOpen, setFormOpen] = useState(false);
@@ -49,6 +52,7 @@ export function TestCaseToolbar({
       <TestCaseFormDialog
         projectId={projectId}
         modules={modules}
+        platforms={platforms}
         open={formOpen}
         onOpenChange={setFormOpen}
       />

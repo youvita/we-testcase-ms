@@ -11,6 +11,8 @@ import type {
   TestCaseWithDetails,
 } from "@/types";
 
+import { resolveProjectPlatform } from "./project.service";
+
 const testerSelect = {
   select: { id: true, name: true, email: true, image: true },
 } as const;
@@ -28,6 +30,9 @@ function buildWhere(
     ...(query.priority ? { priority: query.priority } : {}),
     ...(query.status ? { status: query.status } : {}),
     ...(query.fixStatus ? { fixStatus: query.fixStatus } : {}),
+    ...(query.platform ? { platform: query.platform } : {}),
+    ...(query.automated === "yes" ? { script: { isNot: null } } : {}),
+    ...(query.automated === "no" ? { script: { is: null } } : {}),
     ...(search
       ? {
           OR: [
@@ -93,6 +98,7 @@ export async function listTestCases(
         updatedAt: true,
         moduleId: true,
         module: { select: { id: true, name: true } },
+        script: { select: { updatedAt: true } },
       },
     }),
     prisma.testCase.count({ where }),
@@ -119,12 +125,24 @@ export async function getTestCase(
       },
       executions: {
         orderBy: { executedAt: "desc" },
-        include: { tester: testerSelect, attachments: true },
+        include: {
+          tester: testerSelect,
+          attachments: true,
+          runItem: {
+            select: { id: true, run: { select: { id: true, number: true } } },
+          },
+        },
       },
       fixStatusBy: { select: { id: true, name: true } },
       fixStatusEvents: {
         orderBy: { createdAt: "desc" },
         include: { actor: { select: { id: true, name: true } } },
+      },
+      requirements: {
+        select: {
+          requirement: { select: { id: true, code: true, title: true } },
+        },
+        orderBy: { requirement: { code: "asc" } },
       },
     },
   });
@@ -235,6 +253,8 @@ export async function createTestCase(projectId: string, input: TestCaseInput) {
   });
   if (!mod) throw notFound("Module");
 
+  const platform = await resolveProjectPlatform(projectId, input.platform);
+
   const tcId = input.tcId.trim();
   const duplicate = await prisma.testCase.findUnique({
     where: { projectId_tcId: { projectId, tcId } },
@@ -255,7 +275,7 @@ export async function createTestCase(projectId: string, input: TestCaseInput) {
       expectedResult: input.expectedResult ?? null,
       testType: input.testType ?? "FUNCTIONAL",
       priority: input.priority ?? "MEDIUM",
-      platform: input.platform ?? "WEB",
+      platform,
     },
   });
 }
@@ -275,6 +295,11 @@ export async function updateTestCase(
     select: { id: true },
   });
   if (!mod) throw notFound("Module");
+
+  const platform = await resolveProjectPlatform(
+    existing.projectId,
+    input.platform,
+  );
 
   const tcId = input.tcId.trim();
   const duplicate = await prisma.testCase.findFirst({
@@ -300,7 +325,7 @@ export async function updateTestCase(
       expectedResult: input.expectedResult ?? null,
       testType: input.testType ?? "FUNCTIONAL",
       priority: input.priority ?? "MEDIUM",
-      platform: input.platform ?? "WEB",
+      platform,
     },
   });
 }

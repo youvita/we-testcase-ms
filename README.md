@@ -1,4 +1,4 @@
-# TestCase MS — Online Test Case Management (Phase 1)
+# TestCase MS — Online Test Case Management
 
 A web-based test case management system that replaces Excel-based test execution
 while letting teams keep using their existing Excel templates.
@@ -6,7 +6,12 @@ while letting teams keep using their existing Excel templates.
 QA imports a spreadsheet, executes the cases online, and developers get a live
 read-only view of what is failing. Nobody edits a shared `.xlsx` mid-cycle again.
 
-This is **not** a bug tracker and **not** an AI testing platform.
+QA can also start from the PRD or FRD instead of a spreadsheet: Claude reads the
+document into testable requirements and drafts black-box test cases for them,
+which QA reviews before they join the test plan. Every case traces back to the
+requirements it verifies.
+
+This is **not** a bug tracker.
 
 ---
 
@@ -33,6 +38,7 @@ This is **not** a bug tracker and **not** an AI testing platform.
 ```
 we-testcase-ms/
   apps/web/              # Next.js app (UI, API routes, services, Prisma)
+  apps/runner/           # Automation runner (Playwright), separate container
   packages/dto/          # Shared DTOs (@wetestcase/dto)
   deploy/                # Mac mini + Cloudflare hosting scripts
   docker-compose*.yml
@@ -232,6 +238,97 @@ Failed & Blocked.
 **PDF** (`/api/projects/:id/reports/pdf`) — project summary, execution
 statistics with a stacked status bar, per-module progress table, then each failed
 and blocked case with expected vs actual result and the QA comment.
+
+---
+
+## Requirements & AI
+
+Project → **Requirements** (`/projects/:id/requirements`).
+
+1. **Documents** — upload a PRD/FRD (PDF, Word `.docx`, Markdown, text, HTML) or
+   paste it. Only the extracted text is kept. Scanned PDFs have no text and need
+   OCR first.
+2. **Requirements** — Claude reads the document into requirements: code, title,
+   description, acceptance criteria and the *open questions* a tester would need
+   answered. Long documents are read in parts. Reading a document again updates
+   requirements by code, so links to test cases survive a PRD revision.
+3. **Draft test cases** — select requirements, pick platform and depth, and
+   Claude writes black-box cases (preconditions, steps with test data, expected
+   result, type, priority, module).
+4. **Review drafts** — edit, accept or reject, one by one or in bulk. Accepting
+   creates the test case (and its module if new) with a TC ID derived from the
+   requirement, e.g. `TC-FR-012-01`, linked for traceability. Nothing the AI
+   writes becomes a test case without this step.
+
+Coverage (which requirements have tests, and their latest results) is on the
+requirements page; each test case lists the requirements it verifies.
+
+**Whose Claude.** AI runs on each person's own Claude Pro/Max subscription —
+there is no shared key. Each person installs the Claude CLI once
+(`npm install -g @anthropic-ai/claude-code`), runs `claude setup-token`, signs in
+with the account that has the plan, and pastes the printed `sk-ant-oat01-…`
+token under account menu → *Claude subscription*. It is
+stored encrypted (AES-256-GCM, key derived from `BETTER_AUTH_SECRET` or
+`CLAUDE_TOKEN_SECRET`) and never sent back to the browser. API keys are refused.
+
+**The bridge.** The app speaks the Anthropic Messages API to the `claude-bridge`
+container (`scripts/claude-bridge.mjs`, built by `deploy/bridge.Dockerfile` — the
+same bridge WePlanner uses), which runs `claude --print` as the caller's token
+with all tools disabled. In dev, `docker compose up -d claude-bridge` publishes it
+on `127.0.0.1:8788` and `CLAUDE_BRIDGE_URL` points there; in production it sits
+on the internal network with no published port. Because the client is plain
+Messages API, moving to an Anthropic API key later is a config change.
+
+**Jobs.** AI work runs in the background inside the app process (the Cloudflare
+tunnel cuts requests at 100 s); the page polls and refreshes when a job ends.
+One person's jobs run one at a time, since they share that person's usage
+limits. A restart loses in-flight jobs; they are marked failed with a "run it
+again" message rather than left spinning.
+
+---
+
+## Automation
+
+Project → **Automation** (`/projects/:id/automation`). Web and API cases can be
+automated; iOS and Android come later (they need emulators or devices).
+
+1. **Environments** — per project: a Web base URL, an API base URL and
+   variables (`vars.USER_EMAIL`). Secret variables are encrypted, never sent
+   back to the browser, and only the runner receives them at run time.
+2. **Scripts** — on a test case, under *Automation*: the body of one
+   Playwright test. `page` (Web) or `request` (API), `expect`, `env` and `vars`
+   are in scope. Paths join onto the base URL, so `request.get("/users")` on
+   `https://sit.example.com/api/v1` calls `…/api/v1/users`.
+3. **Runs** — every automated case, the failing ones, one module, or a single
+   case (*Run this case*). Each result comes back with a screenshot, a trace
+   (open at trace.playwright.dev) and, on failure, a video.
+4. **Results** — passes and failures are recorded as executions, so the
+   dashboard and reports include them; the history marks them *Automated · Run
+   #N*. A script that breaks on its own mistake (syntax error, TypeError) is a
+   *script error*: it is reported on the run but does not mark the case failed.
+   Untick *Record results* to try scripts without touching results.
+
+**The runner** (`apps/runner`) is a separate container built on the Playwright
+image. It holds no database credentials: it claims queued runs from
+`/api/runner/*` with a shared `RUNNER_TOKEN`, runs them, and posts results
+back. A script that does not load is set aside so it cannot stop the rest of
+the run. Runs can be cancelled mid-way; a runner that stops responding has its
+run marked *Error* after 90 seconds.
+
+```bash
+# dev — app on the host (npm run dev), runner in Docker
+echo 'RUNNER_TOKEN="dev-runner-token"' >> apps/web/.env      # then restart npm run dev
+docker compose --profile automation up -d runner
+
+# production — add RUNNER_TOKEN to .env.production (any long random string), then
+docker compose -f docker-compose.prod.yml --env-file .env.production up -d app
+docker compose -f docker-compose.prod.yml --env-file .env.production --profile automation up -d --build runner
+```
+
+Inside the runner container `localhost` is the container: a script aimed at
+something on the same machine must use `host.docker.internal`. The image is
+large (~3.6 GB, mostly browsers); its tag must match `@playwright/test` in
+`apps/runner/package.json`.
 
 ---
 

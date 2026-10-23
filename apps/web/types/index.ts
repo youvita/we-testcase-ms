@@ -6,6 +6,7 @@ import type {
   FixStatus,
   FixStatusEvent,
   Module,
+  Platform,
   Project,
   Priority,
   ProjectStatus,
@@ -37,6 +38,7 @@ export type {
   FixStatus,
   FixStatusEvent,
   Module,
+  Platform,
   Priority,
   Project,
   ProjectStatus,
@@ -82,6 +84,8 @@ export type DashboardSummary = {
 export type ExecutionWithDetails = TestExecution & {
   tester: Pick<User, "id" | "name" | "email" | "image">;
   attachments: Attachment[];
+  /** Present when an automated run recorded this result. */
+  runItem?: { id: string; run: { id: string; number: number } } | null;
 };
 
 export type TestCaseListItem = Pick<
@@ -99,6 +103,8 @@ export type TestCaseListItem = Pick<
   | "moduleId"
 > & {
   module: Pick<Module, "id" | "name">;
+  /** Present when the case has an automation script. */
+  script: { updatedAt: Date } | null;
 };
 
 /**
@@ -124,4 +130,8 @@ export type TestCaseWithDetails = TestCase & {
   executions: ExecutionWithDetails[];
   fixStatusBy: Pick<User, "id" | "name"> | null;
   fixStatusEvents: FixStatusEventWithActor[];
+  /** Traceability: the requirements this case verifies. */
+  requirements: {
+    requirement: { id: string; code: string; title: string };
+  }[];
 };

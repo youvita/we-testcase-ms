@@ -65,6 +65,10 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      # Started, not healthy: the bridge is called on demand, and an app that refused to
+      # come up over it would be worse than AI features that report the problem.
+      claude-bridge:
+        condition: service_started
     env_file:
       - .env.production
     environment:
@@ -72,6 +76,8 @@ services:
       DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-wetestcase}?schema=public
       DIRECT_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-wetestcase}?schema=public
       UPLOAD_DIR: /app/uploads
+      # Every AI call goes through the bridge below, on the caller's own subscription.
+      CLAUDE_BRIDGE_URL: http://claude-bridge:8788
       HOSTNAME: 0.0.0.0
       PORT: "3000"
     volumes:
@@ -94,6 +100,48 @@ services:
       timeout: 5s
       retries: 10
       start_period: 40s
+
+  # The `claude` CLI behind the Messages API — see scripts/claude-bridge.mjs. No published
+  # port: it authenticates nobody, and only the app, one network away, should reach it.
+  # It holds no credential; each request carries the subscription token of whoever asked.
+  claude-bridge:
+    build:
+      context: .
+      dockerfile: deploy/bridge.Dockerfile
+    image: wetestcase-claude-bridge:latest
+    container_name: wetestcase-claude-bridge
+    restart: unless-stopped
+    networks:
+      - internal
+
+  # The automation runner (apps/runner). Opt-in, because its image carries
+  # browsers and is large. To enable: set RUNNER_TOKEN in .env.production (the
+  # app reads the same value), then
+  #   docker compose -f docker-compose.prod.yml --env-file .env.production --profile automation up -d --build runner
+  # It talks to the app over the internal network only — no published port.
+  runner:
+    profiles: ["automation"]
+    build:
+      context: .
+      dockerfile: apps/runner/Dockerfile
+    image: wetestcase-runner:latest
+    container_name: wetestcase-runner
+    restart: unless-stopped
+    depends_on:
+      app:
+        condition: service_healthy
+    environment:
+      APP_URL: http://app:3000${BASE_PATH:-/cases}
+      # Not `:?` — Compose interpolates every service, profile or not, and a
+      # required value here would break deploys that never start the runner.
+      # The runner itself exits with a clear message when it is empty.
+      RUNNER_TOKEN: ${RUNNER_TOKEN:-}
+      RUNNER_NAME: mac-mini
+      WORKERS: ${RUNNER_WORKERS:-2}
+    # Chromium needs more shared memory than Docker's 64 MB default.
+    shm_size: "1gb"
+    networks:
+      - internal
 
   # Optional: run the tunnel in Docker instead of as a host LaunchDaemon.
   # Requires credentials + config under deploy/cloudflared/ (see deploy/README.md).

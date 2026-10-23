@@ -60,11 +60,16 @@ export default async function TestCasesPage({
         description={`${page.total} test case${page.total === 1 ? "" : "s"} in ${project.name}`}
         actions={
           <>
-            <ExportMenu projectId={projectId} excelScope="cases" />
+            <ExportMenu
+              projectId={projectId}
+              excelScope="cases"
+              platforms={project.platforms}
+            />
             {canManage && (
               <TestCaseToolbar
                 projectId={projectId}
                 modules={modules.map((m) => ({ id: m.id, name: m.name }))}
+                platforms={project.platforms}
               />
             )}
           </>
@@ -73,12 +78,14 @@ export default async function TestCasesPage({
 
       <TestCaseFilters
         modules={modules.map((m) => ({ id: m.id, name: m.name }))}
+        platforms={project.platforms}
       />
 
       <TestCaseTable
         projectId={projectId}
         page={page}
         modules={modules.map((m) => ({ id: m.id, name: m.name }))}
+        platforms={project.platforms}
         canManage={canManage}
       />
     </div>

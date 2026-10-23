@@ -63,7 +63,13 @@ export default async function FailedCasesPage({
             ? "Nothing is failing in this project."
             : `${failed} failed and ${blocked} blocked, grouped by test type.`
         }
-        actions={<ExportMenu projectId={projectId} excelScope="failed" />}
+        actions={
+          <ExportMenu
+            projectId={projectId}
+            excelScope="failed"
+            platforms={project.platforms}
+          />
+        }
       />
 
       {cases.length === 0 ? (

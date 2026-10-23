@@ -4,10 +4,13 @@ import {
   CLOSING_FIX_STATUSES,
   EXECUTION_STATUSES,
   FIX_STATUSES,
+  GENERATION_DEPTHS,
   PLATFORMS,
   PRIORITIES,
   PROJECT_STATUSES,
+  REQUIREMENT_DOC_KINDS,
   ROLE_VALUES,
+  RUN_SCOPES,
   TEST_TYPES,
 } from "./enums";
 
@@ -134,6 +137,18 @@ export const projectSchema = z
       .array(z.string().min(1))
       .nullish()
       .transform((v) => (v == null ? undefined : Array.from(new Set(v)))),
+    /**
+     * Platforms the project is tested on. Absent leaves them as they are (as
+     * with memberIds); present must name at least one. Stored in PLATFORMS
+     * order so every list of them reads the same way.
+     */
+    platforms: z
+      .array(platformSchema)
+      .min(1, "Select at least one platform")
+      .nullish()
+      .transform((v) =>
+        v == null ? undefined : PLATFORMS.filter((p) => v.includes(p)),
+      ),
     startDate: optionalDate,
     endDate: optionalDate,
   })
@@ -173,7 +188,9 @@ export const testCaseSchema = z.object({
   expectedResult: optionalText(4000),
   testType: testTypeSchema.default("FUNCTIONAL"),
   priority: prioritySchema.default("MEDIUM"),
-  platform: platformSchema.default("WEB"),
+  // Omitted means the project's first platform — not Web, which the
+  // project may not have.
+  platform: platformSchema.optional(),
 });
 
 export type TestCaseInput = z.input<typeof testCaseSchema>;
@@ -255,6 +272,155 @@ export type UserCreateInput = z.infer<typeof userCreateSchema>;
 export type UserUpdateInput = z.infer<typeof userUpdateSchema>;
 
 // ---------------------------------------------------------------------------
+// Requirements & AI
+// ---------------------------------------------------------------------------
+
+export const claudeConnectSchema = z.object({
+  token: z.string().trim().min(20, "Paste the token from `claude setup-token`"),
+});
+
+export const requirementDocKindSchema = z.enum(REQUIREMENT_DOC_KINDS);
+
+/** A document given as pasted text. Uploads carry the same fields as form data. */
+export const requirementDocTextSchema = z.object({
+  title: trimmed(200).min(2, "Give the document a title"),
+  kind: requirementDocKindSchema.default("PRD"),
+  content: z
+    .string()
+    .trim()
+    .min(50, "Paste at least a paragraph of the document")
+    .max(600_000, "The document is too long — split it into parts"),
+});
+
+export type RequirementDocTextInput = z.input<typeof requirementDocTextSchema>;
+
+export const requirementSchema = z.object({
+  code: trimmed(60).min(1, "Code is required"),
+  title: trimmed(500).min(3, "Title must be at least 3 characters"),
+  description: optionalText(8000),
+  acceptanceCriteria: optionalText(8000),
+  openQuestions: optionalText(4000),
+  section: optionalText(200),
+});
+
+export type RequirementInput = z.input<typeof requirementSchema>;
+
+/** A requirement added by hand needs to say which document it belongs to. */
+export const requirementCreateSchema = requirementSchema.extend({
+  docId: z.string().min(1, "Select a document"),
+});
+
+export const generateTestCasesSchema = z.object({
+  requirementIds: z
+    .array(z.string().min(1))
+    .min(1, "Select at least one requirement")
+    .max(200, "Generate for at most 200 requirements at a time"),
+  // Omitted means the project's first platform — not Web, which the
+  // project may not have.
+  platform: platformSchema.optional(),
+  depth: z.enum(GENERATION_DEPTHS).default("essential"),
+  /** Extra guidance for this run, e.g. "focus on validation messages". */
+  instructions: optionalText(2000),
+});
+
+export type GenerateTestCasesInput = z.input<typeof generateTestCasesSchema>;
+
+export const testCaseDraftSchema = z.object({
+  moduleName: trimmed(120).min(1, "Module is required"),
+  title: trimmed(500).min(3, "Title must be at least 3 characters"),
+  preconditions: optionalText(4000),
+  steps: optionalText(8000),
+  expectedResult: optionalText(4000),
+  testType: testTypeSchema.default("FUNCTIONAL"),
+  priority: prioritySchema.default("MEDIUM"),
+  // Omitted means the project's first platform — not Web, which the
+  // project may not have.
+  platform: platformSchema.optional(),
+});
+
+export type TestCaseDraftInput = z.input<typeof testCaseDraftSchema>;
+
+export const draftReviewSchema = z.object({
+  action: z.enum(["accept", "reject"]),
+  ids: z
+    .array(z.string().min(1))
+    .min(1, "Select at least one draft")
+    .max(200, "Review at most 200 drafts at a time"),
+});
+
+export type DraftReviewInput = z.infer<typeof draftReviewSchema>;
+
+// ---------------------------------------------------------------------------
+// Automation
+// ---------------------------------------------------------------------------
+
+/** http(s) only: these are pasted into a browser and an HTTP client. */
+const baseUrl = z
+  .string()
+  .trim()
+  .max(500)
+  .nullish()
+  .transform((v) => (v ? v.replace(/\/+$/, "") : undefined))
+  .refine((v) => !v || /^https?:\/\/[^\s]+$/i.test(v), {
+    message: "Use a full http:// or https:// URL",
+  });
+
+export const runVariableSchema = z.object({
+  key: z
+    .string()
+    .trim()
+    .regex(/^[A-Z_][A-Z0-9_]*$/, "Use UPPER_SNAKE_CASE, e.g. USER_EMAIL")
+    .max(60),
+  /**
+   * Null on a secret means "keep the stored value" — the browser never has it
+   * to send back.
+   */
+  value: z.string().max(4000).nullable(),
+  secret: z.boolean().default(false),
+});
+
+export const runEnvironmentSchema = z
+  .object({
+    name: trimmed(60).min(1, "Name is required"),
+    webBaseUrl: baseUrl,
+    apiBaseUrl: baseUrl,
+    variables: z.array(runVariableSchema).max(100).default([]),
+  })
+  .refine(
+    (env) =>
+      new Set(env.variables.map((v) => v.key)).size === env.variables.length,
+    { message: "Each variable name can be used once", path: ["variables"] },
+  );
+
+export type RunEnvironmentInput = z.input<typeof runEnvironmentSchema>;
+
+export const automationScriptSchema = z.object({
+  code: z
+    .string()
+    .max(100_000, "The script is too long")
+    .refine((code) => code.trim().length > 0, "Write the script first"),
+});
+
+export const testRunCreateSchema = z
+  .object({
+    environmentId: z.string().min(1, "Select an environment"),
+    scope: z.enum(RUN_SCOPES).default("all"),
+    moduleId: z.string().optional(),
+    testCaseIds: z.array(z.string().min(1)).max(500).optional(),
+    recordResults: z.boolean().default(true),
+  })
+  .refine((run) => run.scope !== "module" || Boolean(run.moduleId), {
+    message: "Select a module",
+    path: ["moduleId"],
+  })
+  .refine((run) => run.scope !== "cases" || Boolean(run.testCaseIds?.length), {
+    message: "Select at least one test case",
+    path: ["testCaseIds"],
+  });
+
+export type TestRunCreateInput = z.input<typeof testRunCreateSchema>;
+
+// ---------------------------------------------------------------------------
 // List query params
 // ---------------------------------------------------------------------------
 
@@ -265,6 +431,8 @@ export const testCaseQuerySchema = z.object({
   priority: prioritySchema.optional(),
   status: executionStatusSchema.optional(),
   fixStatus: z.enum(["NONE", ...FIX_STATUSES]).optional(),
+  platform: platformSchema.optional(),
+  automated: z.enum(["yes", "no"]).optional(),
   sort: z
     .enum(["tcId", "testType", "priority", "module", "updatedAt"])
     .default("tcId"),

@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import {
   ArrowDown,
   ArrowUp,
+  Bot,
   ChevronsUpDown,
   ClipboardList,
   MoreHorizontal,
@@ -45,7 +46,7 @@ import { cn } from "@/lib/utils";
 import { useQueryParams } from "@/hooks/use-query-params";
 import { api, errorMessage } from "@/utils/api-client";
 import { formatRelative } from "@/utils/format";
-import type { Paginated, TestCaseListItem } from "@/types";
+import type { Paginated, Platform, TestCaseListItem } from "@/types";
 
 import {
   TestCaseFormDialog,
@@ -85,11 +86,13 @@ export function TestCaseTable({
   projectId,
   page,
   modules,
+  platforms,
   canManage,
 }: {
   projectId: string;
   page: Paginated<TestCaseListItem>;
   modules: ModuleOption[];
+  platforms: Platform[];
   canManage: boolean;
 }) {
   const router = useRouter();
@@ -346,8 +349,14 @@ export function TestCaseTable({
                 <TableCell className="font-mono text-xs">
                   <Link
                     href={`/projects/${projectId}/test-cases/${testCase.id}`}
+                    className="inline-flex items-center gap-1.5"
                   >
                     {testCase.tcId}
+                    {testCase.script && (
+                      <span title="Has an automation script" aria-label="Automated">
+                        <Bot className="size-3.5 text-primary" aria-hidden />
+                      </span>
+                    )}
                   </Link>
                 </TableCell>
 
@@ -458,6 +467,7 @@ export function TestCaseTable({
         <TestCaseFormDialog
           projectId={projectId}
           modules={modules}
+          platforms={platforms}
           testCaseId={editing?.id}
           open={formOpen}
           onOpenChange={(next) => {

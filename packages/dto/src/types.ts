@@ -1,8 +1,15 @@
 import type {
+  AiJobKind,
+  AiJobStatus,
+  DraftStatus,
   ExecutionStatus,
+  Platform,
   Priority,
   ProjectStatus,
+  RequirementDocKind,
   Role,
+  RunItemStatus,
+  TestRunStatus,
   TestType,
 } from "./enums";
 
@@ -59,6 +66,8 @@ export type ImportSummary = {
   skippedEmpty: number;
   duplicatesInFile: number;
   modulesCreated: string[];
+  /** Platforms the sheet used that the project had not enabled — now added. */
+  platformsAdded: Platform[];
   errors: ImportRowError[];
   mappedColumns: Record<string, string>;
   unmappedColumns: string[];
@@ -74,6 +83,8 @@ export type ImportPreview = {
   testCases: number;
   modules: number;
   newModules: number;
+  /** Platforms the import will add to the project. */
+  platformsAdded: Platform[];
   duplicates: number;
   duplicatesInFile: number;
   newCases: number;
@@ -107,3 +118,168 @@ export type ApiFailure = {
   fieldErrors?: Record<string, string[]>;
 };
 export type ApiResult<T> = ApiSuccess<T> | ApiFailure;
+
+// ---------------------------------------------------------------------------
+// Requirements & AI
+// ---------------------------------------------------------------------------
+
+export type ClaudeConnectionStatus = {
+  /** False when the server has no bridge configured — nothing to connect to. */
+  aiConfigured: boolean;
+  connected: boolean;
+  /** Last four characters of the token. The token itself never leaves the server. */
+  tokenHint: string | null;
+  connectedAt: string | null;
+};
+
+export type AiJobDto = {
+  id: string;
+  kind: AiJobKind;
+  status: AiJobStatus;
+  progressDone: number;
+  progressTotal: number;
+  summary: string | null;
+  error: string | null;
+  docId: string | null;
+  createdAt: string;
+  finishedAt: string | null;
+  createdBy: { id: string; name: string };
+};
+
+export type RequirementDocDto = {
+  id: string;
+  title: string;
+  kind: RequirementDocKind;
+  fileName: string | null;
+  charCount: number;
+  requirementCount: number;
+  createdAt: string;
+  createdBy: { id: string; name: string };
+};
+
+export type RequirementDto = {
+  id: string;
+  code: string;
+  title: string;
+  description: string | null;
+  acceptanceCriteria: string | null;
+  openQuestions: string | null;
+  section: string | null;
+  docId: string;
+  docTitle: string;
+  testCases: { id: string; tcId: string; status: ExecutionStatus }[];
+  /** Pending AI drafts that would cover this requirement. */
+  pendingDraftCount: number;
+};
+
+export type TestCaseDraftDto = {
+  id: string;
+  status: DraftStatus;
+  moduleName: string;
+  title: string;
+  preconditions: string | null;
+  steps: string | null;
+  expectedResult: string | null;
+  testType: TestType;
+  priority: Priority;
+  platform: Platform;
+  requirements: { id: string; code: string; title: string }[];
+  createdAt: string;
+};
+
+export type DraftReviewResult = {
+  accepted: { draftId: string; testCaseId: string; tcId: string }[];
+  rejected: number;
+  skipped: number;
+};
+
+// ---------------------------------------------------------------------------
+// Automation
+// ---------------------------------------------------------------------------
+
+export type RunVariableDto = {
+  key: string;
+  /** Null for a secret — the value stays on the server. */
+  value: string | null;
+  secret: boolean;
+};
+
+export type RunEnvironmentDto = {
+  id: string;
+  name: string;
+  webBaseUrl: string | null;
+  apiBaseUrl: string | null;
+  variables: RunVariableDto[];
+};
+
+export type TestRunDto = {
+  id: string;
+  number: number;
+  status: TestRunStatus;
+  environmentName: string;
+  recordResults: boolean;
+  total: number;
+  passed: number;
+  failed: number;
+  errored: number;
+  skipped: number;
+  error: string | null;
+  cancelRequested: boolean;
+  createdAt: string;
+  startedAt: string | null;
+  finishedAt: string | null;
+  createdBy: { id: string; name: string };
+};
+
+export type TestRunItemDto = {
+  id: string;
+  status: RunItemStatus;
+  position: number;
+  durationMs: number | null;
+  error: string | null;
+  log: string | null;
+  code: string;
+  testCase: { id: string; tcId: string; title: string; platform: Platform };
+  /** Served at /api/run-items/:id/artifacts/:index. */
+  artifacts: RunArtifactDto[];
+  executionId: string | null;
+};
+
+export type RunArtifactKind = "screenshot" | "video" | "trace";
+
+export type RunArtifactDto = {
+  index: number;
+  kind: RunArtifactKind;
+  fileName: string;
+  mimeType: string;
+  size: number;
+};
+
+export type TestRunDetailDto = TestRunDto & { items: TestRunItemDto[] };
+
+// --- Runner protocol (apps/runner ↔ /api/runner/*) ------------------------
+
+export type RunnerJob = {
+  run: { id: string; number: number; projectName: string };
+  environment: {
+    name: string;
+    webBaseUrl: string | null;
+    apiBaseUrl: string | null;
+    /** Every variable, secrets included, decrypted for this run only. */
+    vars: Record<string, string>;
+  };
+  items: {
+    id: string;
+    tcId: string;
+    title: string;
+    platform: Platform;
+    code: string;
+  }[];
+};
+
+export type RunnerItemResult = {
+  status: Exclude<RunItemStatus, "QUEUED">;
+  durationMs?: number;
+  error?: string;
+  log?: string;
+};

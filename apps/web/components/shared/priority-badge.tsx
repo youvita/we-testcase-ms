@@ -17,7 +17,6 @@ import { cn } from "@/lib/utils";
 const TEST_TYPE_STYLES: Record<TestType, string> = {
   FUNCTIONAL: "border-blue-500/30 bg-blue-500/10 text-blue-600 dark:text-blue-400",
   UI: "border-violet-500/30 bg-violet-500/10 text-violet-600 dark:text-violet-400",
-  API: "border-cyan-500/30 bg-cyan-500/10 text-cyan-600 dark:text-cyan-400",
   NEGATIVE:
     "border-orange-500/30 bg-orange-500/10 text-orange-600 dark:text-orange-400",
   INTEGRATION:
@@ -83,6 +82,8 @@ export function PriorityBadge({
 /** Platforms are categories, not a severity scale — hues just need to differ. */
 const PLATFORM_STYLES: Record<Platform, string> = {
   WEB: "border-sky-500/30 bg-sky-500/10 text-sky-600 dark:text-sky-400",
+  // Cyan was the old API test type's colour, so existing API cases keep it.
+  API: "border-cyan-500/30 bg-cyan-500/10 text-cyan-600 dark:text-cyan-400",
   IOS: "border-slate-500/30 bg-slate-500/10 text-slate-600 dark:text-slate-400",
   ANDROID:
     "border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",

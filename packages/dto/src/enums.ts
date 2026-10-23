@@ -90,7 +90,6 @@ export function isProgressFixStatus(fixStatus: FixStatus) {
 export const TEST_TYPES = [
   "FUNCTIONAL",
   "UI",
-  "API",
   "NEGATIVE",
   "INTEGRATION",
   "REGRESSION",
@@ -106,7 +105,12 @@ export const PRIORITIES = ["CRITICAL", "HIGH", "MEDIUM", "LOW"] as const;
 
 export type Priority = (typeof PRIORITIES)[number];
 
-export const PLATFORMS = ["WEB", "IOS", "ANDROID"] as const;
+/**
+ * Where a case is tested. Not a test type: an API case can be functional,
+ * negative or security. iOS and Android are separate on purpose — behaviour
+ * and automation tooling differ between them.
+ */
+export const PLATFORMS = ["WEB", "API", "IOS", "ANDROID"] as const;
 
 export type Platform = (typeof PLATFORMS)[number];
 
@@ -137,3 +141,65 @@ export type ProjectEnvironment = (typeof PROJECT_ENVIRONMENTS)[number];
 
 export const EXCEL_REPORT_SCOPES = ["summary", "cases", "failed"] as const;
 export type ExcelReportScope = (typeof EXCEL_REPORT_SCOPES)[number];
+
+// ---------------------------------------------------------------------------
+// Requirements & AI
+// ---------------------------------------------------------------------------
+
+export const REQUIREMENT_DOC_KINDS = ["PRD", "FRD", "OTHER"] as const;
+export type RequirementDocKind = (typeof REQUIREMENT_DOC_KINDS)[number];
+
+export const AI_JOB_KINDS = [
+  "EXTRACT_REQUIREMENTS",
+  "GENERATE_TEST_CASES",
+] as const;
+export type AiJobKind = (typeof AI_JOB_KINDS)[number];
+
+export const AI_JOB_STATUSES = [
+  "QUEUED",
+  "RUNNING",
+  "SUCCEEDED",
+  "FAILED",
+] as const;
+export type AiJobStatus = (typeof AI_JOB_STATUSES)[number];
+
+export const DRAFT_STATUSES = ["PENDING", "ACCEPTED", "REJECTED"] as const;
+export type DraftStatus = (typeof DRAFT_STATUSES)[number];
+
+/** How many cases to ask for per requirement. */
+export const GENERATION_DEPTHS = ["essential", "thorough"] as const;
+export type GenerationDepth = (typeof GENERATION_DEPTHS)[number];
+
+// ---------------------------------------------------------------------------
+// Automation
+// ---------------------------------------------------------------------------
+
+export const TEST_RUN_STATUSES = [
+  "QUEUED",
+  "RUNNING",
+  "PASSED",
+  "FAILED",
+  "ERROR",
+  "CANCELLED",
+] as const;
+export type TestRunStatus = (typeof TEST_RUN_STATUSES)[number];
+
+export const RUN_ITEM_STATUSES = [
+  "QUEUED",
+  "PASSED",
+  "FAILED",
+  "ERROR",
+  "SKIPPED",
+] as const;
+export type RunItemStatus = (typeof RUN_ITEM_STATUSES)[number];
+
+/** Platforms the runner can execute today. Mobile needs device tooling. */
+export const AUTOMATABLE_PLATFORMS = ["WEB", "API"] as const;
+
+export function isAutomatablePlatform(platform: Platform): boolean {
+  return (AUTOMATABLE_PLATFORMS as readonly string[]).includes(platform);
+}
+
+/** Which cases a new run takes. */
+export const RUN_SCOPES = ["all", "failed", "module", "cases"] as const;
+export type RunScope = (typeof RUN_SCOPES)[number];
