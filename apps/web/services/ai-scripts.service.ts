@@ -371,16 +371,20 @@ export async function startScriptWriting(
                 select: { id: true, status: true, error: true, log: true },
               })
             : null;
-        if (lastItem) {
+        if (lastItem && last) {
           previous = { code: earlier.code, status: lastItem.status, error: lastItem.error, log: lastItem.log };
           evidence = await readItemEvidence(lastItem.id);
+          // Listed first, so the round shows what it picked up from.
+          result.attempts.push({ code: earlier.code, runId: last.runId, status: lastItem.status, error: lastItem.error, earlier: true });
         } else {
           // The earlier job ended on a script it never ran (it judged a
           // product bug or needed information): run it now to see.
           const check = await tryScript(earlier.code);
           previous = { code: earlier.code, status: check.item.status, error: check.item.error, log: check.item.log };
           evidence = await readItemEvidence(check.item.id);
+          result.attempts.push({ code: earlier.code, runId: check.runId, status: check.item.status, error: check.item.error, earlier: true });
         }
+        await setResult(result);
         await progress(++step, total);
       } else if (isWeb) {
         const probe = await tryScript(`await page.goto(${JSON.stringify(startPath)});`);
@@ -428,6 +432,22 @@ export async function startScriptWriting(
         // Claude's judgement that the script is right and the product is
         // not (or that it needs QA) ends the loop: another run would only
         // repeat the same failure.
+        //
+        // A product-bug verdict on a script Claude has just changed is a
+        // claim about code that never ran, though. Run it once first: a
+        // failure confirms it, with the failing line to show; a pass means
+        // Claude was wrong and the script is good.
+        if (draft.verdict === "product_bug" && draft.code !== previous?.code) {
+          const { runId, item } = await tryScript(draft.code);
+          result.attempts.push({ code: draft.code, runId, status: item.status, error: item.error });
+          await progress(++step, total);
+          if (item.status === "PASSED") {
+            result.outcome = "passed";
+            result.notes = `Claude expected the product to fail this check, but the script passed when it ran. ${draft.notes}`.trim();
+            await setResult(result);
+            break;
+          }
+        }
         if (draft.verdict === "product_bug" || draft.verdict === "needs_info") {
           result.outcome = draft.verdict;
           await setResult(result);

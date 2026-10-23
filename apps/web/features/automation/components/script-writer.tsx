@@ -237,9 +237,14 @@ export function ScriptWritingPanel({
     .filter((a) => a.status !== "PASSED")
     .at(-1);
   const lastAttempt = (job.result as ScriptWritingResult | null)?.attempts.at(-1);
+  const finalCode = (job.result as ScriptWritingResult | null)?.code ?? "";
+  // Mark a line only when it is the line that failed: the final script is
+  // the one that ran, or still contains the failing line word for word.
   const failingLine =
     lastFailure && lastAttempt === lastFailure
-      ? findErrorLine((job.result as ScriptWritingResult).code, lastFailure.error)
+      ? lastFailure.code === finalCode
+        ? findErrorLine(finalCode, lastFailure.error)
+        : findErrorLine(finalCode, lastFailure.error, { textOnly: true })
       : null;
   const result = job.result as ScriptWritingResult | null;
   const active = job.status === "QUEUED" || job.status === "RUNNING";
@@ -274,7 +279,9 @@ export function ScriptWritingPanel({
         <ol className="space-y-1">
           {result.attempts.map((attempt, index) => (
             <li key={attempt.runId} className="flex items-center gap-2 text-xs">
-              <span className="text-muted-foreground">Try {index + 1}</span>
+              <span className="text-muted-foreground">
+                {attempt.earlier ? "Earlier" : `Try ${result.attempts.slice(0, index + 1).filter((a) => !a.earlier).length}`}
+              </span>
               <RunStatusBadge status={attempt.status} />
               <Link
                 href={`/projects/${projectId}/automation/runs/${attempt.runId}`}

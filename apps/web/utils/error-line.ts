@@ -7,7 +7,12 @@
  * of the runner's generated file rather than the script, and the text is
  * right either way. The number is the fallback when the text is not unique.
  */
-export function findErrorLine(code: string, error: string | null | undefined): number | null {
+export function findErrorLine(
+  code: string,
+  error: string | null | undefined,
+  /** Only trust the text: for a script that is not the one that ran. */
+  options: { textOnly?: boolean } = {},
+): number | null {
   if (!error) return null;
   const marked = /^\s*>\s*(\d+)\s*\|\s?(.*)$/m.exec(error);
   if (!marked) return null;
@@ -24,6 +29,7 @@ export function findErrorLine(code: string, error: string | null | undefined): n
     if (matches.includes(markedNumber)) return markedNumber;
     if (matches.length > 0) return matches[0]!;
   }
+  if (options.textOnly) return null;
   return markedNumber >= 1 && markedNumber <= lines.length ? markedNumber : null;
 }
 

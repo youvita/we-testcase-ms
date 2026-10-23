@@ -353,6 +353,8 @@ export type ScriptWritingResult = {
     runId: string;
     status: RunItemStatus;
     error: string | null;
+    /** The earlier try a continued round picked up from, not one of its own. */
+    earlier?: boolean;
   }[];
 };
 
