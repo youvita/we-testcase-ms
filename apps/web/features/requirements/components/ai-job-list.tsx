@@ -10,6 +10,8 @@ import { formatRelative } from "@/utils/format";
 const KIND_LABELS: Record<AiJobDto["kind"], string> = {
   EXTRACT_REQUIREMENTS: "Reading document",
   GENERATE_TEST_CASES: "Drafting test cases",
+  WRITE_SCRIPT: "Writing a script",
+  TRIAGE_FAILURE: "Explaining a failure",
 };
 
 /** How many finished jobs to keep on screen under the running ones. */

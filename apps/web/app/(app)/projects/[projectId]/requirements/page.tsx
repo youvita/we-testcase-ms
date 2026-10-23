@@ -25,6 +25,8 @@ import { listPendingDrafts } from "@/services/test-case-draft.service";
 
 export const metadata: Metadata = { title: "Requirements" };
 
+const REQUIREMENT_JOB_KINDS = ["EXTRACT_REQUIREMENTS", "GENERATE_TEST_CASES"] as const;
+
 export default async function RequirementsPage({
   params,
 }: {
@@ -41,7 +43,7 @@ export default async function RequirementsPage({
     listRequirementDocs(projectId),
     listRequirements(projectId),
     listPendingDrafts(projectId),
-    listJobs(projectId),
+    listJobs(projectId, { kinds: [...REQUIREMENT_JOB_KINDS] }),
   ]);
 
   const covered = requirements.filter((req) => req.testCases.length > 0).length;

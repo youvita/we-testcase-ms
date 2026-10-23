@@ -16,11 +16,11 @@ const resultSchema = z.object({
   log: z.string().optional(),
 });
 
-const KINDS: RunArtifactKind[] = ["screenshot", "video", "trace"];
+const KINDS: RunArtifactKind[] = ["screenshot", "video", "trace", "snapshot"];
 
 /**
  * One item's result: a `result` JSON field plus any number of files under
- * `screenshot`, `video` and `trace`.
+ * `screenshot`, `video`, `trace` and `snapshot`.
  */
 export const POST = runnerRoute<Ctx>(async (request, { params }) => {
   const { itemId } = await params;

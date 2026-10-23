@@ -150,7 +150,26 @@ const test = base.extend({
 });
 
 test.use({ baseURL: ${JSON.stringify(baseURL ?? undefined)} });
-
+${
+  isApi
+    ? ""
+    : `
+// The page as the test left it, as text: every field and button with its
+// role and name. It is what Claude reads to repair a script or explain a
+// failure, and QA can read it too.
+test.afterEach(async ({ page }, testInfo) => {
+  try {
+    const outline = await page.locator("body").ariaSnapshot({ timeout: 5000 });
+    await testInfo.attach("page-snapshot", {
+      body: "URL: " + page.url() + "\\nTitle: " + (await page.title()) + "\\n\\n" + outline.slice(0, 60000),
+      contentType: "text/plain",
+    });
+  } catch {
+    // A page that is gone or never opened has nothing to describe.
+  }
+});
+`
+}
 test(${JSON.stringify(`${item.tcId} ${item.title}`)}, async (${fixtures}) => {
 // ---- script ----
 ${item.code}
@@ -189,7 +208,8 @@ export default defineConfig({
 // Reading Playwright's JSON report
 // ---------------------------------------------------------------------------
 
-type ReportAttachment = { name: string; contentType: string; path?: string };
+/** A file attachment has `path`; one attached as data has base64 `body`. */
+type ReportAttachment = { name: string; contentType: string; path?: string; body?: string };
 type ReportResult = {
   status: "passed" | "failed" | "timedOut" | "skipped" | "interrupted";
   duration: number;
@@ -270,10 +290,11 @@ function itemResult(result: ReportResult): RunnerItemResult {
   };
 }
 
-const ARTIFACT_FIELDS: Record<string, "screenshot" | "video" | "trace"> = {
+const ARTIFACT_FIELDS: Record<string, "screenshot" | "video" | "trace" | "snapshot"> = {
   screenshot: "screenshot",
   video: "video",
   trace: "trace",
+  "page-snapshot": "snapshot",
 };
 
 async function reportItem(
@@ -285,13 +306,15 @@ async function reportItem(
   form.append("result", JSON.stringify(result));
   for (const attachment of attachments) {
     const field = ARTIFACT_FIELDS[attachment.name];
-    if (!field || !attachment.path) continue;
+    if (!field || (!attachment.path && !attachment.body)) continue;
     try {
-      const bytes = await readFile(attachment.path);
+      const bytes = attachment.path
+        ? await readFile(attachment.path)
+        : Buffer.from(attachment.body!, "base64");
       form.append(
         field,
         new Blob([new Uint8Array(bytes)], { type: attachment.contentType }),
-        path.basename(attachment.path),
+        attachment.path ? path.basename(attachment.path) : `${attachment.name}.txt`,
       );
     } catch {
       // Missing evidence should not lose the result itself.
@@ -372,7 +395,7 @@ async function setAsideBrokenSpecs(
 
 async function executeRun(job: RunnerJob) {
   const dir = path.join(WORK_DIR, `run-${job.run.id}`);
-  const label = `run #${job.run.number} (${job.run.projectName}, ${job.items.length} case${job.items.length === 1 ? "" : "s"}, ${job.environment.name})`;
+  const label = `${job.run.label} (${job.run.projectName}, ${job.items.length} case${job.items.length === 1 ? "" : "s"}, ${job.environment.name})`;
   log(`starting ${label}`);
 
   await rm(dir, { recursive: true, force: true });
@@ -398,7 +421,7 @@ async function executeRun(job: RunnerJob) {
   }
   if (fatal || fileToItem.size === 0) {
     await api("POST", `/runs/${job.run.id}/finish`, fatal ? { error: fatal } : {});
-    log(`run #${job.run.number} ${fatal ? "could not start" : "had no script that loads"}`);
+    log(`${job.run.label} ${fatal ? "could not start" : "had no script that loads"}`);
     await rm(dir, { recursive: true, force: true });
     return;
   }
@@ -415,7 +438,7 @@ async function executeRun(job: RunnerJob) {
       const { data } = await api<{ cancel: boolean }>("POST", `/runs/${job.run.id}/heartbeat`);
       if (data?.cancel && !cancelled) {
         cancelled = true;
-        log(`cancel requested for run #${job.run.number}`);
+        log(`cancel requested for ${job.run.label}`);
         stop(child);
       }
     } catch (error) {
@@ -426,7 +449,7 @@ async function executeRun(job: RunnerJob) {
   // A hard ceiling so one hung browser cannot hold the runner forever.
   const ceilingMs = (Math.ceil(job.items.length / WORKERS) + 1) * TEST_TIMEOUT_MS + 120_000;
   const ceiling = setTimeout(() => {
-    log(`run #${job.run.number} exceeded ${Math.round(ceilingMs / 1000)} s — stopping`);
+    log(`${job.run.label} exceeded ${Math.round(ceilingMs / 1000)} s — stopping`);
     stop(child);
   }, ceilingMs);
 
@@ -440,7 +463,7 @@ async function executeRun(job: RunnerJob) {
     await api("POST", `/runs/${job.run.id}/finish`, {
       error: cancelled ? undefined : `Playwright did not produce a report.\n\n${clean(output).slice(-3_000)}`,
     });
-    log(`run #${job.run.number} ended without a report`);
+    log(`${job.run.label} ended without a report`);
     await rm(dir, { recursive: true, force: true });
     return;
   }
@@ -474,7 +497,7 @@ async function executeRun(job: RunnerJob) {
   }
 
   await api("POST", `/runs/${job.run.id}/finish`, {});
-  log(`finished run #${job.run.number}${cancelled ? " (cancelled)" : ""}`);
+  log(`finished ${job.run.label}${cancelled ? " (cancelled)" : ""}`);
   await rm(dir, { recursive: true, force: true });
 }
 
@@ -519,7 +542,7 @@ async function main() {
     try {
       await executeRun(job);
     } catch (error) {
-      log(`run #${job.run.number} failed: ${(error as Error).stack ?? error}`);
+      log(`${job.run.label} failed: ${(error as Error).stack ?? error}`);
       await api("POST", `/runs/${job.run.id}/finish`, {
         error: `The runner failed: ${(error as Error).message}`,
       }).catch(() => undefined);

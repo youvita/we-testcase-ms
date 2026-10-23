@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import { Prisma, type TestRun } from "@prisma/client";
@@ -9,6 +9,7 @@ import { badRequest, conflict, notFound } from "@/lib/api";
 import { PLATFORM_LABELS } from "@/lib/constants";
 import {
   AUTOMATABLE_PLATFORMS,
+  type RunTriageDto,
   type RunArtifactDto,
   type RunArtifactKind,
   type RunnerItemResult,
@@ -51,6 +52,7 @@ function toRunDto(run: RunRow): TestRunDto {
   return {
     id: run.id,
     number: run.number,
+    purpose: run.purpose,
     status: run.status,
     environmentName: run.environmentName,
     recordResults: run.recordResults,
@@ -79,6 +81,8 @@ type StoredArtifact = {
 function readArtifacts(value: Prisma.JsonValue | null): StoredArtifact[] {
   return Array.isArray(value) ? (value as unknown as StoredArtifact[]) : [];
 }
+
+const runInclude = { createdBy: { select: { id: true, name: true } } } as const;
 
 // ---------------------------------------------------------------------------
 // Creating and reading runs (people)
@@ -127,33 +131,63 @@ export async function createTestRun(
     }
   }
 
-  // Run numbers count per project. Two people starting a run in the same
-  // instant collide on the unique index; the second simply tries again.
+  return queueRun({
+    projectId,
+    userId,
+    environment,
+    purpose: "RUN",
+    recordResults: input.recordResults ?? true,
+    items: cases.map((c) => ({ testCaseId: c.id, code: c.script!.code })),
+  });
+}
+
+/**
+ * Put a run on the queue for the runner.
+ *
+ * Runs are numbered per project. Two people starting one in the same instant
+ * collide on the unique index; the second simply tries again. Script checks
+ * take no number — nobody started them as a run.
+ */
+export async function queueRun(options: {
+  projectId: string;
+  userId: string;
+  environment: { id: string; name: string };
+  purpose: "RUN" | "SCRIPT_CHECK";
+  recordResults: boolean;
+  items: { testCaseId: string; code: string }[];
+}): Promise<TestRunDto> {
   for (let attempt = 0; ; attempt += 1) {
     try {
       const run = await prisma.$transaction(async (tx) => {
-        const last = await tx.testRun.aggregate({
-          where: { projectId },
-          _max: { number: true },
-        });
+        const number =
+          options.purpose === "RUN"
+            ? ((
+                await tx.testRun.aggregate({
+                  where: { projectId: options.projectId },
+                  _max: { number: true },
+                })
+              )._max.number ?? 0) + 1
+            : null;
         return tx.testRun.create({
           data: {
-            projectId,
-            number: (last._max.number ?? 0) + 1,
-            environmentId: environment.id,
-            environmentName: environment.name,
-            recordResults: input.recordResults ?? true,
-            createdById: userId,
-            total: cases.length,
+            projectId: options.projectId,
+            number,
+            purpose: options.purpose,
+            environmentId: options.environment.id,
+            environmentName: options.environment.name,
+            // A script check never records: it is trying a draft, not testing.
+            recordResults: options.purpose === "RUN" && options.recordResults,
+            createdById: options.userId,
+            total: options.items.length,
             items: {
-              create: cases.map((c, position) => ({
-                testCaseId: c.id,
+              create: options.items.map((item, position) => ({
+                testCaseId: item.testCaseId,
                 position,
-                code: c.script!.code,
+                code: item.code,
               })),
             },
           },
-          include: { createdBy: { select: { id: true, name: true } } },
+          include: runInclude,
         });
       });
       return toRunDto(run);
@@ -181,12 +215,10 @@ export async function sweepStaleRuns() {
   }
 }
 
-const runInclude = { createdBy: { select: { id: true, name: true } } } as const;
-
 export async function listTestRuns(projectId: string, limit = 30): Promise<TestRunDto[]> {
   await sweepStaleRuns();
   const runs = await prisma.testRun.findMany({
-    where: { projectId },
+    where: { projectId, purpose: "RUN" },
     orderBy: { number: "desc" },
     take: limit,
     include: runInclude,
@@ -224,6 +256,12 @@ export async function getTestRun(runId: string): Promise<TestRunDetailDto> {
       code: item.code,
       testCase: item.testCase,
       executionId: item.executionId,
+      triage: item.triage
+        ? {
+            ...(item.triage as unknown as Omit<RunTriageDto, "triagedAt">),
+            triagedAt: item.triagedAt?.toISOString() ?? "",
+          }
+        : null,
       artifacts: readArtifacts(item.artifacts).map(
         (artifact, index): RunArtifactDto => ({
           index,
@@ -335,7 +373,11 @@ export async function claimNextRun(runnerName: string): Promise<RunnerJob | null
     }
 
     return {
-      run: { id: run.id, number: run.number, projectName: run.project.name },
+      run: {
+        id: run.id,
+        label: run.number ? `Run #${run.number}` : "Script check",
+        projectName: run.project.name,
+      },
       environment,
       items: run.items.map((item) => ({
         id: item.id,
@@ -373,6 +415,11 @@ const ARTIFACT_TYPES: Record<RunArtifactKind, { mimeType: string; ext: string; m
   ],
   trace: [
     { mimeType: "application/zip", ext: ".zip", magic: (b) => b.subarray(0, 4).equals(Buffer.from([0x50, 0x4b, 0x03, 0x04])) },
+  ],
+  // Plain text, so anything goes except binary — a NUL byte means it is not
+  // the outline the runner writes.
+  snapshot: [
+    { mimeType: "text/plain; charset=utf-8", ext: ".txt", magic: (b) => b.length < 2_000_000 && !b.includes(0) },
   ],
 };
 
@@ -511,4 +558,61 @@ export async function finishRun(runId: string, options: { error?: string }) {
       finishedAt: new Date(),
     },
   });
+}
+
+// ---------------------------------------------------------------------------
+// For AI jobs that run scripts and read the evidence
+// ---------------------------------------------------------------------------
+
+/**
+ * Wait for a run to finish. Resolves with it either way; throws only when the
+ * run is still going after `timeoutMs` (then cancels it, so it stops using
+ * the runner).
+ */
+export async function waitForRun(runId: string, timeoutMs = 10 * 60_000) {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    await sweepStaleRuns();
+    const run = await prisma.testRun.findUniqueOrThrow({
+      where: { id: runId },
+      select: { status: true },
+    });
+    if (run.status !== "QUEUED" && run.status !== "RUNNING") {
+      return getTestRun(runId);
+    }
+    if (Date.now() > deadline) {
+      await cancelTestRun(runId).catch(() => undefined);
+      throw new Error("The runner did not finish the script check in time.");
+    }
+    await new Promise((resolve) => setTimeout(resolve, 3000));
+  }
+}
+
+/** One item's evidence, read back for Claude: the page outline and screenshot. */
+export async function readItemEvidence(itemId: string) {
+  const item = await prisma.testRunItem.findUniqueOrThrow({
+    where: { id: itemId },
+    select: { artifacts: true },
+  });
+  const artifacts = readArtifacts(item.artifacts);
+  const snapshot = artifacts.find((a) => a.kind === "snapshot");
+  // The last screenshot is the page as the test left it.
+  const screenshot = artifacts.filter((a) => a.kind === "screenshot").at(-1);
+
+  const read = async (artifact: StoredArtifact | undefined) =>
+    artifact
+      ? readFile(resolveStoredPath(artifact.path)).catch(() => null)
+      : null;
+
+  const [snapshotBytes, screenshotBytes] = await Promise.all([
+    read(snapshot),
+    read(screenshot),
+  ]);
+  return {
+    snapshot: snapshotBytes ? snapshotBytes.toString("utf8") : null,
+    screenshot:
+      screenshotBytes && screenshot
+        ? { mediaType: screenshot.mimeType, data: screenshotBytes.toString("base64") }
+        : null,
+  };
 }

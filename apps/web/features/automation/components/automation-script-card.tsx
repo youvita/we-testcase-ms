@@ -1,21 +1,24 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Bot, Loader2, Play, Save, Trash2 } from "lucide-react";
+import { Bot, Loader2, Play, Save, Sparkles, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
-import type { Platform, RunEnvironmentDto, RunItemStatus } from "@wetestcase/dto";
+import { ClaudeConnectionDialog } from "@/features/ai/components/claude-connection-dialog";
+import { isJobActive, useAiJob } from "@/features/ai/use-ai-job";
+import type { AiJobDto, Platform, RunEnvironmentDto, RunItemStatus } from "@wetestcase/dto";
 import { api, errorMessage } from "@/utils/api-client";
 import { formatRelative } from "@/utils/format";
 
 import { NewRunDialog } from "./new-run-dialog";
 import { RunStatusBadge } from "./run-status-badge";
+import { ScriptWritingPanel, WriteWithClaudeDialog } from "./script-writer";
 
 const EXAMPLES: Record<"WEB" | "API", string> = {
   WEB: `await page.goto("/login");
@@ -41,7 +44,7 @@ export type ScriptState = {
 export type LastAutomatedResult = {
   status: RunItemStatus;
   runId: string;
-  runNumber: number;
+  runNumber: number | null;
   finishedAt: string | null;
 } | null;
 
@@ -58,6 +61,7 @@ export function AutomationScriptCard({
   script,
   environments,
   lastResult,
+  latestWriteJob,
   canManage,
 }: {
   projectId: string;
@@ -66,6 +70,8 @@ export function AutomationScriptCard({
   script: ScriptState;
   environments: RunEnvironmentDto[];
   lastResult: LastAutomatedResult;
+  /** The newest "write with Claude" job for this case, finished or not. */
+  latestWriteJob: AiJobDto | null;
   canManage: boolean;
 }) {
   const router = useRouter();
@@ -73,6 +79,13 @@ export function AutomationScriptCard({
   const [saving, setSaving] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [runOpen, setRunOpen] = useState(false);
+  const [writeOpen, setWriteOpen] = useState(false);
+  const [connectOpen, setConnectOpen] = useState(false);
+  const retryRef = useRef<(() => void) | null>(null);
+  const [writeJob, setWriteJob] = useAiJob(latestWriteJob, (job) => {
+    if (job.status === "SUCCEEDED") toast.success(job.summary ?? "Claude finished the script");
+    else toast.error(job.error ?? "Claude could not write the script");
+  });
 
   if (platform !== "WEB" && platform !== "API") {
     return (
@@ -158,6 +171,18 @@ export function AutomationScriptCard({
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
+        {writeJob && (
+          <ScriptWritingPanel
+            projectId={projectId}
+            job={writeJob}
+            savedCode={script?.code ?? null}
+            onUse={(next) => {
+              setCode(next);
+              toast.message("Script placed in the editor — review it, then save.");
+            }}
+          />
+        )}
+
         <Textarea
           value={code}
           onChange={(event) => setCode(event.target.value)}
@@ -219,6 +244,19 @@ export function AutomationScriptCard({
               <Play className="mr-2 size-4" />
               Run this case
             </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={isJobActive(writeJob)}
+              onClick={() => setWriteOpen(true)}
+            >
+              {isJobActive(writeJob) ? (
+                <Loader2 className="mr-2 size-4 animate-spin" />
+              ) : (
+                <Sparkles className="mr-2 size-4" />
+              )}
+              {script || code ? "Rewrite with Claude" : "Write with Claude"}
+            </Button>
             {!code && (
               <Button size="sm" variant="ghost" onClick={() => setCode(EXAMPLES[platform])}>
                 Insert example
@@ -233,6 +271,35 @@ export function AutomationScriptCard({
           </div>
         )}
       </CardContent>
+
+      <WriteWithClaudeDialog
+        testCaseId={testCaseId}
+        platform={platform}
+        environments={environments}
+        open={writeOpen}
+        onOpenChange={setWriteOpen}
+        onStarted={(job) => {
+          setWriteJob(job);
+          toast.message("Claude is on it — this takes a minute or two.");
+        }}
+        onNeedsSubscription={(retry) => {
+          retryRef.current = retry;
+          setConnectOpen(true);
+        }}
+      />
+
+      <ClaudeConnectionDialog
+        open={connectOpen}
+        onOpenChange={(open) => {
+          setConnectOpen(open);
+          if (!open) retryRef.current = null;
+        }}
+        onConnected={() => {
+          const retry = retryRef.current;
+          retryRef.current = null;
+          retry?.();
+        }}
+      />
 
       <NewRunDialog
         projectId={projectId}

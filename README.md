@@ -308,6 +308,21 @@ automated; iOS and Android come later (they need emulators or devices).
    *script error*: it is reported on the run but does not mark the case failed.
    Untick *Record results* to try scripts without touching results.
 
+**Claude writes and explains scripts.** On a Web or API case, *Write with
+Claude* writes the script against a real environment, not from the steps
+alone: the runner opens the start page and returns its outline (Playwright's
+aria snapshot — every field and button by role and name); Claude drafts from
+the case and that outline; the runner tries the draft as a *script check*
+(recorded nowhere, numbered nowhere); on failure Claude sees the error, the
+screenshot and the outline of the page where it stopped, and repairs it — up
+to three tries. It stops early when it judges the product, not the script, is
+wrong (it never weakens an assertion to pass) or when it needs something only
+QA has, such as an account or an OTP bypass. QA reviews the result and chooses
+*Use this script*; nothing is saved on its own. On a run, *Ask Claude why* (or
+*Explain failures*) sorts each failure into product bug, script problem,
+environment or unclear, with a corrected script to apply or a bug report to
+copy. Claude is told variable names, never their values.
+
 **The runner** (`apps/runner`) is a separate container built on the Playwright
 image. It holds no database credentials: it claims queued runs from
 `/api/runner/*` with a shared `RUNNER_TOKEN`, runs them, and posts results

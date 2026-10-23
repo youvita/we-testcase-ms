@@ -33,10 +33,14 @@ export function isAiConfigured(): boolean {
  */
 const REQUEST_TIMEOUT_MS = 14 * 60_000;
 
+export type ClaudeImage = { mediaType: string; data: string };
+
 export async function askClaude(options: {
   token: string;
   system: string;
   prompt: string;
+  /** Base64 images shown before the prompt — screenshots, here. */
+  images?: ClaudeImage[];
   model?: string;
   maxTokens?: number;
 }): Promise<string> {
@@ -60,7 +64,20 @@ export async function askClaude(options: {
         model: options.model ?? defaultModel(),
         max_tokens: options.maxTokens ?? 16_000,
         system: options.system,
-        messages: [{ role: "user", content: options.prompt }],
+        messages: [
+          {
+            role: "user",
+            content: options.images?.length
+              ? [
+                  ...options.images.map((image) => ({
+                    type: "image",
+                    source: { type: "base64", media_type: image.mediaType, data: image.data },
+                  })),
+                  { type: "text", text: options.prompt },
+                ]
+              : options.prompt,
+          },
+        ],
       }),
       signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     });
@@ -111,5 +128,34 @@ export function parseJsonReply(text: string): unknown {
     return JSON.parse(candidate.slice(start, end + 1));
   } catch {
     throw new AiError("Claude's answer was not valid JSON.");
+  }
+}
+
+/**
+ * The code from a reply: the first fenced ts/typescript/js block, or a bare
+ * fenced block. Code is asked for in a fence rather than inside JSON because
+ * a model escapes quotes and newlines in a JSON string far less reliably.
+ *
+ * Fences are read in pairs, opening and closing together, so the closing
+ * fence of an earlier ```json block is never taken for the opening of code.
+ */
+export function parseCodeReply(text: string): string | null {
+  for (const match of text.matchAll(/```([\w-]*)[^\S\n]*\n([\s\S]*?)```/g)) {
+    const language = (match[1] ?? "").toLowerCase();
+    if (!["", "ts", "typescript", "js", "javascript"].includes(language)) continue;
+    const code = match[2]?.trim();
+    if (code) return code;
+  }
+  return null;
+}
+
+/** The fenced ```json block of a reply, when it has one alongside code. */
+export function parseJsonBlock(text: string): unknown {
+  const fence = /```json\s*([\s\S]*?)```/i.exec(text);
+  if (!fence?.[1]) return null;
+  try {
+    return JSON.parse(fence[1]);
+  } catch {
+    return null;
   }
 }

@@ -37,6 +37,8 @@ import {
   requireProjectAccess,
 } from "@/lib/project-access";
 import { getSessionUser, requireUser } from "@/lib/session";
+import { getJob } from "@/services/ai-job.service";
+import { getLatestScriptJob } from "@/services/ai-scripts.service";
 import { getAutomationScript } from "@/services/automation-script.service";
 import { listComments } from "@/services/comment.service";
 import { listRunEnvironments } from "@/services/run-environment.service";
@@ -84,18 +86,24 @@ export default async function TestCaseDetailPage({
   // project's URL.
   if (testCase.projectId !== projectId) notFound();
 
-  const [neighbours, comments, script, environments, lastRunItem] = await Promise.all([
+  const [neighbours, comments, script, environments, lastRunItem, latestWrite] = await Promise.all([
     getTestCaseNeighbours(projectId, testCase.tcId),
     listComments(testCaseId),
     getAutomationScript(testCaseId),
     listRunEnvironments(projectId),
     prisma.testRunItem.findFirst({
       // Only results that ran — a skip from a cancelled run is not a result.
-      where: { testCaseId, status: { in: ["PASSED", "FAILED", "ERROR"] } },
+      where: {
+        testCaseId,
+        status: { in: ["PASSED", "FAILED", "ERROR"] },
+        run: { purpose: "RUN" },
+      },
       orderBy: { finishedAt: "desc" },
       select: { status: true, finishedAt: true, run: { select: { id: true, number: true } } },
     }),
+    getLatestScriptJob(testCaseId),
   ]);
+  const latestWriteJob = latestWrite ? await getJob(latestWrite.id) : null;
 
   const canExecute = canExecuteTests(user.role);
 
@@ -277,6 +285,7 @@ export default async function TestCaseDetailPage({
                   updatedBy: script.updatedBy,
                 }
               }
+              latestWriteJob={latestWriteJob}
               lastResult={
                 lastRunItem && {
                   status: lastRunItem.status,

@@ -29,6 +29,8 @@ export type JobContext = {
   /** The creator's subscription token. */
   token: string;
   progress: (done: number, total: number) => Promise<void>;
+  /** Store what the job produced, as it goes — the page shows it live. */
+  setResult: (result: Prisma.InputJsonValue) => Promise<void>;
 };
 
 /** Does the work and returns the one-line summary shown when it succeeds. */
@@ -63,6 +65,7 @@ function toDto(job: JobRow): AiJobDto {
     summary: job.summary,
     error: job.error,
     docId: job.docId,
+    result: job.result,
     createdAt: job.createdAt.toISOString(),
     finishedAt: job.finishedAt?.toISOString() ?? null,
     createdBy: job.createdBy,
@@ -124,6 +127,9 @@ async function run(jobId: string, token: string, work: JobWork) {
           data: { progressDone: done, progressTotal: total },
         });
       },
+      setResult: async (result) => {
+        await prisma.aiJob.update({ where: { id: jobId }, data: { result } });
+      },
     });
 
     await prisma.aiJob.update({
@@ -166,12 +172,15 @@ async function sweepInterrupted(where: Prisma.AiJobWhereInput) {
   });
 }
 
-export async function listJobs(projectId: string, limit = 10): Promise<AiJobDto[]> {
+export async function listJobs(
+  projectId: string,
+  options: { kinds?: AiJobKind[]; limit?: number } = {},
+): Promise<AiJobDto[]> {
   await sweepInterrupted({ projectId });
   const jobs = await prisma.aiJob.findMany({
-    where: { projectId },
+    where: { projectId, ...(options.kinds ? { kind: { in: options.kinds } } : {}) },
     orderBy: { createdAt: "desc" },
-    take: limit,
+    take: options.limit ?? 10,
     include: jobInclude,
   });
   return jobs.map(toDto);

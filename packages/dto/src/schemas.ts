@@ -420,6 +420,21 @@ export const testRunCreateSchema = z
 
 export type TestRunCreateInput = z.input<typeof testRunCreateSchema>;
 
+export const scriptWritingSchema = z.object({
+  environmentId: z.string().min(1, "Select an environment"),
+  /** Where a Web script starts, relative to the Web base URL. */
+  startPath: z
+    .string()
+    .trim()
+    .max(500)
+    .default("/")
+    .transform((v) => (v.startsWith("/") ? v : `/${v}`)),
+  /** Anything the steps leave out, e.g. "the OTP on SIT is always 000000". */
+  instructions: optionalText(2000),
+});
+
+export type ScriptWritingInput = z.input<typeof scriptWritingSchema>;
+
 // ---------------------------------------------------------------------------
 // List query params
 // ---------------------------------------------------------------------------

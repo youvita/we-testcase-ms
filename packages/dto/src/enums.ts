@@ -152,6 +152,8 @@ export type RequirementDocKind = (typeof REQUIREMENT_DOC_KINDS)[number];
 export const AI_JOB_KINDS = [
   "EXTRACT_REQUIREMENTS",
   "GENERATE_TEST_CASES",
+  "WRITE_SCRIPT",
+  "TRIAGE_FAILURE",
 ] as const;
 export type AiJobKind = (typeof AI_JOB_KINDS)[number];
 
@@ -192,6 +194,18 @@ export const RUN_ITEM_STATUSES = [
   "SKIPPED",
 ] as const;
 export type RunItemStatus = (typeof RUN_ITEM_STATUSES)[number];
+
+export const TEST_RUN_PURPOSES = ["RUN", "SCRIPT_CHECK"] as const;
+export type TestRunPurpose = (typeof TEST_RUN_PURPOSES)[number];
+
+/** How Claude reads a failed automated result. */
+export const TRIAGE_CATEGORIES = [
+  "product_bug",
+  "script_issue",
+  "environment",
+  "unclear",
+] as const;
+export type TriageCategory = (typeof TRIAGE_CATEGORIES)[number];
 
 /** Platforms the runner can execute today. Mobile needs device tooling. */
 export const AUTOMATABLE_PLATFORMS = ["WEB", "API"] as const;

@@ -85,7 +85,7 @@ export type ExecutionWithDetails = TestExecution & {
   tester: Pick<User, "id" | "name" | "email" | "image">;
   attachments: Attachment[];
   /** Present when an automated run recorded this result. */
-  runItem?: { id: string; run: { id: string; number: number } } | null;
+  runItem?: { id: string; run: { id: string; number: number | null } } | null;
 };
 
 export type TestCaseListItem = Pick<

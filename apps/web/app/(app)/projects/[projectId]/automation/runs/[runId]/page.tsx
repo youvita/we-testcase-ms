@@ -32,6 +32,8 @@ export default async function RunPage({
   const belongs = await prisma.testRun.count({ where: { id: runId, projectId } });
   if (!belongs) notFound();
 
+  const title = run.number ? `Run #${run.number}` : "Script check";
+
   return (
     <div className="space-y-6">
       <Breadcrumbs
@@ -39,10 +41,17 @@ export default async function RunPage({
           { label: "Projects", href: "/projects" },
           { label: project.name, href: `/projects/${projectId}` },
           { label: "Automation", href: `/projects/${projectId}/automation` },
-          { label: `Run #${run.number}` },
+          { label: title },
         ]}
       />
-      <PageHeader title={`Run #${run.number}`} />
+      <PageHeader
+        title={title}
+        description={
+          run.purpose === "SCRIPT_CHECK"
+            ? "Claude tried a draft script here while writing it. Nothing was recorded on the test case."
+            : undefined
+        }
+      />
       <RunDetail projectId={projectId} run={run} canManage={canManageTestCases(user.role)} />
     </div>
   );

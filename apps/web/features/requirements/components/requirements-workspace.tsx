@@ -76,7 +76,9 @@ export function RequirementsWorkspace({
     const timer = setInterval(async () => {
       let next: AiJobDto[];
       try {
-        next = await api.get<AiJobDto[]>(`/api/projects/${projectId}/ai-jobs`);
+        next = await api.get<AiJobDto[]>(
+          `/api/projects/${projectId}/ai-jobs?kind=EXTRACT_REQUIREMENTS&kind=GENERATE_TEST_CASES`,
+        );
       } catch {
         return; // A missed poll is retried on the next tick.
       }

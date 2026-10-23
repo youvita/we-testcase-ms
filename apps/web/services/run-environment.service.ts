@@ -144,6 +144,21 @@ export async function deleteRunEnvironment(environmentId: string) {
   await prisma.runEnvironment.delete({ where: { id: environmentId } });
 }
 
+/** Variable names only — what Claude is told exists, never the values. */
+export async function getEnvironmentOutline(environmentId: string, projectId: string) {
+  const row = await prisma.runEnvironment.findFirst({
+    where: { id: environmentId, projectId },
+  });
+  if (!row) throw notFound("Environment");
+  return {
+    id: row.id,
+    name: row.name,
+    webBaseUrl: row.webBaseUrl,
+    apiBaseUrl: row.apiBaseUrl,
+    variables: readVariables(row.variablesSealed).map((v) => ({ key: v.key, secret: v.secret })),
+  };
+}
+
 /** Everything the runner needs, secrets included. Never send this to a browser. */
 export async function resolveEnvironmentForRunner(environmentId: string | null) {
   if (!environmentId) return null;

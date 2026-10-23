@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ChevronDown, ChevronRight, Download, Loader2, Square } from "lucide-react";
+import { ChevronDown, ChevronRight, Download, Loader2, Sparkles, Square } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -11,11 +11,13 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { PlatformBadge } from "@/components/shared/priority-badge";
 import { withBasePath } from "@/lib/base-path";
-import type { TestRunDetailDto, TestRunItemDto } from "@wetestcase/dto";
-import { api, errorMessage } from "@/utils/api-client";
+import { ClaudeConnectionDialog } from "@/features/ai/components/claude-connection-dialog";
+import type { AiJobDto, TestRunDetailDto, TestRunItemDto } from "@wetestcase/dto";
+import { ApiError, api, errorMessage } from "@/utils/api-client";
 import { formatBytes, formatDateTime } from "@/utils/format";
 
 import { RunStatusBadge, formatDuration, isRunActive } from "./run-status-badge";
+import { TriageCard } from "./triage-card";
 
 const POLL_MS = 2500;
 
@@ -31,7 +33,70 @@ export function RunDetail({
   const router = useRouter();
   const [run, setRun] = useState(initial);
   const [cancelling, setCancelling] = useState(false);
+  /** Triage jobs in flight, by run item. */
+  const [triaging, setTriaging] = useState<Record<string, string>>({});
+  const [connectOpen, setConnectOpen] = useState(false);
+  const retryRef = useRef<(() => void) | null>(null);
   const active = isRunActive(run.status);
+
+  const refetch = useCallback(async () => {
+    setRun(await api.get<TestRunDetailDto>(`/api/test-runs/${run.id}`));
+  }, [run.id]);
+
+  // Follow the triage jobs; when one ends, reload the run for its verdict.
+  const pendingJobs = Object.values(triaging).join(",");
+  useEffect(() => {
+    if (!pendingJobs) return;
+    const timer = setInterval(async () => {
+      const finished: string[] = [];
+      for (const [itemId, jobId] of Object.entries(triaging)) {
+        try {
+          const job = await api.get<AiJobDto>(`/api/ai-jobs/${jobId}`);
+          if (job.status === "SUCCEEDED" || job.status === "FAILED") {
+            finished.push(itemId);
+            if (job.status === "FAILED") toast.error(job.error ?? "Claude could not explain this failure");
+          }
+        } catch {
+          // Retried on the next tick.
+        }
+      }
+      if (finished.length) {
+        setTriaging((current) => {
+          const next = { ...current };
+          for (const id of finished) delete next[id];
+          return next;
+        });
+        await refetch().catch(() => undefined);
+      }
+    }, POLL_MS);
+    return () => clearInterval(timer);
+  }, [pendingJobs, triaging, refetch]);
+
+  async function explain(itemIds: string[] | "all") {
+    try {
+      const jobs =
+        itemIds === "all"
+          ? await api.post<AiJobDto[]>(`/api/test-runs/${run.id}/triage`)
+          : [await api.post<AiJobDto>(`/api/run-items/${itemIds[0]}/triage`)];
+      const ids = itemIds === "all" ? unexplained.map((item) => item.id) : itemIds;
+      setTriaging((current) => {
+        const next = { ...current };
+        jobs.forEach((job, index) => {
+          const itemId = ids[index];
+          if (itemId) next[itemId] = job.id;
+        });
+        return next;
+      });
+      toast.message(jobs.length === 1 ? "Claude is looking at it…" : `Claude is looking at ${jobs.length} failures…`);
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 412) {
+        retryRef.current = () => void explain(itemIds);
+        setConnectOpen(true);
+      } else {
+        toast.error(errorMessage(error));
+      }
+    }
+  }
 
   useEffect(() => setRun(initial), [initial]);
 
@@ -64,6 +129,9 @@ export function RunDetail({
   }
 
   const done = run.items.filter((item) => item.status !== "QUEUED").length;
+  const unexplained = run.items.filter(
+    (item) => (item.status === "FAILED" || item.status === "ERROR") && !item.triage && !triaging[item.id],
+  );
 
   return (
     <div className="space-y-4">
@@ -83,6 +151,12 @@ export function RunDetail({
                 {!run.recordResults && " · results not recorded"}
               </span>
             </div>
+            {canManage && !active && unexplained.length > 0 && (
+              <Button size="sm" variant="outline" onClick={() => void explain("all")}>
+                <Sparkles className="mr-2 size-4" />
+                Explain {unexplained.length} failure{unexplained.length === 1 ? "" : "s"} with Claude
+              </Button>
+            )}
             {canManage && active && (
               <Button
                 size="sm"
@@ -116,15 +190,47 @@ export function RunDetail({
       <Card>
         <CardContent className="divide-y p-0">
           {run.items.map((item) => (
-            <RunItemRow key={item.id} projectId={projectId} item={item} />
+            <RunItemRow
+              key={item.id}
+              projectId={projectId}
+              item={item}
+              canManage={canManage}
+              triaging={Boolean(triaging[item.id])}
+              onExplain={() => void explain([item.id])}
+            />
           ))}
         </CardContent>
       </Card>
+
+      <ClaudeConnectionDialog
+        open={connectOpen}
+        onOpenChange={(open) => {
+          setConnectOpen(open);
+          if (!open) retryRef.current = null;
+        }}
+        onConnected={() => {
+          const retry = retryRef.current;
+          retryRef.current = null;
+          retry?.();
+        }}
+      />
     </div>
   );
 }
 
-function RunItemRow({ projectId, item }: { projectId: string; item: TestRunItemDto }) {
+function RunItemRow({
+  projectId,
+  item,
+  canManage,
+  triaging,
+  onExplain,
+}: {
+  projectId: string;
+  item: TestRunItemDto;
+  canManage: boolean;
+  triaging: boolean;
+  onExplain: () => void;
+}) {
   // Failures open by default — they are what someone came to look at.
   const [open, setOpen] = useState(item.status === "FAILED" || item.status === "ERROR");
   const artifactUrl = (index: number) => withBasePath(`/api/run-items/${item.id}/artifacts/${index}`);
@@ -168,6 +274,18 @@ function RunItemRow({ projectId, item }: { projectId: string; item: TestRunItemD
             <p className="text-xs text-muted-foreground">
               The script itself failed to run, so no result was recorded on the test case. Fix the script and run it again.
             </p>
+          )}
+
+          {item.triage ? (
+            <TriageCard triage={item.triage} testCaseId={item.testCase.id} canManage={canManage} />
+          ) : (
+            canManage &&
+            (item.status === "FAILED" || item.status === "ERROR") && (
+              <Button size="sm" variant="outline" disabled={triaging} onClick={onExplain}>
+                {triaging ? <Loader2 className="mr-2 size-4 animate-spin" /> : <Sparkles className="mr-2 size-4" />}
+                {triaging ? "Claude is looking…" : "Ask Claude why"}
+              </Button>
+            )
           )}
 
           {screenshots.length > 0 && (
@@ -228,6 +346,9 @@ function RunItemRow({ projectId, item }: { projectId: string; item: TestRunItemD
               </pre>
             </details>
           )}
+          {item.artifacts.some((a) => a.kind === "snapshot") && (
+            <SnapshotDetails url={artifactUrl(item.artifacts.find((a) => a.kind === "snapshot")!.index)} />
+          )}
           <details>
             <summary className="cursor-pointer text-xs text-muted-foreground">Script as it ran</summary>
             <pre className="mt-1 max-h-80 overflow-auto rounded-md bg-muted p-3 font-mono text-xs">{item.code}</pre>
@@ -235,5 +356,29 @@ function RunItemRow({ projectId, item }: { projectId: string; item: TestRunItemD
         </div>
       )}
     </div>
+  );
+}
+
+/** The page outline at the end of the test, fetched only when opened. */
+function SnapshotDetails({ url }: { url: string }) {
+  const [text, setText] = useState<string | null>(null);
+  return (
+    <details
+      onToggle={(event) => {
+        if ((event.currentTarget as HTMLDetailsElement).open && text === null) {
+          fetch(url)
+            .then((response) => response.text())
+            .then(setText)
+            .catch(() => setText("Could not load the page outline."));
+        }
+      }}
+    >
+      <summary className="cursor-pointer text-xs text-muted-foreground">
+        Page outline at the end (what Claude reads)
+      </summary>
+      <pre className="mt-1 max-h-80 overflow-auto whitespace-pre-wrap rounded-md bg-muted p-3 font-mono text-xs">
+        {text ?? "Loading…"}
+      </pre>
+    </details>
   );
 }

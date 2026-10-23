@@ -109,6 +109,10 @@ enum RequirementDocKind {
 enum AiJobKind {
   EXTRACT_REQUIREMENTS
   GENERATE_TEST_CASES
+  /// Write a test case's Playwright script: draft, run, repair.
+  WRITE_SCRIPT
+  /// Explain why an automated result failed.
+  TRIAGE_FAILURE
 }
 
 enum AiJobStatus {
@@ -135,6 +139,13 @@ enum TestRunStatus {
   /// Says nothing about the product.
   ERROR
   CANCELLED
+}
+
+/// Why a run exists. Script checks are Claude trying a draft while writing a
+/// script: they never record results and stay out of the runs list.
+enum TestRunPurpose {
+  RUN
+  SCRIPT_CHECK
 }
 
 enum RunItemStatus {
@@ -574,6 +585,8 @@ model AiJob {
   /// One line on what it achieved, shown when it succeeds.
   summary       String?
   error         String?
+  /// What a job produced beyond its summary, e.g. the written script.
+  result        Json?
   createdAt     DateTime    @default(now())
   startedAt     DateTime?
   finishedAt    DateTime?
@@ -676,10 +689,12 @@ model AutomationScript {
 /// Queued here, then claimed and executed by the runner service, which
 /// reports each item back. See services/test-run.service.ts.
 model TestRun {
-  id     String        @id @default(cuid())
-  /// "Run #12" — counted per project.
-  number Int
-  status TestRunStatus @default(QUEUED)
+  id      String         @id @default(cuid())
+  /// "Run #12" — counted per project. Null for script checks, which are
+  /// not runs anyone started and should not use up numbers.
+  number  Int?
+  purpose TestRunPurpose @default(RUN)
+  status  TestRunStatus  @default(QUEUED)
 
   /// Write results to the test cases as executions, as a manual run would.
   recordResults Boolean @default(true)
@@ -745,6 +760,11 @@ model TestRunItem {
 
   testCaseId String
   testCase   TestCase @relation(fields: [testCaseId], references: [id], onDelete: Cascade)
+
+  /// Claude's reading of a failure: `{ category, summary, explanation,
+  /// fixedCode?, bugReport? }`. Set by a TRIAGE_FAILURE job.
+  triage    Json?
+  triagedAt DateTime?
 
   /// The execution recorded from this result, when the run records results.
   executionId String?        @unique

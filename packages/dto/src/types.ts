@@ -9,8 +9,10 @@ import type {
   RequirementDocKind,
   Role,
   RunItemStatus,
+  TestRunPurpose,
   TestRunStatus,
   TestType,
+  TriageCategory,
 } from "./enums";
 
 /** Counts of test cases by execution status, plus derived totals. */
@@ -141,6 +143,8 @@ export type AiJobDto = {
   summary: string | null;
   error: string | null;
   docId: string | null;
+  /** What the job produced, e.g. ScriptWritingResult for WRITE_SCRIPT. */
+  result: unknown;
   createdAt: string;
   finishedAt: string | null;
   createdBy: { id: string; name: string };
@@ -214,7 +218,9 @@ export type RunEnvironmentDto = {
 
 export type TestRunDto = {
   id: string;
-  number: number;
+  /** Null for script checks. */
+  number: number | null;
+  purpose: TestRunPurpose;
   status: TestRunStatus;
   environmentName: string;
   recordResults: boolean;
@@ -243,9 +249,51 @@ export type TestRunItemDto = {
   /** Served at /api/run-items/:id/artifacts/:index. */
   artifacts: RunArtifactDto[];
   executionId: string | null;
+  triage: RunTriageDto | null;
 };
 
-export type RunArtifactKind = "screenshot" | "video" | "trace";
+/**
+ * "snapshot" is Playwright's text outline of the page when the test ended:
+ * every field and button with its role and name. Claude reads it to find
+ * what is actually on the page.
+ */
+export type RunArtifactKind = "screenshot" | "video" | "trace" | "snapshot";
+
+export type RunTriageDto = {
+  category: TriageCategory;
+  summary: string;
+  explanation: string;
+  /** A corrected script, when the script is at fault. */
+  fixedCode: string | null;
+  /** A ready-to-file report, when the product is at fault. */
+  bugReport: {
+    title: string;
+    steps: string;
+    expected: string;
+    actual: string;
+  } | null;
+  triagedAt: string;
+};
+
+/** What a WRITE_SCRIPT job leaves in `AiJobDto.result`. */
+export type ScriptWritingResult = {
+  testCaseId: string;
+  /**
+   * passed      — the script ran green against the environment
+   * product_bug — the script reaches the check and the product fails it
+   * needs_info  — Claude cannot go further without something only QA knows
+   * failing     — still failing after every attempt
+   */
+  outcome: "passed" | "product_bug" | "needs_info" | "failing";
+  code: string;
+  notes: string;
+  attempts: {
+    code: string;
+    runId: string;
+    status: RunItemStatus;
+    error: string | null;
+  }[];
+};
 
 export type RunArtifactDto = {
   index: number;
@@ -260,7 +308,8 @@ export type TestRunDetailDto = TestRunDto & { items: TestRunItemDto[] };
 // --- Runner protocol (apps/runner ↔ /api/runner/*) ------------------------
 
 export type RunnerJob = {
-  run: { id: string; number: number; projectName: string };
+  /** `label` is "Run #12" or "Script check", for logs. */
+  run: { id: string; label: string; projectName: string };
   environment: {
     name: string;
     webBaseUrl: string | null;
