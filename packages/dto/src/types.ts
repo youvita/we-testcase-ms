@@ -387,6 +387,11 @@ export type RunnerJob = {
     apiBaseUrl: string | null;
     /** Every variable, secrets included, decrypted for this run only. */
     vars: Record<string, string>;
+    /**
+     * Which of `vars` are secret. Their values are masked in everything the
+     * runner sends back — page outlines record what was typed into fields.
+     */
+    secretKeys: string[];
   };
   items: {
     id: string;

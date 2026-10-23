@@ -18,6 +18,7 @@
  *   RUNNER_NAME    shown on runs                      default: hostname
  *   WORKERS        parallel tests per run             default: 2
  *   TEST_TIMEOUT_MS  per test                         default: 60000
+ *   EXPECT_TIMEOUT_MS  how long a check waits         default: 15000
  *   WORK_DIR       scratch space                      default: <runner>/.work
  *   HEADED=1       show the browser window — only where the runner has a
  *                  screen, i.e. run on your own Mac, not in Docker
@@ -52,6 +53,9 @@ const RUNNER_TOKEN = required("RUNNER_TOKEN");
 const RUNNER_NAME = process.env.RUNNER_NAME?.trim() || hostname();
 const WORKERS = Math.max(1, Number(process.env.WORKERS) || 2);
 const TEST_TIMEOUT_MS = Math.max(5_000, Number(process.env.TEST_TIMEOUT_MS) || 60_000);
+// Playwright's own default is 5 s, too short for slow test environments: a
+// login whose redirect took 6 s failed although it worked.
+const EXPECT_TIMEOUT_MS = Math.max(1_000, Number(process.env.EXPECT_TIMEOUT_MS) || 15_000);
 const HEADED = process.env.HEADED === "1";
 const POLL_MS = 3_000;
 const HEARTBEAT_MS = 10_000;
@@ -129,6 +133,11 @@ const env = ${JSON.stringify(env)};
 const vars = ${JSON.stringify(job.environment.vars)};
 const requestRoot = ${JSON.stringify(requestRoot)};
 
+// Secret values never leave the test: the outline records what was typed
+// into fields, a password included.
+const secrets = ${JSON.stringify(job.environment.secretKeys)}.map((k) => vars[k]).filter((v) => v && v.length >= 3);
+const mask = (text) => secrets.reduce((out, secret) => out.split(secret).join("••••"), String(text));
+
 // Paths join onto the base URL as text: "/users" on ".../api/v1" is
 // ".../api/v1/users". Standard URL resolution would drop "/api/v1", which is
 // never what a tester means. Full URLs are left alone.
@@ -144,7 +153,7 @@ const join = (root, url) =>
 const failedRequests = [];
 const noteFailure = (method, url, status, statusText) => {
   if (failedRequests.length < 50) {
-    failedRequests.push({ method, url: String(url).slice(0, 300), status, statusText: String(statusText ?? "") });
+    failedRequests.push({ method, url: mask(String(url).slice(0, 300)), status, statusText: mask(String(statusText ?? "")) });
   }
 };
 const worthNoting = (type) => type === "document" || type === "xhr" || type === "fetch";
@@ -233,7 +242,7 @@ test.afterEach(async ({ page }, testInfo) => {
   try {
     const outline = await page.locator("body").ariaSnapshot({ timeout: 5000 });
     await testInfo.attach("page-snapshot", {
-      body: "URL: " + page.url() + "\\nTitle: " + (await page.title()) + "\\n\\n" + outline.slice(0, 60000),
+      body: mask("URL: " + page.url() + "\\nTitle: " + (await page.title()) + "\\n\\n" + outline.slice(0, 60000)),
       contentType: "text/plain",
     });
   } catch {
@@ -263,6 +272,7 @@ export default defineConfig({
   fullyParallel: ${!job.run.inOrder},
   workers: ${job.run.inOrder ? 1 : WORKERS},
   timeout: ${TEST_TIMEOUT_MS},
+  expect: { timeout: ${EXPECT_TIMEOUT_MS} },
   retries: 0,
   reporter: [["json", { outputFile: "report.json" }]],
   use: {
@@ -375,13 +385,23 @@ const ARTIFACT_FIELDS: Record<string, "screenshot" | "video" | "trace" | "snapsh
   "network-errors": "network",
 };
 
+/** The current run's secret values, masked out of what is reported. */
+let currentSecrets: string[] = [];
+const maskSecrets = (text: string | undefined) =>
+  text === undefined
+    ? undefined
+    : currentSecrets.reduce((out, secret) => out.split(secret).join("••••"), text);
+
 async function reportItem(
   itemId: string,
   result: RunnerItemResult,
   attachments: ReportAttachment[] = [],
 ) {
   const form = new FormData();
-  form.append("result", JSON.stringify(result));
+  form.append(
+    "result",
+    JSON.stringify({ ...result, error: maskSecrets(result.error), log: maskSecrets(result.log) }),
+  );
   for (const attachment of attachments) {
     const field = ARTIFACT_FIELDS[attachment.name];
     if (!field || (!attachment.path && !attachment.body)) continue;
@@ -484,6 +504,9 @@ async function setAsideBrokenSpecs(
 }
 
 async function executeRun(job: RunnerJob) {
+  currentSecrets = job.environment.secretKeys
+    .map((key) => job.environment.vars[key])
+    .filter((value): value is string => typeof value === "string" && value.length >= 3);
   const dir = path.join(WORK_DIR, `run-${job.run.id}`);
   const label = `${job.run.label} (${job.run.projectName}, ${job.items.length} case${job.items.length === 1 ? "" : "s"}, ${job.environment.name})`;
   log(`starting ${label}`);
@@ -609,7 +632,7 @@ for (const signal of ["SIGINT", "SIGTERM"] as const) {
 async function main() {
   await mkdir(WORK_DIR, { recursive: true });
   log(
-    `${RUNNER_NAME} polling ${APP_URL} (workers ${WORKERS}, timeout ${TEST_TIMEOUT_MS / 1000} s${HEADED ? ", headed" : ""})`,
+    `${RUNNER_NAME} polling ${APP_URL} (workers ${WORKERS}, test ${TEST_TIMEOUT_MS / 1000} s, checks ${EXPECT_TIMEOUT_MS / 1000} s${HEADED ? ", headed" : ""})`,
   );
 
   let failures = 0;

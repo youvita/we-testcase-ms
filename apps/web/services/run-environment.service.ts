@@ -172,12 +172,12 @@ export async function resolveEnvironmentForRunner(environmentId: string | null) 
     where: { id: environmentId },
   });
   if (!row) return null;
+  const variables = readVariables(row.variablesSealed);
   return {
     name: row.name,
     webBaseUrl: row.webBaseUrl,
     apiBaseUrl: row.apiBaseUrl,
-    vars: Object.fromEntries(
-      readVariables(row.variablesSealed).map((v) => [v.key, v.value]),
-    ),
+    vars: Object.fromEntries(variables.map((v) => [v.key, v.value])),
+    secretKeys: variables.filter((v) => v.secret).map((v) => v.key),
   };
 }
