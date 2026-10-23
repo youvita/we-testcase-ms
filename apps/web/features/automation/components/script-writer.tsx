@@ -217,13 +217,18 @@ export function ScriptWritingPanel({
   job,
   savedCode,
   onUse,
+  onContinue,
 }: {
   projectId: string;
   job: AiJobDto;
   /** The script saved on the case, to tell when Claude's is already in use. */
   savedCode: string | null;
   onUse: (code: string) => void;
+  /** Keep trying from this result with QA's hint; resolves true once started. */
+  onContinue?: (hint: string) => Promise<boolean>;
 }) {
+  const [hint, setHint] = useState("");
+  const [continuing, setContinuing] = useState(false);
   const result = job.result as ScriptWritingResult | null;
   const active = job.status === "QUEUED" || job.status === "RUNNING";
   const outcome = result && !active && job.status === "SUCCEEDED" ? OUTCOMES[result.outcome] : null;
@@ -288,6 +293,46 @@ export function ScriptWritingPanel({
             </summary>
             <pre className="mt-1 max-h-72 overflow-auto rounded-md bg-background p-3 font-mono text-xs">{result.code}</pre>
           </details>
+          {onContinue && (
+            <div className="space-y-2 rounded-md border bg-background p-3">
+              <Label htmlFor={`hint-${job.id}`} className="text-xs">
+                {result.outcome === "passed"
+                  ? "Want it changed? Tell Claude how"
+                  : "Tell Claude what it got wrong, or what it cannot see"}
+              </Label>
+              <Textarea
+                id={`hint-${job.id}`}
+                rows={3}
+                value={hint}
+                onChange={(e) => setHint(e.target.value)}
+                placeholder={
+                  result.outcome === "passed"
+                    ? "e.g. Also check that the phone number is saved."
+                    : 'e.g. Click "New", then the "Customer" button (it is a button, not a menu item). The form has English Name, Khmer Name and Phone; save with "Save".'
+                }
+                className="text-sm"
+              />
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={continuing || hint.trim().length < 3}
+                onClick={async () => {
+                  setContinuing(true);
+                  try {
+                    if (await onContinue(hint.trim())) setHint("");
+                  } finally {
+                    setContinuing(false);
+                  }
+                }}
+              >
+                {continuing ? <Loader2 className="mr-2 size-4 animate-spin" /> : <Sparkles className="mr-2 size-4" />}
+                {result.outcome === "passed" ? "Improve it" : "Keep trying"}
+              </Button>
+              <p className="text-xs text-muted-foreground">
+                Claude picks up from this script and where it stopped, with three more tries.
+              </p>
+            </div>
+          )}
           {savedCode?.trim() === result.code.trim() ? (
             <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
               <CheckCircle2 className="size-3.5 text-status-passed" />

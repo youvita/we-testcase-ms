@@ -162,14 +162,28 @@ function repairPrompt(options: {
   log: string | null;
   snapshot: string | null;
   hasScreenshot: boolean;
+  /** QA's hint after seeing earlier tries. */
+  hint?: string;
 }) {
+  const passed = options.status === "PASSED";
   return `${describeCase(options.testCase)}
 
 ${describeEnvironment(options.env)}
 
 In scope: ${fixturesFor(options.testCase.platform)}, plus expect, vars and env.
-${options.instructions ? `\nInstructions from QA: ${options.instructions}\n` : ""}
-Attempt ${options.attempt} of the script ran against ${options.env.name} and did not pass.
+${options.instructions ? `\nInstructions from QA: ${options.instructions}\n` : ""}${
+    options.hint
+      ? `
+Hint from QA after watching your earlier tries — it is first-hand knowledge of the application, so trust it over anything you assumed:
+${options.hint}
+`
+      : ""
+  }
+${
+  passed
+    ? `The script below ran against ${options.env.name} and passed. QA wants it changed as the hint says.`
+    : `Attempt ${options.attempt} of the script ran against ${options.env.name} and did not pass.`
+}
 
 \`\`\`ts
 ${options.code}
@@ -215,6 +229,12 @@ export async function startScriptWriting(
     autoSave?: boolean;
     /** Groups the jobs of one "write scripts for these cases". */
     batchId?: string;
+    /**
+     * Pick up from an earlier script-writing job for this case — its last
+     * script and where it stopped — with a hint from QA, instead of starting
+     * over.
+     */
+    continueFrom?: { jobId: string; hint: string };
   },
 ): Promise<AiJobDto> {
   const testCase = await prisma.testCase.findUnique({
@@ -256,6 +276,24 @@ export async function startScriptWriting(
   });
   if (busy) throw badRequest("Claude is already writing a script for this case.");
 
+  let earlier: ScriptWritingResult | null = null;
+  if (input.continueFrom) {
+    const job = await prisma.aiJob.findUnique({
+      where: { id: input.continueFrom.jobId },
+      select: { kind: true, status: true, result: true, input: true },
+    });
+    earlier = (job?.result as ScriptWritingResult | null) ?? null;
+    if (
+      !job ||
+      job.kind !== "WRITE_SCRIPT" ||
+      job.status !== "SUCCEEDED" ||
+      earlier?.testCaseId !== testCaseId ||
+      !earlier.code
+    ) {
+      throw badRequest("There is no finished script from Claude on this case to continue from.");
+    }
+  }
+
   return enqueueJob(
     {
       projectId: testCase.projectId,
@@ -265,7 +303,9 @@ export async function startScriptWriting(
     },
     async ({ token, progress, setResult }) => {
       const isWeb = testCase.platform === "WEB";
-      const total = MAX_ATTEMPTS + (isWeb ? 1 : 0);
+      // One step before the tries: the start-page look, or picking up the
+      // earlier script.
+      const total = MAX_ATTEMPTS + (isWeb || earlier ? 1 : 0);
       let step = 0;
       await progress(step, total);
 
@@ -298,12 +338,34 @@ export async function startScriptWriting(
         return { runId: run.id, item, runError: run.error };
       };
 
-      // 1. Look at the start page before writing anything.
+      // 1. Look at the start page before writing anything — or, continuing,
+      //    at where the earlier script stopped.
       let evidence: { snapshot: string | null; screenshot: ClaudeImage | null } = {
         snapshot: null,
         screenshot: null,
       };
-      if (isWeb) {
+      let previous: { code: string; status: string; error: string | null; log: string | null } | null = null;
+      if (earlier) {
+        const last = earlier.attempts.at(-1);
+        const lastItem =
+          last && last.code === earlier.code
+            ? await prisma.testRunItem.findFirst({
+                where: { runId: last.runId },
+                select: { id: true, status: true, error: true, log: true },
+              })
+            : null;
+        if (lastItem) {
+          previous = { code: earlier.code, status: lastItem.status, error: lastItem.error, log: lastItem.log };
+          evidence = await readItemEvidence(lastItem.id);
+        } else {
+          // The earlier job ended on a script it never ran (it judged a
+          // product bug or needed information): run it now to see.
+          const check = await tryScript(earlier.code);
+          previous = { code: earlier.code, status: check.item.status, error: check.item.error, log: check.item.log };
+          evidence = await readItemEvidence(check.item.id);
+        }
+        await progress(++step, total);
+      } else if (isWeb) {
         const probe = await tryScript(`await page.goto(${JSON.stringify(startPath)});`);
         if (probe.item.status !== "PASSED") {
           throw new AiError(
@@ -315,7 +377,6 @@ export async function startScriptWriting(
       }
 
       // 2. Draft, try, repair.
-      let previous: { code: string; status: string; error: string | null; log: string | null } | null = null;
       for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
         const reply = await askClaude({
           token,
@@ -326,10 +387,13 @@ export async function startScriptWriting(
                 testCase,
                 env,
                 instructions: input.instructions,
-                attempt: attempt - 1,
+                // Counting on from the earlier job's tries when continuing.
+                attempt: (earlier?.attempts.length ?? 0) + attempt - 1,
                 ...previous,
                 snapshot: evidence.snapshot,
                 hasScreenshot: Boolean(evidence.screenshot),
+                // The hint is the reason for this job; it goes with every try.
+                hint: input.continueFrom?.hint,
               })
             : firstDraftPrompt({
                 testCase,

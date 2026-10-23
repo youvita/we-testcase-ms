@@ -38,6 +38,7 @@ export {
   scriptWritingSchema,
   exploreAppSchema,
   scriptWritingBatchSchema,
+  scriptContinueSchema,
   type LoginInput,
   type RegisterInput,
   type ProfileInput,

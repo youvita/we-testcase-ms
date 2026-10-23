@@ -13,7 +13,7 @@ import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { ClaudeConnectionDialog } from "@/features/ai/components/claude-connection-dialog";
 import { isJobActive, useAiJob } from "@/features/ai/use-ai-job";
 import type { AiJobDto, Platform, RunEnvironmentDto, RunItemStatus } from "@wetestcase/dto";
-import { api, errorMessage } from "@/utils/api-client";
+import { ApiError, api, errorMessage } from "@/utils/api-client";
 import { formatRelative } from "@/utils/format";
 
 import { NewRunDialog } from "./new-run-dialog";
@@ -141,6 +141,28 @@ export function AutomationScriptCard({
     }
   }
 
+  /** Keep Claude going from its last result with QA's hint. */
+  async function continueWithHint(hint: string): Promise<boolean> {
+    if (!writeJob) return false;
+    try {
+      const job = await api.post<AiJobDto>(`/api/test-cases/${testCaseId}/script/continue`, {
+        jobId: writeJob.id,
+        hint,
+      });
+      setWriteJob(job);
+      toast.message("Claude is picking up from where it stopped…");
+      return true;
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 412) {
+        retryRef.current = () => void continueWithHint(hint);
+        setConnectOpen(true);
+      } else {
+        toast.error(errorMessage(error));
+      }
+      return false;
+    }
+  }
+
   /** Tab indents instead of leaving the editor. */
   function handleKeyDown(event: React.KeyboardEvent<HTMLTextAreaElement>) {
     if (event.key !== "Tab" || event.shiftKey) return;
@@ -190,6 +212,7 @@ export function AutomationScriptCard({
               setShowScript(true);
               toast.message("Script placed in the editor — review it, then save.");
             }}
+            onContinue={canManage ? continueWithHint : undefined}
           />
         )}
 

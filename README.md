@@ -332,7 +332,11 @@ screenshot and the outline of the page where it stopped, and repairs it — up
 to three tries. It stops early when it judges the product, not the script, is
 wrong (it never weakens an assertion to pass) or when it needs something only
 QA has, such as an account or an OTP bypass. QA reviews the result and chooses
-*Use this script*; nothing is saved on its own. For many cases at once, select them on the test case
+*Use this script*; nothing is saved on its own. When it gets stuck — a menu it
+misreads, a form it never reached — *Keep trying* takes a hint from QA ("Customer
+is a button, not a menu item") and continues from its last script and the page
+where it stopped, rather than starting over; on a passing script the same box
+(*Improve it*) asks for a change. For many cases at once, select them on the test case
 list and choose *Write scripts with Claude*: they are written one after
 another (they share one subscription), a script that passed can be saved
 straight away while anything else waits on its case for review, progress shows

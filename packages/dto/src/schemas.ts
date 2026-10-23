@@ -460,6 +460,15 @@ export const scriptWritingSchema = z.object({
 
 export type ScriptWritingInput = z.input<typeof scriptWritingSchema>;
 
+/** Keep trying from an earlier script-writing job, with a hint from QA. */
+export const scriptContinueSchema = z.object({
+  jobId: z.string().min(1),
+  hint: trimmed(2000).min(3, "Tell Claude what it got wrong or what it cannot see"),
+  ...liveViewFields,
+});
+
+export type ScriptContinueInput = z.input<typeof scriptContinueSchema>;
+
 /** Write scripts for several cases, one after another. */
 export const scriptWritingBatchSchema = z.object({
   testCaseIds: z
