@@ -1,7 +1,9 @@
 "use client";
 
-import { CheckCircle2, Clock, Loader2, XCircle } from "lucide-react";
+import { useState } from "react";
+import { CheckCircle2, Clock, Loader2, RotateCcw, XCircle } from "lucide-react";
 
+import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import type { AiJobDto, ExploreAppResult } from "@wetestcase/dto";
@@ -18,8 +20,21 @@ const KIND_LABELS: Record<AiJobDto["kind"], string> = {
 /** How many finished jobs to keep on screen under the running ones. */
 const RECENT = 3;
 
+/** The bridge's answer when the subscription token is missing or refused. */
+export function isSubscriptionError(error: string | null): boolean {
+  return /subscription/i.test(error ?? "");
+}
+
 /** Running AI work with its progress, and the last few results. */
-export function AiJobList({ jobs }: { jobs: AiJobDto[] }) {
+export function AiJobList({
+  jobs,
+  onRetry,
+}: {
+  jobs: AiJobDto[];
+  /** Start a failed job again with the same request; absent for viewers. */
+  onRetry?: (job: AiJobDto) => Promise<void>;
+}) {
+  const [retrying, setRetrying] = useState<string | null>(null);
   const active = jobs.filter(
     (job) => job.status === "QUEUED" || job.status === "RUNNING",
   );
@@ -66,12 +81,45 @@ export function AiJobList({ jobs }: { jobs: AiJobDto[] }) {
               {job.status === "FAILED" && job.error && (
                 <p className="text-status-failed">{job.error}</p>
               )}
+              {job.status === "FAILED" && onRetry && !isSuperseded(job, jobs) && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={retrying !== null}
+                  onClick={async () => {
+                    setRetrying(job.id);
+                    try {
+                      await onRetry(job);
+                    } finally {
+                      setRetrying(null);
+                    }
+                  }}
+                >
+                  {retrying === job.id ? (
+                    <Loader2 className="mr-2 size-4 animate-spin" />
+                  ) : (
+                    <RotateCcw className="mr-2 size-4" />
+                  )}
+                  {isSubscriptionError(job.error) ? "Reconnect and try again" : "Try again"}
+                </Button>
+              )}
             </div>
           </div>
         ))}
       </CardContent>
     </Card>
   );
+}
+
+/**
+ * Started again already: a later job of the same kind on the same document.
+ * Jobs arrive newest first.
+ */
+function isSuperseded(job: AiJobDto, jobs: AiJobDto[]): boolean {
+  const index = jobs.indexOf(job);
+  return jobs
+    .slice(0, index)
+    .some((later) => later.kind === job.kind && later.docId === job.docId);
 }
 
 function JobIcon({ status }: { status: AiJobDto["status"] }) {

@@ -16,7 +16,7 @@ import type {
 } from "@wetestcase/dto";
 import { ApiError, api, errorMessage } from "@/utils/api-client";
 
-import { AiJobList } from "./ai-job-list";
+import { AiJobList, isSubscriptionError } from "./ai-job-list";
 import { DocumentsPanel } from "./documents-panel";
 import { DraftsPanel } from "./drafts-panel";
 import { ExploreAppDialog, type SignInCase } from "./explore-app-dialog";
@@ -138,6 +138,23 @@ export function RequirementsWorkspace({
     }
   }, []);
 
+  /**
+   * Start a failed job over. When the subscription was the problem, connect
+   * it first — the same request would only be refused again.
+   */
+  const retryJob = useCallback(
+    async (job: AiJobDto) => {
+      const start = () => api.post<AiJobDto>(`/api/ai-jobs/${job.id}/retry`);
+      if (isSubscriptionError(job.error)) {
+        retryRef.current = () => void startAi(start);
+        setConnectOpen(true);
+        return;
+      }
+      await startAi(start);
+    },
+    [startAi],
+  );
+
   const activeDocIds = new Set(
     jobs.filter((job) => isActive(job) && job.docId).map((job) => job.docId!),
   );
@@ -147,7 +164,7 @@ export function RequirementsWorkspace({
 
   return (
     <div className="space-y-4">
-      <AiJobList jobs={jobs} />
+      <AiJobList jobs={jobs} onRetry={canManage ? retryJob : undefined} />
 
       <Tabs value={tab} onValueChange={setTab}>
         <TabsList>
