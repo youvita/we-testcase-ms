@@ -45,6 +45,18 @@ export function ScriptJobsPanel({
   const router = useRouter();
   const [rows, setRows] = useState(initialRows);
   const [hidden, setHidden] = useState(false);
+  // The batch this person closed, remembered in their browser, so a reload
+  // does not bring it back. Null until read: until then a finished batch
+  // is not drawn, so it never flashes up and away.
+  const [closedBatch, setClosedBatch] = useState<string | null | undefined>(undefined);
+  const storageKey = `wetestcase:closed-script-batch:${projectId}`;
+  useEffect(() => {
+    try {
+      setClosedBatch(window.localStorage.getItem(storageKey));
+    } catch {
+      setClosedBatch(null);
+    }
+  }, [storageKey]);
   const rowsRef = useRef(rows);
   rowsRef.current = rows;
 
@@ -87,7 +99,9 @@ export function ScriptJobsPanel({
   );
   const lastActivity = Math.max(0, ...shown.map((r) => new Date(r.createdAt).getTime()));
   const stale = !shown.some(active) && Date.now() - lastActivity > SHOW_FINISHED_FOR_MS;
-  if (hidden || shown.length === 0 || stale) return null;
+  const finished = !shown.some(active);
+  const closed = finished && (closedBatch === undefined || closedBatch === latestBatch);
+  if (hidden || closed || shown.length === 0 || stale) return null;
 
   const done = shown.filter((r) => !active(r)).length;
   const saved = shown.filter((r) => r.saved).length;
@@ -127,7 +141,19 @@ export function ScriptJobsPanel({
               </Button>
             )}
             {!running && (
-              <Button size="icon" variant="ghost" aria-label="Hide" onClick={() => setHidden(true)}>
+              <Button
+                size="icon"
+                variant="ghost"
+                aria-label="Close"
+                onClick={() => {
+                  setHidden(true);
+                  try {
+                    if (latestBatch) window.localStorage.setItem(storageKey, latestBatch);
+                  } catch {
+                    // Without storage it simply comes back on reload.
+                  }
+                }}
+              >
                 <X className="size-4" />
               </Button>
             )}
