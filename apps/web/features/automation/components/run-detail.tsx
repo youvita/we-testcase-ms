@@ -20,6 +20,8 @@ import { formatBytes, formatDateTime } from "@/utils/format";
 import { RunStatusBadge, formatDuration, isRunActive } from "./run-status-badge";
 import { LiveView } from "./live-view";
 import { TriageCard } from "./triage-card";
+import { CodeView } from "@/components/shared/code-view";
+import { errorHeadline, findErrorLine } from "@/utils/error-line";
 
 const POLL_MS = 2500;
 
@@ -256,6 +258,8 @@ function RunItemRow({
   // An exploration visits pages before any case exists for them.
   const testCase = item.testCase;
   const caseLabel = testCase?.tcId ?? "Explore";
+  const failingLine =
+    item.status === "FAILED" || item.status === "ERROR" ? findErrorLine(item.code, item.error) : null;
   const screenshots = item.artifacts.filter((a) => a.kind === "screenshot");
   const video = item.artifacts.find((a) => a.kind === "video");
   const trace = item.artifacts.find((a) => a.kind === "trace");
@@ -413,9 +417,17 @@ function RunItemRow({
           {item.artifacts.some((a) => a.kind === "snapshot") && (
             <SnapshotDetails url={artifactUrl(item.artifacts.find((a) => a.kind === "snapshot")!.index)} />
           )}
-          <details>
-            <summary className="cursor-pointer text-xs text-muted-foreground">Script as it ran</summary>
-            <pre className="mt-1 max-h-80 overflow-auto rounded-md bg-muted p-3 font-mono text-xs">{item.code}</pre>
+          <details open={Boolean(failingLine)}>
+            <summary className="cursor-pointer text-xs text-muted-foreground">
+              Script as it ran
+              {failingLine && <span className="text-status-failed"> — failed at line {failingLine}</span>}
+            </summary>
+            <CodeView
+              className="mt-1"
+              code={item.code}
+              errorLine={failingLine}
+              errorText={failingLine ? errorHeadline(item.error) : undefined}
+            />
           </details>
         </div>
       )}

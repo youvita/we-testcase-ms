@@ -43,6 +43,8 @@ import { ApiError, api, errorMessage } from "@/utils/api-client";
 
 import { LiveView, WatchLiveFields, type LiveChoice } from "./live-view";
 import { RunStatusBadge } from "./run-status-badge";
+import { CodeView } from "@/components/shared/code-view";
+import { errorHeadline, findErrorLine } from "@/utils/error-line";
 
 /**
  * Ask Claude to write the script. It tries each draft against the chosen
@@ -229,6 +231,16 @@ export function ScriptWritingPanel({
 }) {
   const [hint, setHint] = useState("");
   const [continuing, setContinuing] = useState(false);
+  // The last try's failure, located in the final script — by content, so it
+  // still lands right when the final script is that try's.
+  const lastFailure = (job.result as ScriptWritingResult | null)?.attempts
+    .filter((a) => a.status !== "PASSED")
+    .at(-1);
+  const lastAttempt = (job.result as ScriptWritingResult | null)?.attempts.at(-1);
+  const failingLine =
+    lastFailure && lastAttempt === lastFailure
+      ? findErrorLine((job.result as ScriptWritingResult).code, lastFailure.error)
+      : null;
   const result = job.result as ScriptWritingResult | null;
   const active = job.status === "QUEUED" || job.status === "RUNNING";
   const outcome = result && !active && job.status === "SUCCEEDED" ? OUTCOMES[result.outcome] : null;
@@ -269,7 +281,18 @@ export function ScriptWritingPanel({
                 className="truncate text-muted-foreground hover:underline"
                 title={attempt.error ?? undefined}
               >
-                {attempt.error ? attempt.error.split("\n")[0] : "see screenshot and trace"}
+                {attempt.error ? (
+                  <>
+                    {findErrorLine(attempt.code, attempt.error) && (
+                      <span className="font-medium text-status-failed">
+                        line {findErrorLine(attempt.code, attempt.error)}:{" "}
+                      </span>
+                    )}
+                    {errorHeadline(attempt.error)}
+                  </>
+                ) : (
+                  "see screenshot and trace"
+                )}
               </Link>
             </li>
           ))}
@@ -290,8 +313,16 @@ export function ScriptWritingPanel({
           <details>
             <summary className="cursor-pointer text-xs text-muted-foreground">
               Show the script Claude wrote
+              {lastFailure && failingLine && (
+                <span className="text-status-failed"> — failed at line {failingLine}</span>
+              )}
             </summary>
-            <pre className="mt-1 max-h-72 overflow-auto rounded-md bg-background p-3 font-mono text-xs">{result.code}</pre>
+            <CodeView
+              className="mt-1"
+              code={result.code}
+              errorLine={failingLine}
+              errorText={lastFailure ? errorHeadline(lastFailure.error) : undefined}
+            />
           </details>
           {onContinue && (
             <div className="space-y-2 rounded-md border bg-background p-3">

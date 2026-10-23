@@ -385,6 +385,22 @@ const ARTIFACT_FIELDS: Record<string, "screenshot" | "video" | "trace" | "snapsh
   "network-errors": "network",
 };
 
+/**
+ * Make an error's line numbers count from the top of the script, not of the
+ * generated spec around it — so "line 18" is line 18 of what QA sees. Lines
+ * of the wrapper itself (zero or below) keep their spec numbers.
+ */
+function renumber(text: string | undefined, offset: number): string | undefined {
+  if (!text || !offset) return text;
+  return text
+    .replace(/script:(\d+):(\d+)/g, (whole, line: string, col: string) =>
+      Number(line) - offset > 0 ? `script:${Number(line) - offset}:${col}` : whole,
+    )
+    .replace(/^(\s*>?\s*)(\d+)( \|)/gm, (whole, lead: string, line: string, bar: string) =>
+      Number(line) - offset > 0 ? `${lead}${Number(line) - offset}${bar}` : whole,
+    );
+}
+
 /** The current run's secret values, masked out of what is reported. */
 let currentSecrets: string[] = [];
 const maskSecrets = (text: string | undefined) =>
@@ -518,17 +534,21 @@ async function executeRun(job: RunnerJob) {
   await writeFile(path.join(dir, "package.json"), '{ "type": "commonjs" }\n');
   await writeFile(path.join(dir, "playwright.config.ts"), configSource(job));
   const fileToItem = new Map<string, RunnerJob["items"][number]>();
+  // How many lines of wrapper sit above each script in its spec.
+  const offsets = new Map<string, number>();
   for (const [index, item] of job.items.entries()) {
     const file = `${String(index + 1).padStart(4, "0")}-${item.id}.spec.ts`;
     fileToItem.set(file, item);
-    await writeFile(path.join(dir, file), specSource(job, item));
+    const spec = specSource(job, item);
+    offsets.set(item.id, spec.slice(0, spec.indexOf(item.code)).split("\n").length - 1);
+    await writeFile(path.join(dir, file), spec);
   }
 
   const { broken, fatal } = await setAsideBrokenSpecs(dir, [...fileToItem.keys()]);
   for (const [file, message] of broken) {
     const item = fileToItem.get(file)!;
     fileToItem.delete(file);
-    await reportItem(item.id, { status: "ERROR", error: message }).catch((error) =>
+    await reportItem(item.id, { status: "ERROR", error: renumber(message, offsets.get(item.id) ?? 0) }).catch((error) =>
       log(`could not report ${item.tcId}: ${(error as Error).message}`),
     );
   }
@@ -591,7 +611,12 @@ async function executeRun(job: RunnerJob) {
     const result = results[results.length - 1];
     try {
       if (result) {
-        await reportItem(item.id, itemResult(result), result.attachments);
+        const outcome = itemResult(result);
+        await reportItem(
+          item.id,
+          { ...outcome, error: renumber(outcome.error, offsets.get(item.id) ?? 0) },
+          result.attachments,
+        );
       } else if (!cancelled) {
         // Never ran: usually a script that does not compile, which Playwright
         // reports at the top level with the file it failed on.
