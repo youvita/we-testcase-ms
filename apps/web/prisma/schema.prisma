@@ -699,6 +699,14 @@ model TestRun {
   /// Write results to the test cases as executions, as a manual run would.
   recordResults Boolean @default(true)
 
+  /// Stream what the browser shows to the run page while it runs.
+  liveView  Boolean @default(false)
+  /// Pause between browser actions, so a person watching can follow.
+  slowMoMs  Int     @default(0)
+  /// Issued at claim time: the only credential the test processes get, and
+  /// good only for posting this run's live frames.
+  liveToken String?
+
   /// Copied at start, so renaming or deleting the environment later does not
   /// change what a past run says it ran against.
   environmentName String

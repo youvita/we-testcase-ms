@@ -224,6 +224,8 @@ export type TestRunDto = {
   status: TestRunStatus;
   environmentName: string;
   recordResults: boolean;
+  liveView: boolean;
+  slowMoMs: number;
   total: number;
   passed: number;
   failed: number;
@@ -287,6 +289,8 @@ export type ScriptWritingResult = {
   outcome: "passed" | "product_bug" | "needs_info" | "failing";
   code: string;
   notes: string;
+  /** The script check running right now, so the page can show it live. */
+  currentRunId?: string | null;
   attempts: {
     code: string;
     runId: string;
@@ -309,7 +313,15 @@ export type TestRunDetailDto = TestRunDto & { items: TestRunItemDto[] };
 
 export type RunnerJob = {
   /** `label` is "Run #12" or "Script check", for logs. */
-  run: { id: string; label: string; projectName: string };
+  run: {
+    id: string;
+    label: string;
+    projectName: string;
+    /** Pause between browser actions, in ms. */
+    slowMoMs: number;
+    /** Set when someone is watching: a token good only for this run's frames. */
+    liveToken: string | null;
+  };
   environment: {
     name: string;
     webBaseUrl: string | null;

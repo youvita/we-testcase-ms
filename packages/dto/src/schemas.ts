@@ -11,6 +11,7 @@ import {
   REQUIREMENT_DOC_KINDS,
   ROLE_VALUES,
   RUN_SCOPES,
+  RUN_SPEEDS,
   TEST_TYPES,
 } from "./enums";
 
@@ -354,6 +355,14 @@ export type DraftReviewInput = z.infer<typeof draftReviewSchema>;
 // Automation
 // ---------------------------------------------------------------------------
 
+/** "Watch live" and its speed, shared by every way of starting a run. */
+const liveViewFields = {
+  liveView: z.boolean().default(false),
+  speed: z
+    .enum(Object.keys(RUN_SPEEDS) as [keyof typeof RUN_SPEEDS, ...(keyof typeof RUN_SPEEDS)[]])
+    .default("normal"),
+};
+
 /** http(s) only: these are pasted into a browser and an HTTP client. */
 const baseUrl = z
   .string()
@@ -408,6 +417,7 @@ export const testRunCreateSchema = z
     moduleId: z.string().optional(),
     testCaseIds: z.array(z.string().min(1)).max(500).optional(),
     recordResults: z.boolean().default(true),
+    ...liveViewFields,
   })
   .refine((run) => run.scope !== "module" || Boolean(run.moduleId), {
     message: "Select a module",
@@ -431,6 +441,7 @@ export const scriptWritingSchema = z.object({
     .transform((v) => (v.startsWith("/") ? v : `/${v}`)),
   /** Anything the steps leave out, e.g. "the OTP on SIT is always 000000". */
   instructions: optionalText(2000),
+  ...liveViewFields,
 });
 
 export type ScriptWritingInput = z.input<typeof scriptWritingSchema>;

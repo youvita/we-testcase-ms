@@ -340,6 +340,26 @@ docker compose -f docker-compose.prod.yml --env-file .env.production up -d app
 docker compose -f docker-compose.prod.yml --env-file .env.production --profile automation up -d --build runner
 ```
 
+**Watch live.** *New run*, *Run this case* and *Write with Claude* have a
+*Watch live* option: the run page then shows what each Web test's browser
+shows, a few frames a second (Chrome's screencast, relayed by the app and kept
+in memory only), with an optional slow motion of 0.5 s or 1.2 s between
+actions so a person can follow. Off, runs stay in the background. Test
+processes never receive `RUNNER_TOKEN`; a watched run gets its own token,
+good only for posting that run's frames.
+
+**A real browser window (developers).** On your own Mac, run the runner
+outside Docker with `HEADED=1` and Chrome opens on your screen:
+
+```bash
+docker compose --profile automation stop runner        # so it does not take the run first
+cd apps/runner && npx playwright install chromium       # once
+APP_URL=http://localhost:3001 RUNNER_TOKEN=dev-runner-token HEADED=1 node src/index.ts
+```
+
+This only helps whoever sits at the machine running the runner; for everyone
+else, use *Watch live*.
+
 Inside the runner container `localhost` is the container: a script aimed at
 something on the same machine must use `host.docker.internal`. The image is
 large (~3.6 GB, mostly browsers); its tag must match `@playwright/test` in

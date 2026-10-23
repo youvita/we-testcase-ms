@@ -26,6 +26,8 @@ import {
 import type { RunEnvironmentDto, RunScope, TestRunDto } from "@wetestcase/dto";
 import { api, errorMessage } from "@/utils/api-client";
 
+import { WatchLiveFields, type LiveChoice } from "./live-view";
+
 /**
  * Queue a run. With `testCaseIds` it runs exactly those cases (the "Run this
  * case" button); otherwise QA picks a scope.
@@ -50,6 +52,7 @@ export function NewRunDialog({
   const [scope, setScope] = useState<RunScope>(testCaseIds ? "cases" : "all");
   const [moduleId, setModuleId] = useState(modules[0]?.id ?? "");
   const [recordResults, setRecordResults] = useState(true);
+  const [live, setLive] = useState<LiveChoice>({ liveView: false, speed: "slow" });
   const [busy, setBusy] = useState(false);
 
   // An environment deleted while the dialog was closed must not stay selected.
@@ -66,6 +69,8 @@ export function NewRunDialog({
         moduleId: scope === "module" ? moduleId : undefined,
         testCaseIds,
         recordResults,
+        liveView: live.liveView,
+        speed: live.liveView ? live.speed : "normal",
       });
       toast.success(`Run #${run.number} queued — ${run.total} case${run.total === 1 ? "" : "s"}`);
       onOpenChange(false);
@@ -154,6 +159,8 @@ export function NewRunDialog({
                 </span>
               </span>
             </label>
+
+            <WatchLiveFields value={live} onChange={setLive} />
           </div>
         )}
 

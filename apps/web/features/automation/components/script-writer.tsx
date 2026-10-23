@@ -41,6 +41,7 @@ import type {
 } from "@wetestcase/dto";
 import { ApiError, api, errorMessage } from "@/utils/api-client";
 
+import { LiveView, WatchLiveFields, type LiveChoice } from "./live-view";
 import { RunStatusBadge } from "./run-status-badge";
 
 /**
@@ -68,6 +69,7 @@ export function WriteWithClaudeDialog({
   const [environmentId, setEnvironmentId] = useState(environments[0]?.id ?? "");
   const [startPath, setStartPath] = useState("/");
   const [instructions, setInstructions] = useState("");
+  const [live, setLive] = useState<LiveChoice>({ liveView: false, speed: "slow" });
   const [busy, setBusy] = useState(false);
   const selected = environments.some((e) => e.id === environmentId)
     ? environmentId
@@ -80,6 +82,8 @@ export function WriteWithClaudeDialog({
         environmentId: selected,
         startPath,
         instructions,
+        liveView: live.liveView,
+        speed: live.liveView ? live.speed : "normal",
       });
       onOpenChange(false);
       onStarted(job);
@@ -155,6 +159,7 @@ export function WriteWithClaudeDialog({
                 placeholder="e.g. Use vars.LOGIN_ID and vars.LOGIN_PASSWORD. After login the home page shows “My Bills”."
               />
             </div>
+            {platform === "WEB" && <WatchLiveFields value={live} onChange={setLive} />}
           </div>
         )}
 
@@ -237,6 +242,10 @@ export function ScriptWritingPanel({
 
       {active && job.progressTotal > 0 && (
         <Progress value={(job.progressDone / job.progressTotal) * 100} className="h-1.5" />
+      )}
+
+      {active && result?.currentRunId && (
+        <LiveView runId={result.currentRunId} quietWhenEmpty />
       )}
 
       {result && result.attempts.length > 0 && (

@@ -1,0 +1,5 @@
+-- AlterTable
+ALTER TABLE "TestRun" ADD COLUMN     "liveToken" TEXT,
+ADD COLUMN     "liveView" BOOLEAN NOT NULL DEFAULT false,
+ADD COLUMN     "slowMoMs" INTEGER NOT NULL DEFAULT 0;
+

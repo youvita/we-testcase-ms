@@ -19,6 +19,8 @@
  *   WORKERS        parallel tests per run             default: 2
  *   TEST_TIMEOUT_MS  per test                         default: 60000
  *   WORK_DIR       scratch space                      default: <runner>/.work
+ *   HEADED=1       show the browser window — only where the runner has a
+ *                  screen, i.e. run on your own Mac, not in Docker
  *
  * Runs with Node's own TypeScript support (Node 23.6+): `node src/index.ts`.
  */
@@ -50,6 +52,7 @@ const RUNNER_TOKEN = required("RUNNER_TOKEN");
 const RUNNER_NAME = process.env.RUNNER_NAME?.trim() || hostname();
 const WORKERS = Math.max(1, Number(process.env.WORKERS) || 2);
 const TEST_TIMEOUT_MS = Math.max(5_000, Number(process.env.TEST_TIMEOUT_MS) || 60_000);
+const HEADED = process.env.HEADED === "1";
 const POLL_MS = 3_000;
 const HEARTBEAT_MS = 10_000;
 
@@ -138,8 +141,32 @@ const test = base.extend({
   page: async ({ page }, use) => {
     const goto = page.goto.bind(page);
     page.goto = (url, options) => goto(join(env.webUrl, url), options);
+${
+  job.run.liveToken
+    ? `
+    // "Watch live": Chrome sends a frame whenever the page changes; the
+    // newest goes to the app a few times a second, for the run page.
+    const cdp = await page.context().newCDPSession(page);
+    let sentAt = 0;
+    cdp.on("Page.screencastFrame", (frame) => {
+      cdp.send("Page.screencastFrameAck", { sessionId: frame.sessionId }).catch(() => {});
+      const now = Date.now();
+      if (now - sentAt < 300) return;
+      sentAt = now;
+      fetch(process.env.WTC_APP_URL + "/api/runner/live/${item.id}", {
+        method: "POST",
+        headers: { authorization: "Bearer " + process.env.WTC_LIVE_TOKEN, "content-type": "image/jpeg" },
+        body: Buffer.from(frame.data, "base64"),
+      }).catch(() => {});
+    });
+    await cdp.send("Page.startScreencast", { format: "jpeg", quality: 60, maxWidth: 1024, maxHeight: 768 });
     await use(page);
-  },
+    await cdp.send("Page.stopScreencast").catch(() => {});
+`
+    : `
+    await use(page);
+`
+}  },
   request: async ({ request }, use) => {
     for (const method of ["get", "post", "put", "patch", "delete", "head", "fetch"]) {
       const send = request[method].bind(request);
@@ -179,7 +206,7 @@ ${item.code}
 }
 
 
-function configSource(): string {
+function configSource(job: RunnerJob): string {
   return `import { defineConfig } from "@playwright/test";
 
 export default defineConfig({
@@ -198,6 +225,9 @@ export default defineConfig({
     screenshot: "on",
     video: "retain-on-failure",
     ignoreHTTPSErrors: true,
+    headless: ${!HEADED},
+    // Slows every browser action when someone is watching the run.
+    launchOptions: { slowMo: ${job.run.slowMoMs} },
   },
   projects: [{ name: "chromium", use: { browserName: "chromium" } }],
 });
@@ -333,11 +363,23 @@ function stop(child: ChildProcess) {
   setTimeout(() => child.exitCode === null && child.kill("SIGKILL"), 5_000).unref();
 }
 
-function runPlaywright(dir: string, extraArgs: string[] = []): ChildProcess {
+function runPlaywright(dir: string, liveToken: string | null, extraArgs: string[] = []): ChildProcess {
+  // Scripts run in this process and are written by people, so it never sees
+  // the runner's own token. Watching live, it gets one good only for frames.
+  const { RUNNER_TOKEN: _withheld, ...env } = process.env;
   return spawn(
     process.execPath,
     [PLAYWRIGHT_CLI, "test", "--config", path.join(dir, "playwright.config.ts"), ...extraArgs],
-    { cwd: dir, env: { ...process.env, CI: "1", FORCE_COLOR: "0" }, stdio: ["ignore", "pipe", "pipe"] },
+    {
+      cwd: dir,
+      env: {
+        ...env,
+        CI: "1",
+        FORCE_COLOR: "0",
+        ...(liveToken ? { WTC_APP_URL: APP_URL, WTC_LIVE_TOKEN: liveToken } : {}),
+      },
+      stdio: ["ignore", "pipe", "pipe"],
+    },
   );
 }
 
@@ -368,7 +410,7 @@ async function setAsideBrokenSpecs(
   const broken = new Map<string, string>();
   for (let pass = 0; pass < 5; pass += 1) {
     await rm(path.join(dir, "report.json"), { force: true });
-    await exited(runPlaywright(dir, ["--list"]));
+    await exited(runPlaywright(dir, null, ["--list"]));
     const report = await readReport(dir);
     const errors = report?.errors ?? [];
     if (errors.length === 0) return { broken, fatal: null };
@@ -403,7 +445,7 @@ async function executeRun(job: RunnerJob) {
   // The specs are TypeScript modules; say which kind, whatever the package
   // above them declares.
   await writeFile(path.join(dir, "package.json"), '{ "type": "commonjs" }\n');
-  await writeFile(path.join(dir, "playwright.config.ts"), configSource());
+  await writeFile(path.join(dir, "playwright.config.ts"), configSource(job));
   const fileToItem = new Map<string, RunnerJob["items"][number]>();
   for (const [index, item] of job.items.entries()) {
     const file = `${String(index + 1).padStart(4, "0")}-${item.id}.spec.ts`;
@@ -429,7 +471,7 @@ async function executeRun(job: RunnerJob) {
 
   let output = "";
   let cancelled = false;
-  const child = runPlaywright(dir);
+  const child = runPlaywright(dir, job.run.liveToken);
   child.stdout?.on("data", (chunk) => (output = (output + chunk.toString()).slice(-20_000)));
   child.stderr?.on("data", (chunk) => (output = (output + chunk.toString()).slice(-20_000)));
 
@@ -517,7 +559,9 @@ for (const signal of ["SIGINT", "SIGTERM"] as const) {
 
 async function main() {
   await mkdir(WORK_DIR, { recursive: true });
-  log(`${RUNNER_NAME} polling ${APP_URL} (workers ${WORKERS}, timeout ${TEST_TIMEOUT_MS / 1000} s)`);
+  log(
+    `${RUNNER_NAME} polling ${APP_URL} (workers ${WORKERS}, timeout ${TEST_TIMEOUT_MS / 1000} s${HEADED ? ", headed" : ""})`,
+  );
 
   let failures = 0;
   while (!stopping) {

@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 
@@ -7,8 +7,10 @@ import { Prisma, type TestRun } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { badRequest, conflict, notFound } from "@/lib/api";
 import { PLATFORM_LABELS } from "@/lib/constants";
+import { dropFrame } from "@/lib/live-frames";
 import {
   AUTOMATABLE_PLATFORMS,
+  RUN_SPEEDS,
   type RunTriageDto,
   type RunArtifactDto,
   type RunArtifactKind,
@@ -56,6 +58,8 @@ function toRunDto(run: RunRow): TestRunDto {
     status: run.status,
     environmentName: run.environmentName,
     recordResults: run.recordResults,
+    liveView: run.liveView,
+    slowMoMs: run.slowMoMs,
     total: run.total,
     passed: run.passed,
     failed: run.failed,
@@ -137,6 +141,8 @@ export async function createTestRun(
     environment,
     purpose: "RUN",
     recordResults: input.recordResults ?? true,
+    liveView: input.liveView ?? false,
+    slowMoMs: RUN_SPEEDS[input.speed ?? "normal"],
     items: cases.map((c) => ({ testCaseId: c.id, code: c.script!.code })),
   });
 }
@@ -154,6 +160,8 @@ export async function queueRun(options: {
   environment: { id: string; name: string };
   purpose: "RUN" | "SCRIPT_CHECK";
   recordResults: boolean;
+  liveView?: boolean;
+  slowMoMs?: number;
   items: { testCaseId: string; code: string }[];
 }): Promise<TestRunDto> {
   for (let attempt = 0; ; attempt += 1) {
@@ -177,6 +185,8 @@ export async function queueRun(options: {
             environmentName: options.environment.name,
             // A script check never records: it is trying a draft, not testing.
             recordResults: options.purpose === "RUN" && options.recordResults,
+            liveView: options.liveView ?? false,
+            slowMoMs: options.slowMoMs ?? 0,
             createdById: options.userId,
             total: options.items.length,
             items: {
@@ -342,10 +352,17 @@ export async function claimNextRun(runnerName: string): Promise<RunnerJob | null
       const id = rows[0]?.id;
       if (!id) return null;
       const now = new Date();
-      await tx.testRun.update({
+      const run = await tx.testRun.update({
         where: { id },
         data: { status: "RUNNING", startedAt: now, heartbeatAt: now, runnerName },
+        select: { liveView: true },
       });
+      if (run.liveView) {
+        await tx.testRun.update({
+          where: { id },
+          data: { liveToken: randomBytes(24).toString("base64url") },
+        });
+      }
       return id;
     });
     if (!runId) return null;
@@ -377,6 +394,8 @@ export async function claimNextRun(runnerName: string): Promise<RunnerJob | null
         id: run.id,
         label: run.number ? `Run #${run.number}` : "Script check",
         projectName: run.project.name,
+        slowMoMs: run.slowMoMs,
+        liveToken: run.liveToken,
       },
       environment,
       items: run.items.map((item) => ({
@@ -489,6 +508,7 @@ export async function reportItemResult(
     executionId = execution.id;
   }
 
+  dropFrame(itemId);
   await prisma.testRunItem.update({
     where: { id: itemId },
     data: {
@@ -615,4 +635,22 @@ export async function readItemEvidence(itemId: string) {
         ? { mediaType: screenshot.mimeType, data: screenshotBytes.toString("base64") }
         : null,
   };
+}
+
+/**
+ * Which run a live frame belongs to, if the token is that run's.
+ *
+ * Test processes get this token instead of the runner's own: it is good only
+ * for posting frames of one run while it is running.
+ */
+export async function authorizeLiveFrame(itemId: string, token: string) {
+  const item = await prisma.testRunItem.findUnique({
+    where: { id: itemId },
+    select: { status: true, run: { select: { id: true, status: true, liveToken: true } } },
+  });
+  const expected = item?.run.liveToken;
+  if (!item || !expected || item.run.status !== "RUNNING" || item.status !== "QUEUED") return null;
+  const a = Buffer.from(token);
+  const b = Buffer.from(expected);
+  return a.length === b.length && timingSafeEqual(a, b) ? item.run.id : null;
 }

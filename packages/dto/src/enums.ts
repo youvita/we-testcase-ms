@@ -214,6 +214,13 @@ export function isAutomatablePlatform(platform: Platform): boolean {
   return (AUTOMATABLE_PLATFORMS as readonly string[]).includes(platform);
 }
 
+/**
+ * How fast to drive the browser when someone is watching: none, then a pause
+ * between actions long enough to follow.
+ */
+export const RUN_SPEEDS = { normal: 0, slow: 500, slower: 1200 } as const;
+export type RunSpeed = keyof typeof RUN_SPEEDS;
+
 /** Which cases a new run takes. */
 export const RUN_SCOPES = ["all", "failed", "module", "cases"] as const;
 export type RunScope = (typeof RUN_SCOPES)[number];

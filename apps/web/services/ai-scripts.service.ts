@@ -13,6 +13,7 @@ import { PLATFORM_LABELS } from "@/lib/constants";
 import { isAutomationConfigured } from "@/lib/runner-auth";
 import type { SessionUser } from "@/lib/session";
 import {
+  RUN_SPEEDS,
   TRIAGE_CATEGORIES,
   isAutomatablePlatform,
   type AiJobDto,
@@ -119,7 +120,7 @@ Rules:
 - Do not use page.waitForTimeout: locators and expect already wait.
 - Never weaken or remove an assertion to make a test pass. If the application does not do what the test case expects, that is a finding about the product, not a script problem.
 
-Answer with the complete script in one \`\`\`ts block, then a \`\`\`json block: {"verdict": "...", "notes": "..."}. Notes are for QA, one to three sentences, in the language of the test case.`;
+Answer with the complete script in one \`\`\`ts block, then a \`\`\`json block: {"verdict": "...", "notes": "..."}. Notes are for QA: one to three sentences, always in English — whatever language the application or its pages are in.`;
 
 function firstDraftPrompt(options: {
   testCase: CaseForPrompt;
@@ -197,7 +198,13 @@ function readDraft(reply: string) {
 export async function startScriptWriting(
   testCaseId: string,
   user: SessionUser,
-  input: { environmentId: string; startPath: string; instructions?: string },
+  input: {
+    environmentId: string;
+    startPath: string;
+    instructions?: string;
+    liveView?: boolean;
+    speed?: keyof typeof RUN_SPEEDS;
+  },
 ): Promise<AiJobDto> {
   const testCase = await prisma.testCase.findUnique({
     where: { id: testCaseId },
@@ -265,9 +272,15 @@ export async function startScriptWriting(
           environment: env,
           purpose: "SCRIPT_CHECK",
           recordResults: false,
+          liveView: input.liveView ?? false,
+          slowMoMs: RUN_SPEEDS[input.speed ?? "normal"],
           items: [{ testCaseId, code }],
         });
+        // Published before waiting, so the page can show this check live.
+        result.currentRunId = queued.id;
+        await setResult(result);
         const run = await waitForRun(queued.id);
+        result.currentRunId = null;
         const item = run.items[0];
         if (!item) throw new AiError("The script check came back empty.");
         return { runId: run.id, item, runError: run.error };
@@ -374,7 +387,7 @@ Categories:
 - "environment": the environment is at fault — down, slow, wrong data, an expired account, a certificate.
 - "unclear": the evidence does not settle it; say what would.
 
-Be concrete and brief; QA and developers read this. Never call something a product bug just because an assertion failed — check the screenshot and page outline for what actually happened.
+Be concrete and brief; QA and developers read this. Always write in English, whatever language the application or its pages are in. Never call something a product bug just because an assertion failed — check the screenshot and page outline for what actually happened.
 
 Answer with a \`\`\`json block:
 {"category": "...", "summary": "one sentence", "explanation": "two to five sentences", "bugReport": {"title": "...", "steps": "...", "expected": "...", "actual": "..."} or null}

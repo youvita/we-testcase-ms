@@ -17,6 +17,7 @@ import { ApiError, api, errorMessage } from "@/utils/api-client";
 import { formatBytes, formatDateTime } from "@/utils/format";
 
 import { RunStatusBadge, formatDuration, isRunActive } from "./run-status-badge";
+import { LiveView } from "./live-view";
 import { TriageCard } from "./triage-card";
 
 const POLL_MS = 2500;
@@ -177,6 +178,15 @@ export function RunDetail({
                 {run.status === "QUEUED" ? "Waiting for the runner…" : `${done} / ${run.total}`}
               </span>
             </div>
+          )}
+
+          {run.liveView && run.status === "RUNNING" && (
+            <LiveView
+              runId={run.id}
+              labels={Object.fromEntries(
+                run.items.map((item) => [item.id, `${item.testCase.tcId} ${item.testCase.title}`]),
+              )}
+            />
           )}
 
           {run.error && (
