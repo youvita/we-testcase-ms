@@ -3,7 +3,17 @@
 import { useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Bot, Code2, Loader2, Play, Save, Sparkles, Trash2 } from "lucide-react";
+import {
+  Bot,
+  Code2,
+  Loader2,
+  PencilRuler,
+  Play,
+  Save,
+  ShieldCheck,
+  Sparkles,
+  Trash2,
+} from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -38,6 +48,8 @@ expect(await response.json()).toMatchObject({ error: expect.any(String) });`,
 export type ScriptState = {
   code: string;
   updatedAt: string;
+  /** Null while the script is a draft. */
+  verifiedAt: string | null;
   updatedBy: { id: string; name: string };
 } | null;
 
@@ -141,6 +153,17 @@ export function AutomationScriptCard({
     }
   }
 
+  /** QA vouches for the script: from now on its failures count. */
+  async function markVerified() {
+    try {
+      await api.post(`/api/test-cases/${testCaseId}/script/verify`);
+      toast.success("Script verified — its failures will now be recorded");
+      router.refresh();
+    } catch (error) {
+      toast.error(errorMessage(error));
+    }
+  }
+
   /** Keep Claude going from its last result with QA's hint. */
   async function continueWithHint(hint: string): Promise<boolean> {
     if (!writeJob) return false;
@@ -195,11 +218,49 @@ export function AutomationScriptCard({
             </Link>
           )}
         </div>
-        <CardDescription>
-          {script
-            ? `Playwright script · saved by ${script.updatedBy.name} ${formatRelative(script.updatedAt)}`
-            : "Write this case as a Playwright script and the runner can execute it."}
+        <CardDescription className="flex flex-wrap items-center gap-x-2 gap-y-1">
+          {script ? (
+            <>
+              {script.verifiedAt ? (
+                <span className="inline-flex items-center gap-1 rounded-full border border-status-passed/30 bg-status-passed/10 px-2 py-0.5 text-xs font-medium text-status-passed">
+                  <ShieldCheck className="size-3.5" />
+                  Verified
+                </span>
+              ) : (
+                <span
+                  className="inline-flex items-center gap-1 rounded-full border border-status-blocked/30 bg-status-blocked/10 px-2 py-0.5 text-xs font-medium text-status-blocked"
+                  title="Its failures are not recorded on the case until it passes once"
+                >
+                  <PencilRuler className="size-3.5" />
+                  Draft
+                </span>
+              )}
+              <span>
+                Playwright script · saved by {script.updatedBy.name} {formatRelative(script.updatedAt)}
+              </span>
+            </>
+          ) : (
+            "Write this case as a Playwright script and the runner can execute it."
+          )}
         </CardDescription>
+        {script && !script.verifiedAt && (
+          <p className="text-xs text-muted-foreground">
+            A draft script has not passed yet, so when it fails the case is not marked failed —
+            the script may be what is wrong. It becomes verified the first time it passes.
+            {canManage && (
+              <>
+                {" "}
+                <button
+                  type="button"
+                  className="text-primary hover:underline"
+                  onClick={() => void markVerified()}
+                >
+                  Mark as verified now
+                </button>
+              </>
+            )}
+          </p>
+        )}
       </CardHeader>
       <CardContent className="space-y-3">
         {writeJob && (

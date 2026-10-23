@@ -679,11 +679,15 @@ model RunEnvironment {
 /// The Playwright script that automates a test case: the body of one
 /// `test(...)`, with `page`, `request`, `expect`, `env` and `vars` in scope.
 model AutomationScript {
-  testCaseId String   @id
-  testCase   TestCase @relation(fields: [testCaseId], references: [id], onDelete: Cascade)
+  testCaseId String    @id
+  testCase   TestCase  @relation(fields: [testCaseId], references: [id], onDelete: Cascade)
   code       String
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  /// Set the first time the script passes, or when QA vouches for it; cleared
+  /// when its code changes. Until then it is a draft, and its failures are
+  /// not recorded on the case — an unproven script cannot fail a test.
+  verifiedAt DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
 
   updatedById String
   updatedBy   User   @relation(fields: [updatedById], references: [id])
@@ -773,6 +777,8 @@ model TestRunItem {
   artifacts  Json?
   /// The script as it ran; the case's script may have changed since.
   code       String
+  /// The case's script was still a draft when the run was queued.
+  draft      Boolean       @default(false)
   finishedAt DateTime?
 
   runId String

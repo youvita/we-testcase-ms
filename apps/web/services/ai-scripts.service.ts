@@ -20,6 +20,7 @@ import {
   TRIAGE_CATEGORIES,
   isAutomatablePlatform,
   type AiJobDto,
+  type FailedRequest,
   type Platform,
   type RunTriageDto,
   type ScriptBatchResult,
@@ -97,6 +98,17 @@ Variables available (values are hidden from you):
 ${vars}`;
 }
 
+function describeFailedRequests(requests: FailedRequest[] | undefined) {
+  if (!requests?.length) return "";
+  return `
+Requests that went wrong during the test (the application's own answers — often the real reason):
+${requests
+  .slice(0, 20)
+  .map((r) => `- ${r.method} ${r.url} → ${r.status ?? "no response"} ${r.statusText}`.trimEnd())
+  .join("\n")}
+`;
+}
+
 function describePage(snapshot: string | null, where: string) {
   if (!snapshot) return `No page outline is available ${where}.`;
   const trimmed =
@@ -162,6 +174,7 @@ function repairPrompt(options: {
   log: string | null;
   snapshot: string | null;
   hasScreenshot: boolean;
+  failedRequests?: FailedRequest[];
   /** QA's hint after seeing earlier tries. */
   hint?: string;
 }) {
@@ -193,7 +206,7 @@ Result: ${options.status}
 Error:
 ${options.error ?? "(none reported)"}
 ${options.log ? `\nConsole output:\n${options.log.slice(-3000)}\n` : ""}
-${options.hasScreenshot ? "A screenshot of where it stopped is attached.\n" : ""}
+${options.hasScreenshot ? "A screenshot of where it stopped is attached.\n" : ""}${describeFailedRequests(options.failedRequests)}
 ${describePage(options.snapshot, "where it stopped")}
 
 Decide which one applies and answer with the full script and that verdict:
@@ -340,7 +353,11 @@ export async function startScriptWriting(
 
       // 1. Look at the start page before writing anything — or, continuing,
       //    at where the earlier script stopped.
-      let evidence: { snapshot: string | null; screenshot: ClaudeImage | null } = {
+      let evidence: {
+        snapshot: string | null;
+        screenshot: ClaudeImage | null;
+        failedRequests?: FailedRequest[];
+      } = {
         snapshot: null,
         screenshot: null,
       };
@@ -392,6 +409,7 @@ export async function startScriptWriting(
                 ...previous,
                 snapshot: evidence.snapshot,
                 hasScreenshot: Boolean(evidence.screenshot),
+                failedRequests: evidence.failedRequests,
                 // The hint is the reason for this job; it goes with every try.
                 hint: input.continueFrom?.hint,
               })
@@ -433,7 +451,7 @@ export async function startScriptWriting(
       if (input.autoSave && result.outcome === "passed") {
         // Verified against the environment; anything short of a pass waits
         // for QA on the case instead.
-        await saveAutomationScript(testCaseId, user.id, result.code);
+        await saveAutomationScript(testCaseId, user.id, result.code, { verified: true });
         result.saved = true;
       }
 
@@ -580,7 +598,7 @@ Categories:
 - "environment": the environment is at fault — down, slow, wrong data, an expired account, a certificate.
 - "unclear": the evidence does not settle it; say what would.
 
-Be concrete and brief; QA and developers read this. Always write in English, whatever language the application or its pages are in. Never call something a product bug just because an assertion failed — check the screenshot and page outline for what actually happened.
+Be concrete and brief; QA and developers read this. Always write in English, whatever language the application or its pages are in. Never call something a product bug just because an assertion failed — check the screenshot, the page outline and any failed requests for what actually happened. A failed request is strong evidence: 401/403 points at the account, 423/429 at a lockout or rate limit, 5xx at the environment or a server bug.
 
 Answer with a \`\`\`json block:
 {"category": "...", "summary": "one sentence", "explanation": "two to five sentences", "bugReport": {"title": "...", "steps": "...", "expected": "...", "actual": "..."} or null}
@@ -658,7 +676,7 @@ Result: ${item.status}${item.status === "ERROR" ? " (the script itself failed to
 Error:
 ${item.error ?? "(none reported)"}
 ${item.log ? `\nConsole output:\n${item.log.slice(-3000)}\n` : ""}
-${evidence.screenshot ? "A screenshot of the page at the end of the test is attached.\n" : ""}
+${evidence.screenshot ? "A screenshot of the page at the end of the test is attached.\n" : ""}${describeFailedRequests(evidence.failedRequests)}
 ${describePage(evidence.snapshot, "at the end of the test")}`,
       });
 

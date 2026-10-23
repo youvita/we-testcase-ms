@@ -11,6 +11,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { PlatformBadge } from "@/components/shared/priority-badge";
 import { withBasePath } from "@/lib/base-path";
+import { cn } from "@/lib/utils";
 import { ClaudeConnectionDialog } from "@/features/ai/components/claude-connection-dialog";
 import type { AiJobDto, TestRunDetailDto, TestRunItemDto } from "@wetestcase/dto";
 import { ApiError, api, errorMessage } from "@/utils/api-client";
@@ -295,6 +296,37 @@ function RunItemRow({
             <p className="text-xs text-muted-foreground">
               The script itself failed to run, so no result was recorded on the test case. Fix the script and run it again.
             </p>
+          )}
+          {item.status === "FAILED" && item.draft && (
+            <p className="text-xs text-muted-foreground">
+              Draft script — this failure was not recorded on the test case, because a script that
+              has never passed may be what is wrong. Fix it until it passes once.
+            </p>
+          )}
+
+          {item.failedRequests.length > 0 && (
+            <div className="rounded-md border">
+              <p className="border-b bg-muted/40 px-3 py-1.5 text-xs font-medium">
+                Requests that went wrong ({item.failedRequests.length})
+              </p>
+              <ul className="max-h-48 divide-y overflow-auto font-mono text-xs">
+                {item.failedRequests.map((request, index) => (
+                  <li key={index} className="flex gap-3 px-3 py-1.5">
+                    <span
+                      className={cn(
+                        "w-12 shrink-0 font-semibold",
+                        request.status && request.status < 500 ? "text-status-blocked" : "text-status-failed",
+                      )}
+                    >
+                      {request.status ?? "—"}
+                    </span>
+                    <span className="w-12 shrink-0 text-muted-foreground">{request.method}</span>
+                    <span className="min-w-0 flex-1 truncate" title={request.url}>{request.url}</span>
+                    <span className="shrink-0 text-muted-foreground">{request.statusText}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
           )}
 
           {item.triage && testCase ? (

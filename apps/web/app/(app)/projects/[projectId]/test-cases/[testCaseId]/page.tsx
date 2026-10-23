@@ -283,6 +283,7 @@ export default async function TestCaseDetailPage({
                 script && {
                   code: script.code,
                   updatedAt: script.updatedAt.toISOString(),
+                  verifiedAt: script.verifiedAt?.toISOString() ?? null,
                   updatedBy: script.updatedBy,
                 }
               }

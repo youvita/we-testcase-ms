@@ -316,7 +316,15 @@ automated; iOS and Android come later (they need emulators or devices).
    no login steps of its own; *Run one at a time, in order* is for cases that
    build on each other's data. Each result comes back with a screenshot, a trace
    (open at trace.playwright.dev) and, on failure, a video.
-4. **Results** — passes and failures are recorded as executions, so the
+4. **Draft scripts** — a new or edited script is a *draft* until it passes
+   once (or QA marks it verified). A draft's failure is shown on the run but
+   not recorded on the case, since the script itself may be what is wrong; a
+   draft's pass is recorded and verifies it. Scripts Claude saves after seeing
+   them pass start verified.
+5. **Failed requests** — every test notes the app's own requests that came
+   back with an error or no answer (e.g. `POST /api/auth/login → 429`); the
+   run page lists them and Claude reads them when explaining a failure.
+6. **Results** — passes and failures are recorded as executions, so the
    dashboard and reports include them; the history marks them *Automated · Run
    #N*. A script that breaks on its own mistake (syntax error, TypeError) is a
    *script error*: it is reported on the run but does not mark the case failed.

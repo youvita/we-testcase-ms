@@ -16,7 +16,7 @@ const resultSchema = z.object({
   log: z.string().optional(),
 });
 
-const KINDS: RunArtifactKind[] = ["screenshot", "video", "trace", "snapshot"];
+const KINDS: RunArtifactKind[] = ["screenshot", "video", "trace", "snapshot", "network"];
 
 /**
  * One item's result: a `result` JSON field plus any number of files under

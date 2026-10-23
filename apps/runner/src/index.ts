@@ -137,10 +137,35 @@ const join = (root, url) =>
     ? url
     : root.replace(/[/]+$/, "") + "/" + url.replace(/^[/]+/, "");
 
+// Requests that went wrong — an error status or no answer at all. They are
+// often the real reason a test failed (a 401 at login, a 500 on save), and
+// are attached for the run page and for Claude. Page loads and API calls
+// only; a missing image or font is not the story.
+const failedRequests = [];
+const noteFailure = (method, url, status, statusText) => {
+  if (failedRequests.length < 50) {
+    failedRequests.push({ method, url: String(url).slice(0, 300), status, statusText: String(statusText ?? "") });
+  }
+};
+const worthNoting = (type) => type === "document" || type === "xhr" || type === "fetch";
+
 const test = base.extend({
   page: async ({ page }, use) => {
     const goto = page.goto.bind(page);
     page.goto = (url, options) => goto(join(env.webUrl, url), options);
+    page.on("response", (response) => {
+      const request = response.request();
+      if (response.status() >= 400 && worthNoting(request.resourceType())) {
+        noteFailure(request.method(), response.url(), response.status(), response.statusText());
+      }
+    });
+    page.on("requestfailed", (request) => {
+      const reason = request.failure()?.errorText ?? "failed";
+      // An aborted request is the browser moving on, not a failure.
+      if (worthNoting(request.resourceType()) && !/ERR_ABORTED/.test(reason)) {
+        noteFailure(request.method(), request.url(), null, reason);
+      }
+    });
 ${
   job.run.liveToken
     ? `
@@ -170,13 +195,33 @@ ${
   request: async ({ request }, use) => {
     for (const method of ["get", "post", "put", "patch", "delete", "head", "fetch"]) {
       const send = request[method].bind(request);
-      request[method] = (url, options) => send(join(requestRoot, url), options);
+      request[method] = async (url, options) => {
+        const target = join(requestRoot, url);
+        const verb = method === "fetch" ? String(options?.method ?? "GET").toUpperCase() : method.toUpperCase();
+        try {
+          const response = await send(target, options);
+          if (response.status() >= 400) noteFailure(verb, response.url(), response.status(), response.statusText());
+          return response;
+        } catch (error) {
+          noteFailure(verb, typeof target === "string" ? target : "(request)", null, String(error?.message ?? error).split("\\n")[0]);
+          throw error;
+        }
+      };
     }
     await use(request);
   },
 });
 
 test.use({ baseURL: ${JSON.stringify(baseURL ?? undefined)} });
+
+test.afterEach(async ({}, testInfo) => {
+  if (failedRequests.length) {
+    await testInfo.attach("network-errors", {
+      body: JSON.stringify(failedRequests),
+      contentType: "application/json",
+    });
+  }
+});
 ${
   isApi
     ? ""
@@ -322,11 +367,12 @@ function itemResult(result: ReportResult): RunnerItemResult {
   };
 }
 
-const ARTIFACT_FIELDS: Record<string, "screenshot" | "video" | "trace" | "snapshot"> = {
+const ARTIFACT_FIELDS: Record<string, "screenshot" | "video" | "trace" | "snapshot" | "network"> = {
   screenshot: "screenshot",
   video: "video",
   trace: "trace",
   "page-snapshot": "snapshot",
+  "network-errors": "network",
 };
 
 async function reportItem(

@@ -262,6 +262,10 @@ export type TestRunItemDto = {
   triage: RunTriageDto | null;
   /** The case's script as it is now — to tell whether a fix was applied. */
   currentCode: string | null;
+  /** The script was a draft: a failure here was not recorded on the case. */
+  draft: boolean;
+  /** HTTP errors and failed requests seen during the test. */
+  failedRequests: FailedRequest[];
 };
 
 /**
@@ -269,7 +273,19 @@ export type TestRunItemDto = {
  * every field and button with its role and name. Claude reads it to find
  * what is actually on the page.
  */
-export type RunArtifactKind = "screenshot" | "video" | "trace" | "snapshot";
+export type RunArtifactKind = "screenshot" | "video" | "trace" | "snapshot" | "network";
+
+/**
+ * A request that went wrong during a test — an HTTP error status, or no
+ * response at all. The runner records them as the "network" artifact.
+ */
+export type FailedRequest = {
+  method: string;
+  url: string;
+  /** Null when there was no response (refused, timed out, aborted). */
+  status: number | null;
+  statusText: string;
+};
 
 export type RunTriageDto = {
   category: TriageCategory;

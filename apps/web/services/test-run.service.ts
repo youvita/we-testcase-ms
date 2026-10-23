@@ -13,6 +13,7 @@ import {
   RUN_SPEEDS,
   type RunTriageDto,
   type RunArtifactDto,
+  type FailedRequest,
   type RunArtifactKind,
   type RunnerItemResult,
   type RunnerJob,
@@ -22,6 +23,7 @@ import {
 } from "@wetestcase/dto";
 
 import { resolveStoredPath } from "./attachment.service";
+import { verifyIfRanCurrentScript } from "./automation-script.service";
 import { recordExecution } from "./execution.service";
 import { resolveEnvironmentForRunner } from "./run-environment.service";
 
@@ -193,6 +195,19 @@ export async function queueRun(options: {
   /** testCaseId is null only for an exploration. */
   items: { testCaseId: string | null; code: string }[];
 }): Promise<TestRunDto> {
+  // Which cases' scripts are still drafts: their failures will not count.
+  const verified = new Set(
+    (
+      await prisma.automationScript.findMany({
+        where: {
+          testCaseId: { in: options.items.flatMap((i) => (i.testCaseId ? [i.testCaseId] : [])) },
+          verifiedAt: { not: null },
+        },
+        select: { testCaseId: true },
+      })
+    ).map((s) => s.testCaseId),
+  );
+
   for (let attempt = 0; ; attempt += 1) {
     try {
       const run = await prisma.$transaction(async (tx) => {
@@ -226,6 +241,7 @@ export async function queueRun(options: {
                 testCaseId: item.testCaseId,
                 position,
                 code: item.code,
+                draft: !item.testCaseId || !verified.has(item.testCaseId),
               })),
             },
           },
@@ -294,7 +310,7 @@ export async function getTestRun(runId: string): Promise<TestRunDetailDto> {
 
   return {
     ...toRunDto(run),
-    items: run.items.map((item) => ({
+    items: await Promise.all(run.items.map(async (item) => ({
       id: item.id,
       status: item.status,
       position: item.position,
@@ -311,6 +327,8 @@ export async function getTestRun(runId: string): Promise<TestRunDetailDto> {
           }
         : null,
       currentCode: item.testCase?.script?.code ?? null,
+      draft: item.draft,
+      failedRequests: await readFailedRequests(readArtifacts(item.artifacts)),
       executionId: item.executionId,
       triage: item.triage
         ? {
@@ -327,7 +345,7 @@ export async function getTestRun(runId: string): Promise<TestRunDetailDto> {
           size: artifact.size,
         }),
       ),
-    })),
+    }))),
   };
 }
 
@@ -501,6 +519,20 @@ const ARTIFACT_TYPES: Record<RunArtifactKind, { mimeType: string; ext: string; m
   trace: [
     { mimeType: "application/zip", ext: ".zip", magic: (b) => b.subarray(0, 4).equals(Buffer.from([0x50, 0x4b, 0x03, 0x04])) },
   ],
+  // The failed requests, as JSON.
+  network: [
+    {
+      mimeType: "application/json",
+      ext: ".json",
+      magic: (b) => {
+        try {
+          return b.length < 1_000_000 && Array.isArray(JSON.parse(b.toString("utf8")));
+        } catch {
+          return false;
+        }
+      },
+    },
+  ],
   // Plain text, so anything goes except binary — a NUL byte means it is not
   // the outline the runner writes.
   snapshot: [
@@ -564,15 +596,26 @@ export async function reportItemResult(
     });
   }
 
+  // A pass proves the script, if what ran is the case's current script.
+  if (result.status === "PASSED" && item.testCaseId) {
+    await verifyIfRanCurrentScript(item.testCaseId, item.code);
+  }
+
+  // A draft script's failure says nothing reliable about the product — the
+  // script may be what is wrong — so it is not recorded. Its pass is: the
+  // product did what the case expects, and the script just proved itself.
+  const recordAs =
+    result.status === "PASSED"
+      ? ("PASSED" as const)
+      : result.status === "FAILED" && !item.draft
+        ? ("FAILED" as const)
+        : null;
+
   let executionId: string | null = null;
-  if (
-    item.testCaseId &&
-    item.run.recordResults &&
-    (result.status === "PASSED" || result.status === "FAILED")
-  ) {
+  if (item.testCaseId && item.run.recordResults && recordAs) {
     const execution = await recordExecution(item.testCaseId, item.run.createdById, {
-      status: result.status,
-      actualResult: result.status === "FAILED" ? (result.error?.slice(0, 4000) ?? null) : null,
+      status: recordAs,
+      actualResult: recordAs === "FAILED" ? (result.error?.slice(0, 4000) ?? null) : null,
       comment: `Automated — Run #${item.run.number} on ${item.run.environmentName}`,
     });
     executionId = execution.id;
@@ -678,7 +721,19 @@ export async function waitForRun(runId: string, timeoutMs = 10 * 60_000) {
   }
 }
 
-/** One item's evidence, read back for Claude: the page outline and screenshot. */
+/** The requests that went wrong during a test, from its "network" artifact. */
+async function readFailedRequests(artifacts: StoredArtifact[]): Promise<FailedRequest[]> {
+  const network = artifacts.find((a) => a.kind === "network");
+  if (!network) return [];
+  try {
+    const parsed = JSON.parse(await readFile(resolveStoredPath(network.path), "utf8"));
+    return Array.isArray(parsed) ? (parsed as FailedRequest[]).slice(0, 50) : [];
+  } catch {
+    return [];
+  }
+}
+
+/** One item's evidence, read back for Claude: the page outline, screenshot and failed requests. */
 export async function readItemEvidence(itemId: string) {
   const item = await prisma.testRunItem.findUniqueOrThrow({
     where: { id: itemId },
@@ -699,6 +754,7 @@ export async function readItemEvidence(itemId: string) {
     read(screenshot),
   ]);
   return {
+    failedRequests: await readFailedRequests(artifacts),
     snapshot: snapshotBytes ? snapshotBytes.toString("utf8") : null,
     screenshot:
       screenshotBytes && screenshot
