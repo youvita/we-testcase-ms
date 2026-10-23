@@ -58,6 +58,8 @@ export function ExploreAppDialog({
   const [depth, setDepth] = useState<GenerationDepth>("essential");
   const [instructions, setInstructions] = useState("");
   const [busy, setBusy] = useState(false);
+  const signInCase = signInCases.find((c) => c.id === signIn);
+  const signInLabel = signInCase ? `With ${signInCase.tcId} — ${signInCase.title}` : undefined;
 
   const selectedEnv = webEnvironments.some((e) => e.id === environmentId)
     ? environmentId
@@ -140,7 +142,7 @@ export function ExploreAppDialog({
             <div className="space-y-2">
               <Label>Sign in first</Label>
               <Select value={signIn} onValueChange={setSignIn}>
-                <SelectTrigger>
+                <SelectTrigger title={signInLabel}>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>

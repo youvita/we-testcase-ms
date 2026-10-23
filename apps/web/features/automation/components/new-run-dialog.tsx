@@ -62,6 +62,8 @@ export function NewRunDialog({
   const [recordResults, setRecordResults] = useState(true);
   const [live, setLive] = useState<LiveChoice>({ liveView: false, speed: "slow" });
   const [busy, setBusy] = useState(false);
+  const signInCase = signInCases.find((c) => c.id === signIn);
+  const signInLabel = signInCase ? `With ${signInCase.tcId} — ${signInCase.title}` : undefined;
 
   // An environment deleted while the dialog was closed must not stay selected.
   const selectedEnv = environments.some((e) => e.id === environmentId)
@@ -174,7 +176,7 @@ export function NewRunDialog({
               <div className="space-y-2">
                 <Label>Sign in first</Label>
                 <Select value={signIn} onValueChange={setSignIn}>
-                  <SelectTrigger>
+                  <SelectTrigger title={signInLabel}>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>

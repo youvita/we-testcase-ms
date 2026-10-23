@@ -98,11 +98,22 @@ export async function deleteAutomationScript(testCaseId: string) {
   await prisma.automationScript.deleteMany({ where: { testCaseId } });
 }
 
-/** Automated Web cases — any of them can sign in before others run or explore. */
+/** Titles that look like a sign-in, in the languages these projects use. */
+const SIGN_IN_TITLE = /log\s?-?in|sign\s?-?in|đăng nhập|ចូល|로그인/i;
+
+/**
+ * Automated Web cases — any of them can sign in before others run or
+ * explore. Ones whose title reads like a login come first: they are what
+ * "sign in first" almost always wants.
+ */
 export async function listSignInCases(projectId: string) {
-  return prisma.testCase.findMany({
+  const cases = await prisma.testCase.findMany({
     where: { projectId, platform: "WEB", script: { isNot: null } },
     orderBy: { tcId: "asc" },
     select: { id: true, tcId: true, title: true },
   });
+  return [
+    ...cases.filter((c) => SIGN_IN_TITLE.test(c.title)),
+    ...cases.filter((c) => !SIGN_IN_TITLE.test(c.title)),
+  ];
 }
