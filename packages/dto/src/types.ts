@@ -213,6 +213,8 @@ export type RunEnvironmentDto = {
   name: string;
   webBaseUrl: string | null;
   apiBaseUrl: string | null;
+  /** Where Web work starts, e.g. "/kh/login"; null means "/". */
+  startPath: string | null;
   variables: RunVariableDto[];
 };
 

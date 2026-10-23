@@ -51,7 +51,8 @@ export function BulkWriteDialog({
   onStarted: (result: ScriptBatchResult) => void;
 }) {
   const [environmentId, setEnvironmentId] = useState(environments[0]?.id ?? "");
-  const [startPath, setStartPath] = useState("/");
+  // Blank: the environment's own start page.
+  const [startPath, setStartPath] = useState("");
   const [instructions, setInstructions] = useState("");
   const [skipScripted, setSkipScripted] = useState(true);
   const [autoSave, setAutoSave] = useState(true);
@@ -62,6 +63,8 @@ export function BulkWriteDialog({
   const selectedEnv = environments.some((e) => e.id === environmentId)
     ? environmentId
     : (environments[0]?.id ?? "");
+  const selectedEnvironment = environments.find((e) => e.id === selectedEnv);
+  const envStart = selectedEnvironment?.startPath ?? "/";
   const automatable = cases.filter((c) => c.platform === "WEB" || c.platform === "API");
   const mobile = cases.length - automatable.length;
   const scripted = automatable.filter((c) => c.hasScript).length;
@@ -73,7 +76,7 @@ export function BulkWriteDialog({
       const result = await api.post<ScriptBatchResult>(`/api/projects/${projectId}/scripts/write`, {
         testCaseIds: cases.map((c) => c.id),
         environmentId: selectedEnv,
-        startPath,
+        startPath: startPath.trim() || undefined,
         instructions,
         skipScripted,
         autoSave,
@@ -140,14 +143,17 @@ export function BulkWriteDialog({
                   </Select>
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="bulk-start">Start page (Web)</Label>
+                  <Label htmlFor="bulk-start">Start page (optional)</Label>
                   <Input
                     id="bulk-start"
                     value={startPath}
                     onChange={(e) => setStartPath(e.target.value)}
-                    placeholder="/kh/login"
+                    placeholder={envStart}
                     className="font-mono"
                   />
+                  <p className="text-xs text-muted-foreground">
+                    Blank uses {selectedEnvironment?.name ?? "the environment"}&apos;s ({envStart}).
+                  </p>
                 </div>
               </div>
 

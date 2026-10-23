@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Globe, KeyRound, Loader2, Pencil, Plus, Server, Trash2, X } from "lucide-react";
+import { Globe, KeyRound, Loader2, LogIn, Pencil, Plus, Server, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
@@ -106,6 +106,11 @@ export function EnvironmentsPanel({
                     <span className="text-muted-foreground">API</span>
                     <span className="truncate font-mono text-xs">{env.apiBaseUrl ?? "—"}</span>
                   </p>
+                  <p className="flex items-center gap-2">
+                    <LogIn className="size-4 text-muted-foreground" />
+                    <span className="text-muted-foreground">Start</span>
+                    <span className="truncate font-mono text-xs">{env.startPath ?? "/"}</span>
+                  </p>
                   {env.variables.length > 0 && (
                     <div className="flex flex-wrap gap-1 pt-1">
                       {env.variables.map((v) => (
@@ -156,6 +161,7 @@ function EnvironmentDialog({
   const [name, setName] = useState("");
   const [webBaseUrl, setWebBaseUrl] = useState("");
   const [apiBaseUrl, setApiBaseUrl] = useState("");
+  const [startPath, setStartPath] = useState("");
   const [variables, setVariables] = useState<VariableRow[]>([]);
   const [saving, setSaving] = useState(false);
 
@@ -166,6 +172,7 @@ function EnvironmentDialog({
     setName(existing?.name ?? (environment === "new" ? "SIT" : ""));
     setWebBaseUrl(existing?.webBaseUrl ?? "");
     setApiBaseUrl(existing?.apiBaseUrl ?? "");
+    setStartPath(existing?.startPath ?? "");
     setVariables(
       existing?.variables.map((v) => ({
         key: v.key,
@@ -187,6 +194,7 @@ function EnvironmentDialog({
         name,
         webBaseUrl: webBaseUrl || null,
         apiBaseUrl: apiBaseUrl || null,
+        startPath: startPath || null,
         variables: variables
           .filter((v) => v.key.trim())
           .map((v) => ({
@@ -249,6 +257,21 @@ function EnvironmentDialog({
                 placeholder="https://sit-api.example.com/v1"
               />
             </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="env-start">Start page</Label>
+            <Input
+              id="env-start"
+              value={startPath}
+              onChange={(e) => setStartPath(e.target.value)}
+              placeholder="/kh/login"
+              className="font-mono"
+            />
+            <p className="text-xs text-muted-foreground">
+              Where Web tests usually begin, after the Web base URL — often the login page.
+              Claude opens it first when writing scripts or exploring; blank means /.
+            </p>
           </div>
 
           <div className="space-y-2">

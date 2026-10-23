@@ -39,6 +39,7 @@ function toDto(row: {
   name: string;
   webBaseUrl: string | null;
   apiBaseUrl: string | null;
+  startPath: string | null;
   variablesSealed: string | null;
 }): RunEnvironmentDto {
   return {
@@ -46,6 +47,7 @@ function toDto(row: {
     name: row.name,
     webBaseUrl: row.webBaseUrl,
     apiBaseUrl: row.apiBaseUrl,
+    startPath: row.startPath,
     variables: readVariables(row.variablesSealed).map(
       (v): RunVariableDto => ({
         key: v.key,
@@ -97,6 +99,7 @@ type ParsedInput = {
   name: string;
   webBaseUrl?: string;
   apiBaseUrl?: string;
+  startPath?: string;
   variables: RunEnvironmentInput["variables"];
 };
 
@@ -110,6 +113,7 @@ export async function createRunEnvironment(projectId: string, input: ParsedInput
       name: input.name,
       webBaseUrl: input.webBaseUrl ?? null,
       apiBaseUrl: input.apiBaseUrl ?? null,
+      startPath: input.startPath ?? null,
       variablesSealed: variables.length ? seal(JSON.stringify(variables)) : null,
     },
   });
@@ -133,6 +137,7 @@ export async function updateRunEnvironment(environmentId: string, input: ParsedI
       name: input.name,
       webBaseUrl: input.webBaseUrl ?? null,
       apiBaseUrl: input.apiBaseUrl ?? null,
+      startPath: input.startPath ?? null,
       variablesSealed: variables.length ? seal(JSON.stringify(variables)) : null,
     },
   });
@@ -155,6 +160,7 @@ export async function getEnvironmentOutline(environmentId: string, projectId: st
     name: row.name,
     webBaseUrl: row.webBaseUrl,
     apiBaseUrl: row.apiBaseUrl,
+    startPath: row.startPath ?? "/",
     variables: readVariables(row.variablesSealed).map((v) => ({ key: v.key, secret: v.secret })),
   };
 }

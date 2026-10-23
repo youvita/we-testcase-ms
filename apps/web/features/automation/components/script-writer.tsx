@@ -67,20 +67,24 @@ export function WriteWithClaudeDialog({
   onNeedsSubscription: (retry: () => void) => void;
 }) {
   const [environmentId, setEnvironmentId] = useState(environments[0]?.id ?? "");
-  const [startPath, setStartPath] = useState("/");
+  // Blank: the environment's own start page.
+  const [startPath, setStartPath] = useState("");
   const [instructions, setInstructions] = useState("");
   const [live, setLive] = useState<LiveChoice>({ liveView: false, speed: "slow" });
   const [busy, setBusy] = useState(false);
   const selected = environments.some((e) => e.id === environmentId)
     ? environmentId
     : (environments[0]?.id ?? "");
+  const selectedEnvironment = environments.find((e) => e.id === selected);
+  const envName = selectedEnvironment?.name ?? "the environment";
+  const envStart = selectedEnvironment?.startPath ?? "/";
 
   async function start() {
     setBusy(true);
     try {
       const job = await api.post<AiJobDto>(`/api/test-cases/${testCaseId}/script/write`, {
         environmentId: selected,
-        startPath,
+        startPath: startPath.trim() || undefined,
         instructions,
         liveView: live.liveView,
         speed: live.liveView ? live.speed : "normal",
@@ -136,16 +140,17 @@ export function WriteWithClaudeDialog({
             </div>
             {platform === "WEB" && (
               <div className="space-y-2">
-                <Label htmlFor="start-path">Start page</Label>
+                <Label htmlFor="start-path">Start page (optional)</Label>
                 <Input
                   id="start-path"
                   value={startPath}
                   onChange={(e) => setStartPath(e.target.value)}
-                  placeholder="/login"
+                  placeholder={envStart}
                   className="font-mono"
                 />
                 <p className="text-xs text-muted-foreground">
-                  The path the test starts from, after the Web base URL — e.g. /login.
+                  Leave blank to use {envName}&apos;s start page ({envStart}). Set it only if this
+                  case begins somewhere else.
                 </p>
               </div>
             )}

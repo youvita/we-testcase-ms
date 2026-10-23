@@ -206,7 +206,8 @@ export async function startScriptWriting(
   user: SessionUser,
   input: {
     environmentId: string;
-    startPath: string;
+    /** Blank means the environment's start page. */
+    startPath?: string;
     instructions?: string;
     liveView?: boolean;
     speed?: keyof typeof RUN_SPEEDS;
@@ -239,6 +240,7 @@ export async function startScriptWriting(
   }
 
   const env = await getEnvironmentOutline(input.environmentId, testCase.projectId);
+  const startPath = input.startPath ?? env.startPath;
   const base = testCase.platform === "API" ? env.apiBaseUrl : env.webBaseUrl;
   if (!base) {
     throw badRequest(`${env.name} has no ${PLATFORM_LABELS[testCase.platform]} base URL. Add it in Environments.`);
@@ -259,7 +261,7 @@ export async function startScriptWriting(
       projectId: testCase.projectId,
       kind: "WRITE_SCRIPT",
       userId: user.id,
-      input: { testCaseId, ...input },
+      input: { testCaseId, ...input, startPath },
     },
     async ({ token, progress, setResult }) => {
       const isWeb = testCase.platform === "WEB";
@@ -302,10 +304,10 @@ export async function startScriptWriting(
         screenshot: null,
       };
       if (isWeb) {
-        const probe = await tryScript(`await page.goto(${JSON.stringify(input.startPath)});`);
+        const probe = await tryScript(`await page.goto(${JSON.stringify(startPath)});`);
         if (probe.item.status !== "PASSED") {
           throw new AiError(
-            `Could not open ${input.startPath} on ${env.name}: ${probe.item.error ?? probe.runError ?? "the page did not load"}`,
+            `Could not open ${startPath} on ${env.name}: ${probe.item.error ?? probe.runError ?? "the page did not load"}`,
           );
         }
         evidence = await readItemEvidence(probe.item.id);
@@ -332,7 +334,7 @@ export async function startScriptWriting(
             : firstDraftPrompt({
                 testCase,
                 env,
-                startPath: input.startPath,
+                startPath,
                 instructions: input.instructions,
                 snapshot: evidence.snapshot,
               }),
@@ -398,7 +400,7 @@ export async function startScriptWritingBatch(
   input: {
     testCaseIds: string[];
     environmentId: string;
-    startPath: string;
+    startPath?: string;
     instructions?: string;
     skipScripted: boolean;
     autoSave: boolean;

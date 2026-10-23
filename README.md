@@ -301,8 +301,9 @@ again" message rather than left spinning.
 Project → **Automation** (`/projects/:id/automation`). Web and API cases can be
 automated; iOS and Android come later (they need emulators or devices).
 
-1. **Environments** — per project: a Web base URL, an API base URL and
-   variables (`vars.USER_EMAIL`). Secret variables are encrypted, never sent
+1. **Environments** — per project: a Web base URL, an API base URL, a start
+   page (e.g. `/kh/login`, where Claude begins when writing scripts or
+   exploring, prefilled in those dialogs) and variables (`vars.USER_EMAIL`). Secret variables are encrypted, never sent
    back to the browser, and only the runner receives them at run time.
 2. **Scripts** — on a test case, under *Automation*: the body of one
    Playwright test. `page` (Web) or `request` (API), `expect`, `env` and `vars`

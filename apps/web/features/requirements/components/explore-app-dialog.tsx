@@ -52,7 +52,8 @@ export function ExploreAppDialog({
 }) {
   const webEnvironments = environments.filter((env) => env.webBaseUrl);
   const [environmentId, setEnvironmentId] = useState(webEnvironments[0]?.id ?? "");
-  const [paths, setPaths] = useState("/");
+  // Null until edited: until then the box shows the environment's start page.
+  const [pathsEdited, setPathsEdited] = useState<string | null>(null);
   const [signIn, setSignIn] = useState(NO_SIGN_IN);
   const [depth, setDepth] = useState<GenerationDepth>("essential");
   const [instructions, setInstructions] = useState("");
@@ -61,6 +62,8 @@ export function ExploreAppDialog({
   const selectedEnv = webEnvironments.some((e) => e.id === environmentId)
     ? environmentId
     : (webEnvironments[0]?.id ?? "");
+  const paths =
+    pathsEdited ?? webEnvironments.find((e) => e.id === selectedEnv)?.startPath ?? "/";
   const pathList = paths
     .split("\n")
     .map((line) => line.trim())
@@ -125,7 +128,7 @@ export function ExploreAppDialog({
                 id="explore-paths"
                 rows={3}
                 value={paths}
-                onChange={(e) => setPaths(e.target.value)}
+                onChange={(e) => setPathsEdited(e.target.value)}
                 placeholder={"/kh/login\n/kh/register"}
                 className="font-mono text-sm"
               />

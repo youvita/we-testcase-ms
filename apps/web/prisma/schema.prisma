@@ -658,6 +658,9 @@ model RunEnvironment {
   webBaseUrl      String?
   /// Base URL for API scripts: `request.get("/users")` resolves against it.
   apiBaseUrl      String?
+  /// Where Web work starts, after the base URL — e.g. "/kh/login". Claude's
+  /// script writing and exploring open it first; dialogs prefill it.
+  startPath       String?
   /// `{ key, value, secret }[]` as JSON, sealed with lib/secret-box.ts.
   /// Scripts read them as `vars.KEY`. Secret values never go back to the
   /// browser; only the runner receives them, at run time.

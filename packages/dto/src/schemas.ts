@@ -355,6 +355,17 @@ export type DraftReviewInput = z.infer<typeof draftReviewSchema>;
 // Automation
 // ---------------------------------------------------------------------------
 
+/**
+ * A path after the base URL, e.g. "/kh/login". Blank is undefined: callers
+ * fall back to the environment's start page, then "/".
+ */
+const startPathSchema = z
+  .string()
+  .trim()
+  .max(500)
+  .nullish()
+  .transform((v) => (v ? (v.startsWith("/") ? v : `/${v}`) : undefined));
+
 /** "Watch live" and its speed, shared by every way of starting a run. */
 const liveViewFields = {
   liveView: z.boolean().default(false),
@@ -393,6 +404,7 @@ export const runEnvironmentSchema = z
     name: trimmed(60).min(1, "Name is required"),
     webBaseUrl: baseUrl,
     apiBaseUrl: baseUrl,
+    startPath: startPathSchema,
     variables: z.array(runVariableSchema).max(100).default([]),
   })
   .refine(
@@ -433,12 +445,8 @@ export type TestRunCreateInput = z.input<typeof testRunCreateSchema>;
 export const scriptWritingSchema = z.object({
   environmentId: z.string().min(1, "Select an environment"),
   /** Where a Web script starts, relative to the Web base URL. */
-  startPath: z
-    .string()
-    .trim()
-    .max(500)
-    .default("/")
-    .transform((v) => (v.startsWith("/") ? v : `/${v}`)),
+  /** Blank means the environment's own start page. */
+  startPath: startPathSchema,
   /** Anything the steps leave out, e.g. "the OTP on SIT is always 000000". */
   instructions: optionalText(2000),
   ...liveViewFields,
@@ -453,12 +461,8 @@ export const scriptWritingBatchSchema = z.object({
     .min(1, "Select at least one test case")
     .max(50, "Write at most 50 scripts at a time"),
   environmentId: z.string().min(1, "Select an environment"),
-  startPath: z
-    .string()
-    .trim()
-    .max(500)
-    .default("/")
-    .transform((v) => (v.startsWith("/") ? v : `/${v}`)),
+  /** Blank means the environment's own start page. */
+  startPath: startPathSchema,
   instructions: optionalText(2000),
   /** Leave cases that already have a script alone. */
   skipScripted: z.boolean().default(true),
