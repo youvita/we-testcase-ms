@@ -172,6 +172,11 @@ export function ExploreAppDialog({
                     <SelectItem value="thorough">Thorough</SelectItem>
                   </SelectContent>
                 </Select>
+                <p className="text-xs text-muted-foreground">
+                  {depth === "essential"
+                    ? "About 4–8 cases per page: main flows and key negative cases."
+                    : "Every field's validation, limits, states and navigation."}
+                </p>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="explore-notes">Focus (optional)</Label>
