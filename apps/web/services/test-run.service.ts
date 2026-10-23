@@ -53,6 +53,7 @@ type RunRow = TestRun & { createdBy: { id: string; name: string } };
 function toRunDto(run: RunRow): TestRunDto {
   return {
     id: run.id,
+    environmentId: run.environmentId,
     number: run.number,
     purpose: run.purpose,
     status: run.status,
@@ -277,7 +278,13 @@ export async function getTestRun(runId: string): Promise<TestRunDetailDto> {
         orderBy: { position: "asc" },
         include: {
           testCase: {
-            select: { id: true, tcId: true, title: true, platform: true },
+            select: {
+              id: true,
+              tcId: true,
+              title: true,
+              platform: true,
+              script: { select: { code: true } },
+            },
           },
         },
       },
@@ -295,7 +302,15 @@ export async function getTestRun(runId: string): Promise<TestRunDetailDto> {
       error: item.error,
       log: item.log,
       code: item.code,
-      testCase: item.testCase,
+      testCase: item.testCase
+        ? {
+            id: item.testCase.id,
+            tcId: item.testCase.tcId,
+            title: item.testCase.title,
+            platform: item.testCase.platform,
+          }
+        : null,
+      currentCode: item.testCase?.script?.code ?? null,
       executionId: item.executionId,
       triage: item.triage
         ? {

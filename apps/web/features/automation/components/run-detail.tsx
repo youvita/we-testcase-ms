@@ -208,6 +208,7 @@ export function RunDetail({
             <RunItemRow
               key={item.id}
               projectId={projectId}
+              environment={run.environmentId ? { id: run.environmentId, name: run.environmentName } : null}
               item={item}
               canManage={canManage}
               triaging={Boolean(triaging[item.id])}
@@ -235,12 +236,14 @@ export function RunDetail({
 
 function RunItemRow({
   projectId,
+  environment,
   item,
   canManage,
   triaging,
   onExplain,
 }: {
   projectId: string;
+  environment: { id: string; name: string } | null;
   item: TestRunItemDto;
   canManage: boolean;
   triaging: boolean;
@@ -295,7 +298,15 @@ function RunItemRow({
           )}
 
           {item.triage && testCase ? (
-            <TriageCard triage={item.triage} testCaseId={testCase.id} canManage={canManage} />
+            <TriageCard
+              triage={item.triage}
+              projectId={projectId}
+              testCase={testCase}
+              ranCode={item.code}
+              currentCode={item.currentCode}
+              environment={environment}
+              canManage={canManage}
+            />
           ) : (
             canManage &&
             testCase &&

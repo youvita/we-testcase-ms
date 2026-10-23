@@ -220,6 +220,8 @@ export type RunEnvironmentDto = {
 
 export type TestRunDto = {
   id: string;
+  /** Null once the environment is deleted. */
+  environmentId: string | null;
   /** Null for script checks. */
   number: number | null;
   purpose: TestRunPurpose;
@@ -258,6 +260,8 @@ export type TestRunItemDto = {
   artifacts: RunArtifactDto[];
   executionId: string | null;
   triage: RunTriageDto | null;
+  /** The case's script as it is now — to tell whether a fix was applied. */
+  currentCode: string | null;
 };
 
 /**
