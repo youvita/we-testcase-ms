@@ -432,6 +432,8 @@ export async function startTriage(itemId: string, user: SessionUser): Promise<Ai
     },
   });
   if (!item) throw notFound("Run item");
+  const testCase = item.testCase;
+  if (!testCase) throw badRequest("Only a test case's result can be explained.");
   if (item.status !== "FAILED" && item.status !== "ERROR") {
     throw badRequest("Only failed results can be explained.");
   }
@@ -450,7 +452,7 @@ export async function startTriage(itemId: string, user: SessionUser): Promise<Ai
         token,
         system: TRIAGE_SYSTEM,
         images: evidence.screenshot ? [evidence.screenshot] : undefined,
-        prompt: `${describeCase(item.testCase)}
+        prompt: `${describeCase(testCase)}
 
 Environment: ${item.run.environmentName}
 
@@ -481,7 +483,7 @@ ${describePage(evidence.snapshot, "at the end of the test")}`,
         data: { triage, triagedAt: new Date() },
       });
       await progress(1, 1);
-      return `${item.testCase.tcId}: ${triage.summary}`;
+      return `${testCase.tcId}: ${triage.summary}`;
     },
   );
 }

@@ -446,6 +446,27 @@ export const scriptWritingSchema = z.object({
 
 export type ScriptWritingInput = z.input<typeof scriptWritingSchema>;
 
+/** Paths to open, one per line in the form; at most five per exploration. */
+export const exploreAppSchema = z.object({
+  environmentId: z.string().min(1, "Select an environment"),
+  paths: z
+    .array(
+      z
+        .string()
+        .trim()
+        .max(500)
+        .transform((v) => (v.startsWith("/") ? v : `/${v}`)),
+    )
+    .min(1, "Give at least one page")
+    .max(5, "Explore at most five pages at a time"),
+  /** An automated case whose script signs in first, for pages behind login. */
+  setupTestCaseId: z.string().nullish().transform((v) => v || undefined),
+  depth: z.enum(GENERATION_DEPTHS).default("essential"),
+  instructions: optionalText(2000),
+});
+
+export type ExploreAppInput = z.input<typeof exploreAppSchema>;
+
 // ---------------------------------------------------------------------------
 // List query params
 // ---------------------------------------------------------------------------

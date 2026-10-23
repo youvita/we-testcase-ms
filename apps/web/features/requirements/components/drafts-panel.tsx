@@ -6,6 +6,7 @@ import {
   Check,
   ChevronDown,
   ChevronRight,
+  Compass,
   Inbox,
   Loader2,
   Pencil,
@@ -69,10 +70,13 @@ export function DraftsPanel({
   platforms,
   canManage,
   onOpenRequirements,
+  onExplore,
 }: {
   projectId: string;
   drafts: TestCaseDraftDto[];
   platforms: Platform[];
+  /** Open "Explore the app"; absent when exploring is not possible here. */
+  onExplore?: () => void;
   canManage: boolean;
   onOpenRequirements: () => void;
 }) {
@@ -128,14 +132,34 @@ export function DraftsPanel({
       <EmptyState
         icon={Inbox}
         title="Nothing to review"
-        description="Select requirements and choose Draft test cases. What Claude writes waits here until you accept or reject it."
-        action={<Button onClick={onOpenRequirements}>Go to requirements</Button>}
+        description="Have Claude suggest test cases — from a PRD or FRD under Requirements, or by exploring the app's pages. What it writes waits here until you accept or reject it."
+        action={
+          <div className="flex flex-wrap justify-center gap-2">
+            {canManage && onExplore && (
+              <Button onClick={onExplore}>
+                <Compass className="mr-2 size-4" />
+                Explore the app
+              </Button>
+            )}
+            <Button variant="outline" onClick={onOpenRequirements}>
+              Go to requirements
+            </Button>
+          </div>
+        }
       />
     );
   }
 
   return (
     <div className="space-y-4">
+      {canManage && onExplore && (
+        <div className="flex justify-end">
+          <Button variant="outline" size="sm" onClick={onExplore}>
+            <Compass className="mr-2 size-4" />
+            Explore the app
+          </Button>
+        </div>
+      )}
       {canManage && (
         <div className="sticky top-0 z-10 flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-background/95 px-4 py-2 backdrop-blur">
           <label className="flex items-center gap-2 text-sm">

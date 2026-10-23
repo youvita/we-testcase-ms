@@ -4,7 +4,7 @@ import { CheckCircle2, Clock, Loader2, XCircle } from "lucide-react";
 
 import { Card, CardContent } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
-import type { AiJobDto } from "@wetestcase/dto";
+import type { AiJobDto, ExploreAppResult } from "@wetestcase/dto";
 import { formatRelative } from "@/utils/format";
 
 const KIND_LABELS: Record<AiJobDto["kind"], string> = {
@@ -12,6 +12,7 @@ const KIND_LABELS: Record<AiJobDto["kind"], string> = {
   GENERATE_TEST_CASES: "Drafting test cases",
   WRITE_SCRIPT: "Writing a script",
   TRIAGE_FAILURE: "Explaining a failure",
+  EXPLORE_APP: "Exploring the app",
 };
 
 /** How many finished jobs to keep on screen under the running ones. */
@@ -59,6 +60,9 @@ export function AiJobList({ jobs }: { jobs: AiJobDto[] }) {
               {job.status === "SUCCEEDED" && job.summary && (
                 <p className="text-muted-foreground">{job.summary}</p>
               )}
+              {job.status === "SUCCEEDED" && job.kind === "EXPLORE_APP" && (
+                <Observations result={job.result as ExploreAppResult | null} />
+              )}
               {job.status === "FAILED" && job.error && (
                 <p className="text-status-failed">{job.error}</p>
               )}
@@ -82,4 +86,19 @@ function JobIcon({ status }: { status: AiJobDto["status"] }) {
     case "FAILED":
       return <XCircle className={`${className} text-status-failed`} />;
   }
+}
+
+/** What Claude noticed while exploring that is not a test case. */
+function Observations({ result }: { result: ExploreAppResult | null }) {
+  if (!result?.observations.length) return null;
+  return (
+    <div className="text-xs">
+      <p className="font-medium text-foreground">Claude also noticed</p>
+      <ul className="list-disc space-y-0.5 pl-4 text-muted-foreground">
+        {result.observations.map((note, index) => (
+          <li key={index}>{note}</li>
+        ))}
+      </ul>
+    </div>
+  );
 }

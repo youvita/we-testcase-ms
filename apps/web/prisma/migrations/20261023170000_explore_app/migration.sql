@@ -1,0 +1,3 @@
+-- AlterEnum
+ALTER TYPE "AiJobKind" ADD VALUE 'EXPLORE_APP';
+

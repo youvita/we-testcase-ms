@@ -247,7 +247,8 @@ export type TestRunItemDto = {
   error: string | null;
   log: string | null;
   code: string;
-  testCase: { id: string; tcId: string; title: string; platform: Platform };
+  /** Null for an exploration, which visits pages before any case exists. */
+  testCase: { id: string; tcId: string; title: string; platform: Platform } | null;
   /** Served at /api/run-items/:id/artifacts/:index. */
   artifacts: RunArtifactDto[];
   executionId: string | null;
@@ -275,6 +276,15 @@ export type RunTriageDto = {
     actual: string;
   } | null;
   triagedAt: string;
+};
+
+/** What an EXPLORE_APP job leaves in `AiJobDto.result`. */
+export type ExploreAppResult = {
+  pages: { url: string; title: string }[];
+  drafted: number;
+  /** Things Claude noticed on the pages that are not test cases. */
+  observations: string[];
+  runId: string | null;
 };
 
 /** What a WRITE_SCRIPT job leaves in `AiJobDto.result`. */

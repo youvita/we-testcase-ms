@@ -184,7 +184,10 @@ export function RunDetail({
             <LiveView
               runId={run.id}
               labels={Object.fromEntries(
-                run.items.map((item) => [item.id, `${item.testCase.tcId} ${item.testCase.title}`]),
+                run.items.map((item) => [
+                  item.id,
+                  item.testCase ? `${item.testCase.tcId} ${item.testCase.title}` : "Exploring pages",
+                ]),
               )}
             />
           )}
@@ -244,6 +247,9 @@ function RunItemRow({
   // Failures open by default — they are what someone came to look at.
   const [open, setOpen] = useState(item.status === "FAILED" || item.status === "ERROR");
   const artifactUrl = (index: number) => withBasePath(`/api/run-items/${item.id}/artifacts/${index}`);
+  // An exploration visits pages before any case exists for them.
+  const testCase = item.testCase;
+  const caseLabel = testCase?.tcId ?? "Explore";
   const screenshots = item.artifacts.filter((a) => a.kind === "screenshot");
   const video = item.artifacts.find((a) => a.kind === "video");
   const trace = item.artifacts.find((a) => a.kind === "trace");
@@ -263,10 +269,10 @@ function RunItemRow({
           ) : (
             <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
           )}
-          <span className="shrink-0 font-mono text-xs">{item.testCase.tcId}</span>
-          <span className="truncate text-sm">{item.testCase.title}</span>
+          <span className="shrink-0 font-mono text-xs">{caseLabel}</span>
+          <span className="truncate text-sm">{testCase?.title ?? "Pages Claude looked at"}</span>
         </button>
-        <PlatformBadge platform={item.testCase.platform} />
+        <PlatformBadge platform={testCase?.platform ?? "WEB"} />
         <span className="w-16 shrink-0 text-right text-xs text-muted-foreground">
           {formatDuration(item.durationMs)}
         </span>
@@ -286,10 +292,11 @@ function RunItemRow({
             </p>
           )}
 
-          {item.triage ? (
-            <TriageCard triage={item.triage} testCaseId={item.testCase.id} canManage={canManage} />
+          {item.triage && testCase ? (
+            <TriageCard triage={item.triage} testCaseId={testCase.id} canManage={canManage} />
           ) : (
             canManage &&
+            testCase &&
             (item.status === "FAILED" || item.status === "ERROR") && (
               <Button size="sm" variant="outline" disabled={triaging} onClick={onExplain}>
                 {triaging ? <Loader2 className="mr-2 size-4 animate-spin" /> : <Sparkles className="mr-2 size-4" />}
@@ -305,7 +312,7 @@ function RunItemRow({
                   {/* eslint-disable-next-line @next/next/no-img-element -- authenticated API file, not a static asset */}
                   <img
                     src={artifactUrl(shot.index)}
-                    alt={`Screenshot of ${item.testCase.tcId}`}
+                    alt={`Screenshot of ${caseLabel}`}
                     className="h-40 rounded-md border object-cover object-top"
                   />
                 </a>
@@ -340,12 +347,14 @@ function RunItemRow({
                 to step through every action, network call and DOM snapshot.
               </span>
             )}
-            <Link
-              href={`/projects/${projectId}/test-cases/${item.testCase.id}`}
-              className="text-xs text-primary hover:underline"
-            >
-              Open test case
-            </Link>
+            {testCase && (
+              <Link
+                href={`/projects/${projectId}/test-cases/${testCase.id}`}
+                className="text-xs text-primary hover:underline"
+              >
+                Open test case
+              </Link>
+            )}
           </div>
 
           {item.log && (

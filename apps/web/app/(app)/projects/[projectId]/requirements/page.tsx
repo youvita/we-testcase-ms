@@ -15,7 +15,9 @@ import { RequirementsWorkspace } from "@/features/requirements/components/requir
 import { canManageTestCases } from "@/lib/permissions";
 import { requireProjectAccess } from "@/lib/project-access";
 import { requireUser } from "@/lib/session";
+import { prisma } from "@/lib/prisma";
 import { listJobs } from "@/services/ai-job.service";
+import { listRunEnvironments } from "@/services/run-environment.service";
 import { getProject } from "@/services/project.service";
 import {
   listRequirementDocs,
@@ -25,12 +27,14 @@ import { listPendingDrafts } from "@/services/test-case-draft.service";
 
 export const metadata: Metadata = { title: "Requirements" };
 
-const REQUIREMENT_JOB_KINDS = ["EXTRACT_REQUIREMENTS", "GENERATE_TEST_CASES"] as const;
+const REQUIREMENT_JOB_KINDS = ["EXTRACT_REQUIREMENTS", "GENERATE_TEST_CASES", "EXPLORE_APP"] as const;
 
 export default async function RequirementsPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ projectId: string }>;
+  searchParams: Promise<{ explore?: string }>;
 }) {
   const user = await requireUser();
   const { projectId } = await params;
@@ -39,11 +43,19 @@ export default async function RequirementsPage({
   const project = await getProject(projectId).catch(() => null);
   if (!project) notFound();
 
-  const [docs, requirements, drafts, jobs] = await Promise.all([
+  const [docs, requirements, drafts, jobs, environments, signInCases, { explore }] = await Promise.all([
     listRequirementDocs(projectId),
     listRequirements(projectId),
     listPendingDrafts(projectId),
     listJobs(projectId, { kinds: [...REQUIREMENT_JOB_KINDS] }),
+    listRunEnvironments(projectId),
+    // Automated Web cases — any of them can sign in before exploring.
+    prisma.testCase.findMany({
+      where: { projectId, platform: "WEB", script: { isNot: null } },
+      orderBy: { tcId: "asc" },
+      select: { id: true, tcId: true, title: true },
+    }),
+    searchParams,
   ]);
 
   const covered = requirements.filter((req) => req.testCases.length > 0).length;
@@ -104,6 +116,9 @@ export default async function RequirementsPage({
         jobs={jobs}
         platforms={project.platforms}
         canManage={canManageTestCases(user.role)}
+        environments={environments}
+        signInCases={signInCases}
+        openExplore={explore === "1" && canManageTestCases(user.role)}
       />
 
       <p className="flex items-center gap-1.5 text-xs text-muted-foreground">

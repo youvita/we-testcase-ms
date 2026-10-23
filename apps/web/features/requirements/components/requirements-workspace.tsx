@@ -9,6 +9,7 @@ import { ClaudeConnectionDialog } from "@/features/ai/components/claude-connecti
 import type {
   AiJobDto,
   Platform,
+  RunEnvironmentDto,
   RequirementDocDto,
   RequirementDto,
   TestCaseDraftDto,
@@ -18,6 +19,7 @@ import { ApiError, api, errorMessage } from "@/utils/api-client";
 import { AiJobList } from "./ai-job-list";
 import { DocumentsPanel } from "./documents-panel";
 import { DraftsPanel } from "./drafts-panel";
+import { ExploreAppDialog, type SignInCase } from "./explore-app-dialog";
 import { RequirementsPanel } from "./requirements-panel";
 
 export type StartAi = (start: () => Promise<AiJobDto>) => Promise<boolean>;
@@ -44,6 +46,9 @@ export function RequirementsWorkspace({
   jobs: initialJobs,
   platforms,
   canManage,
+  environments,
+  signInCases,
+  openExplore = false,
 }: {
   projectId: string;
   docs: RequirementDocDto[];
@@ -52,12 +57,18 @@ export function RequirementsWorkspace({
   jobs: AiJobDto[];
   platforms: Platform[];
   canManage: boolean;
+  environments: RunEnvironmentDto[];
+  signInCases: SignInCase[];
+  /** Arrived from "Suggest with AI" on the test case list. */
+  openExplore?: boolean;
 }) {
   const router = useRouter();
   const [jobs, setJobs] = useState(initialJobs);
   const [tab, setTab] = useState(
-    docs.length === 0 ? "documents" : drafts.length > 0 ? "drafts" : "requirements",
+    openExplore || drafts.length > 0 ? "drafts" : docs.length === 0 ? "documents" : "requirements",
   );
+  const [exploreOpen, setExploreOpen] = useState(openExplore);
+  const canExplore = platforms.includes("WEB");
   const [connectOpen, setConnectOpen] = useState(false);
   const retryRef = useRef<(() => void) | null>(null);
 
@@ -77,7 +88,7 @@ export function RequirementsWorkspace({
       let next: AiJobDto[];
       try {
         next = await api.get<AiJobDto[]>(
-          `/api/projects/${projectId}/ai-jobs?kind=EXTRACT_REQUIREMENTS&kind=GENERATE_TEST_CASES`,
+          `/api/projects/${projectId}/ai-jobs?kind=EXTRACT_REQUIREMENTS&kind=GENERATE_TEST_CASES&kind=EXPLORE_APP`,
         );
       } catch {
         return; // A missed poll is retried on the next tick.
@@ -95,7 +106,7 @@ export function RequirementsWorkspace({
       for (const job of finished) {
         if (job.status === "SUCCEEDED") {
           toast.success(job.summary ?? "Done");
-          if (job.kind === "GENERATE_TEST_CASES") setTab("drafts");
+          if (job.kind === "GENERATE_TEST_CASES" || job.kind === "EXPLORE_APP") setTab("drafts");
           if (job.kind === "EXTRACT_REQUIREMENTS") setTab("requirements");
         } else {
           toast.error(job.error ?? "The AI job failed");
@@ -173,6 +184,7 @@ export function RequirementsWorkspace({
             drafts={drafts}
             platforms={platforms}
             canManage={canManage}
+            onExplore={canExplore ? () => setExploreOpen(true) : undefined}
             onOpenRequirements={() => setTab("requirements")}
           />
         </TabsContent>
@@ -187,6 +199,15 @@ export function RequirementsWorkspace({
           />
         </TabsContent>
       </Tabs>
+
+      <ExploreAppDialog
+        projectId={projectId}
+        environments={environments}
+        signInCases={signInCases}
+        open={exploreOpen}
+        onOpenChange={setExploreOpen}
+        startAi={startAi}
+      />
 
       <ClaudeConnectionDialog
         open={connectOpen}

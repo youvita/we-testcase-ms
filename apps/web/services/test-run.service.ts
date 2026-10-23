@@ -162,7 +162,8 @@ export async function queueRun(options: {
   recordResults: boolean;
   liveView?: boolean;
   slowMoMs?: number;
-  items: { testCaseId: string; code: string }[];
+  /** testCaseId is null only for an exploration. */
+  items: { testCaseId: string | null; code: string }[];
 }): Promise<TestRunDto> {
   for (let attempt = 0; ; attempt += 1) {
     try {
@@ -367,46 +368,65 @@ export async function claimNextRun(runnerName: string): Promise<RunnerJob | null
     });
     if (!runId) return null;
 
-    const run = await prisma.testRun.findUniqueOrThrow({
-      where: { id: runId },
-      include: {
-        project: { select: { name: true } },
-        items: {
-          orderBy: { position: "asc" },
-          include: {
-            testCase: { select: { tcId: true, title: true, platform: true } },
-          },
+    try {
+      const job = await buildRunnerJob(runId);
+      if (job) return job;
+    } catch (error) {
+      // Claimed but not handed over: close it now rather than leave it
+      // RUNNING with no runner until the stale sweep notices.
+      await finishRun(runId, {
+        error: `The run could not be started: ${error instanceof Error ? error.message : String(error)}`,
+      }).catch(() => undefined);
+      throw error;
+    }
+  }
+}
+
+/**
+ * What the runner needs for a claimed run, or null when the run cannot go
+ * ahead (it is then already finished, with the reason).
+ */
+async function buildRunnerJob(runId: string): Promise<RunnerJob | null> {
+  const run = await prisma.testRun.findUniqueOrThrow({
+    where: { id: runId },
+    include: {
+      project: { select: { name: true } },
+      items: {
+        orderBy: { position: "asc" },
+        include: {
+          testCase: { select: { tcId: true, title: true, platform: true } },
         },
       },
+    },
+  });
+
+  const environment = await resolveEnvironmentForRunner(run.environmentId);
+  if (!environment) {
+    // Deleted while the run waited. Close it; the caller looks for the next one.
+    await finishRun(run.id, {
+      error: `The environment "${run.environmentName}" was deleted before this run started.`,
     });
-
-    const environment = await resolveEnvironmentForRunner(run.environmentId);
-    if (!environment) {
-      // Deleted while the run waited. Close it and look for the next one.
-      await finishRun(run.id, {
-        error: `The environment "${run.environmentName}" was deleted before this run started.`,
-      });
-      continue;
-    }
-
-    return {
-      run: {
-        id: run.id,
-        label: run.number ? `Run #${run.number}` : "Script check",
-        projectName: run.project.name,
-        slowMoMs: run.slowMoMs,
-        liveToken: run.liveToken,
-      },
-      environment,
-      items: run.items.map((item) => ({
-        id: item.id,
-        tcId: item.testCase.tcId,
-        title: item.testCase.title,
-        platform: item.testCase.platform,
-        code: item.code,
-      })),
-    };
+    return null;
   }
+
+  return {
+    run: {
+      id: run.id,
+      label: run.number ? `Run #${run.number}` : "Script check",
+      projectName: run.project.name,
+      slowMoMs: run.slowMoMs,
+      liveToken: run.liveToken,
+    },
+    environment,
+    items: run.items.map((item) => ({
+      id: item.id,
+      // An exploration has no case of its own; it is a Web page visit.
+      tcId: item.testCase?.tcId ?? "EXPLORE",
+      title: item.testCase?.title ?? "Exploring pages",
+      platform: item.testCase?.platform ?? "WEB",
+      code: item.code,
+    })),
+  };
 }
 
 /** The runner is alive. Tells it whether someone asked to stop. */
@@ -499,7 +519,11 @@ export async function reportItemResult(
   }
 
   let executionId: string | null = null;
-  if (item.run.recordResults && (result.status === "PASSED" || result.status === "FAILED")) {
+  if (
+    item.testCaseId &&
+    item.run.recordResults &&
+    (result.status === "PASSED" || result.status === "FAILED")
+  ) {
     const execution = await recordExecution(item.testCaseId, item.run.createdById, {
       status: result.status,
       actualResult: result.status === "FAILED" ? (result.error?.slice(0, 4000) ?? null) : null,
@@ -653,4 +677,37 @@ export async function authorizeLiveFrame(itemId: string, token: string) {
   const a = Buffer.from(token);
   const b = Buffer.from(expected);
   return a.length === b.length && timingSafeEqual(a, b) ? item.run.id : null;
+}
+
+/**
+ * Every page an item captured on purpose, in order: each outline with the
+ * screenshot taken at the same moment. The runner's own end-of-test outline
+ * and screenshot come last and repeat the final page, so they are dropped.
+ */
+export async function readItemPages(itemId: string, expected: number) {
+  const item = await prisma.testRunItem.findUniqueOrThrow({
+    where: { id: itemId },
+    select: { artifacts: true },
+  });
+  const artifacts = readArtifacts(item.artifacts);
+  const snapshots = artifacts.filter((a) => a.kind === "snapshot").slice(0, expected);
+  const screenshots = artifacts.filter((a) => a.kind === "screenshot").slice(0, expected);
+
+  return Promise.all(
+    snapshots.map(async (snapshot, index) => {
+      const text = await readFile(resolveStoredPath(snapshot.path), "utf8").catch(() => "");
+      const shot = screenshots[index];
+      const image = shot
+        ? await readFile(resolveStoredPath(shot.path)).catch(() => null)
+        : null;
+      const url = /^URL: (.*)$/m.exec(text)?.[1] ?? "";
+      const title = /^Title: (.*)$/m.exec(text)?.[1] ?? "";
+      return {
+        url,
+        title,
+        outline: text,
+        screenshot: image && shot ? { mediaType: shot.mimeType, data: image.toString("base64") } : null,
+      };
+    }),
+  );
 }

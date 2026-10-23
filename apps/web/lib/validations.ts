@@ -36,6 +36,7 @@ export {
   automationScriptSchema,
   testRunCreateSchema,
   scriptWritingSchema,
+  exploreAppSchema,
   type LoginInput,
   type RegisterInput,
   type ProfileInput,

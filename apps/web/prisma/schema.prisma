@@ -113,6 +113,8 @@ enum AiJobKind {
   WRITE_SCRIPT
   /// Explain why an automated result failed.
   TRIAGE_FAILURE
+  /// Open pages of the app under test and suggest test cases from them.
+  EXPLORE_APP
 }
 
 enum AiJobStatus {
@@ -766,8 +768,10 @@ model TestRunItem {
   runId String
   run   TestRun @relation(fields: [runId], references: [id], onDelete: Cascade)
 
-  testCaseId String
-  testCase   TestCase @relation(fields: [testCaseId], references: [id], onDelete: Cascade)
+  /// Null only for an exploration, which looks at pages before any test
+  /// case exists for them.
+  testCaseId String?
+  testCase   TestCase? @relation(fields: [testCaseId], references: [id], onDelete: Cascade)
 
   /// Claude's reading of a failure: `{ category, summary, explanation,
   /// fixedCode?, bugReport? }`. Set by a TRIAGE_FAILURE job.

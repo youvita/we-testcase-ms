@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { FileUp, Plus } from "lucide-react";
+import Link from "next/link";
+import { FileUp, Plus, Sparkles } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import type { Platform } from "@/types";
@@ -31,6 +32,15 @@ export function TestCaseToolbar({
 
   return (
     <>
+      {platforms.includes("WEB") && (
+        <Button variant="outline" asChild>
+          <Link href={`/projects/${projectId}/requirements?explore=1`}>
+            <Sparkles className="mr-2 size-4" />
+            Suggest with AI
+          </Link>
+        </Button>
+      )}
+
       <Button variant="outline" onClick={() => setImportOpen(true)}>
         <FileUp className="mr-2 size-4" />
         Import Excel

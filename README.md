@@ -263,6 +263,15 @@ Project → **Requirements** (`/projects/:id/requirements`).
 Coverage (which requirements have tests, and their latest results) is on the
 requirements page; each test case lists the requirements it verifies.
 
+**No document? Explore the app.** *Explore the app* (Review drafts, or
+*Suggest with AI* on the test case list) suggests cases from the application
+itself: the runner opens up to five pages — after signing in with an automated
+case's script, for pages behind login — and captures each page's outline and a
+screenshot; Claude suggests positive, negative, validation and boundary cases
+for what is actually there, skipping cases the project already has or has
+pending, plus a few observations that are not test cases. Suggestions land in
+Review drafts like any other.
+
 **Whose Claude.** AI runs on each person's own Claude Pro/Max subscription —
 there is no shared key. Each person installs the Claude CLI once
 (`npm install -g @anthropic-ai/claude-code`), runs `claude setup-token`, signs in

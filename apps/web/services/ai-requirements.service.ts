@@ -69,7 +69,7 @@ const extractedRequirementSchema = z.object({
   section: textOrList,
 });
 
-const draftReplySchema = z.object({
+export const draftReplySchema = z.object({
   // Drop a bad entry, not the whole list.
   requirementCodes: z
     .array(z.unknown())
@@ -101,7 +101,7 @@ const draftReplySchema = z.object({
 });
 
 /** Keep the items that parse; one malformed entry should not sink a batch. */
-function parseItems<T>(
+export function parseItems<T>(
   reply: string,
   key: string,
   schema: z.ZodType<T, z.ZodTypeDef, unknown>,
