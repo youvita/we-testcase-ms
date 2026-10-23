@@ -282,7 +282,12 @@ export function ScriptWritingPanel({
               {result.notes && <span className="block text-foreground/80">{result.notes}</span>}
             </span>
           </p>
-          <pre className="max-h-72 overflow-auto rounded-md bg-background p-3 font-mono text-xs">{result.code}</pre>
+          <details>
+            <summary className="cursor-pointer text-xs text-muted-foreground">
+              Show the script Claude wrote
+            </summary>
+            <pre className="mt-1 max-h-72 overflow-auto rounded-md bg-background p-3 font-mono text-xs">{result.code}</pre>
+          </details>
           {savedCode?.trim() === result.code.trim() ? (
             <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
               <CheckCircle2 className="size-3.5 text-status-passed" />

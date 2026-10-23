@@ -3,7 +3,7 @@
 import { useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Bot, Loader2, Play, Save, Sparkles, Trash2 } from "lucide-react";
+import { Bot, Code2, Loader2, Play, Save, Sparkles, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -82,6 +82,9 @@ export function AutomationScriptCard({
   const [saving, setSaving] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [runOpen, setRunOpen] = useState(false);
+  // Hidden until asked for: most people only need to know the case is
+  // automated and how it last ran.
+  const [showScript, setShowScript] = useState(false);
   const [writeOpen, setWriteOpen] = useState(false);
   const [connectOpen, setConnectOpen] = useState(false);
   const retryRef = useRef<(() => void) | null>(null);
@@ -109,6 +112,9 @@ export function AutomationScriptCard({
 
   const dirty = code !== (script?.code ?? "");
   if (!canManage && !script) return null;
+  // Unsaved changes are never hidden.
+  const editorOpen = showScript || dirty;
+  const lineCount = (script?.code ?? "").split("\n").length;
 
   async function handleSave() {
     setSaving(true);
@@ -181,62 +187,81 @@ export function AutomationScriptCard({
             savedCode={script?.code ?? null}
             onUse={(next) => {
               setCode(next);
+              setShowScript(true);
               toast.message("Script placed in the editor — review it, then save.");
             }}
           />
         )}
 
-        <Textarea
-          value={code}
-          onChange={(event) => setCode(event.target.value)}
-          onKeyDown={handleKeyDown}
-          readOnly={!canManage}
-          spellCheck={false}
-          rows={Math.min(24, Math.max(8, code.split("\n").length + 1))}
-          placeholder={EXAMPLES[platform]}
-          className="font-mono text-xs leading-relaxed"
-          aria-label="Playwright script"
-        />
+        {editorOpen ? (
+          <>
+            <Textarea
+              value={code}
+              onChange={(event) => setCode(event.target.value)}
+              onKeyDown={handleKeyDown}
+              readOnly={!canManage}
+              spellCheck={false}
+              rows={Math.min(24, Math.max(8, code.split("\n").length + 1))}
+              placeholder={EXAMPLES[platform]}
+              className="font-mono text-xs leading-relaxed"
+              aria-label="Playwright script"
+            />
 
-        <details className="text-xs text-muted-foreground">
-          <summary className="cursor-pointer">What the script can use</summary>
-          <ul className="mt-2 list-disc space-y-1 pl-5">
-            {platform === "WEB" ? (
-              <li>
-                <code className="font-mono">page</code>, <code className="font-mono">context</code>,{" "}
-                <code className="font-mono">browser</code> — a Chromium page already pointed at the
-                environment&apos;s Web base URL, so <code className="font-mono">page.goto(&quot;/login&quot;)</code> works.
-                <code className="font-mono">request</code> is on the API base URL, for setting up data.
-              </li>
-            ) : (
-              <li>
-                <code className="font-mono">request</code> — an HTTP client on the environment&apos;s API base
-                URL, so <code className="font-mono">request.get(&quot;/users&quot;)</code> works. No browser is
-                started.
-              </li>
-            )}
-            <li>
-              <code className="font-mono">expect</code> — Playwright assertions. A failed assertion fails the
-              case; a timeout does too.
-            </li>
-            <li>
-              <code className="font-mono">vars.NAME</code> — the environment&apos;s variables, such as test
-              accounts. <code className="font-mono">env.name</code>, <code className="font-mono">env.webUrl</code>,{" "}
-              <code className="font-mono">env.apiUrl</code> describe where it runs.
-            </li>
-            <li>
-              A script that crashes on its own mistake (TypeError, ReferenceError) is reported as a script
-              error and does not mark the case failed.
-            </li>
-          </ul>
-        </details>
+            <details className="text-xs text-muted-foreground">
+              <summary className="cursor-pointer">What the script can use</summary>
+              <ul className="mt-2 list-disc space-y-1 pl-5">
+                {platform === "WEB" ? (
+                  <li>
+                    <code className="font-mono">page</code>, <code className="font-mono">context</code>,{" "}
+                    <code className="font-mono">browser</code> — a Chromium page already pointed at the
+                    environment&apos;s Web base URL, so <code className="font-mono">page.goto(&quot;/login&quot;)</code> works.
+                    <code className="font-mono">request</code> is on the API base URL, for setting up data.
+                  </li>
+                ) : (
+                  <li>
+                    <code className="font-mono">request</code> — an HTTP client on the environment&apos;s API base
+                    URL, so <code className="font-mono">request.get(&quot;/users&quot;)</code> works. No browser is
+                    started.
+                  </li>
+                )}
+                <li>
+                  <code className="font-mono">expect</code> — Playwright assertions. A failed assertion fails the
+                  case; a timeout does too.
+                </li>
+                <li>
+                  <code className="font-mono">vars.NAME</code> — the environment&apos;s variables, such as test
+                  accounts. <code className="font-mono">env.name</code>, <code className="font-mono">env.webUrl</code>,{" "}
+                  <code className="font-mono">env.apiUrl</code> describe where it runs.
+                </li>
+                <li>
+                  A script that crashes on its own mistake (TypeError, ReferenceError) is reported as a script
+                  error and does not mark the case failed.
+                </li>
+              </ul>
+            </details>
+          </>
+        ) : (
+          script && (
+            <button
+              type="button"
+              onClick={() => setShowScript(true)}
+              className="flex w-full items-center gap-2 rounded-md border border-dashed px-3 py-2 text-left text-sm text-muted-foreground hover:bg-muted/40"
+            >
+              <Code2 className="size-4" />
+              Show script
+              <span className="text-xs">· {lineCount} line{lineCount === 1 ? "" : "s"}</span>
+            </button>
+          )
+        )}
 
         {canManage && (
           <div className="flex flex-wrap items-center gap-2">
-            <Button size="sm" disabled={saving || !dirty || !code.trim()} onClick={() => void handleSave()}>
-              {saving ? <Loader2 className="mr-2 size-4 animate-spin" /> : <Save className="mr-2 size-4" />}
-              Save script
-            </Button>
+            {editorOpen && (
+              <Button size="sm" disabled={saving || !dirty || !code.trim()} onClick={() => void handleSave()}>
+                {saving ? <Loader2 className="mr-2 size-4 animate-spin" /> : <Save className="mr-2 size-4" />}
+                Save script
+              </Button>
+            )}
             <Button
               size="sm"
               variant="outline"
@@ -260,9 +285,20 @@ export function AutomationScriptCard({
               )}
               {script || code ? "Rewrite with Claude" : "Write with Claude"}
             </Button>
-            {!code && (
+            {!script && !editorOpen && (
+              <Button size="sm" variant="ghost" onClick={() => setShowScript(true)}>
+                <Code2 className="mr-2 size-4" />
+                Write it myself
+              </Button>
+            )}
+            {editorOpen && !code && (
               <Button size="sm" variant="ghost" onClick={() => setCode(EXAMPLES[platform])}>
                 Insert example
+              </Button>
+            )}
+            {editorOpen && script && !dirty && (
+              <Button size="sm" variant="ghost" onClick={() => setShowScript(false)}>
+                Hide script
               </Button>
             )}
             {script && (
