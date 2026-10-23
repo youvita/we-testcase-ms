@@ -446,6 +446,28 @@ export const scriptWritingSchema = z.object({
 
 export type ScriptWritingInput = z.input<typeof scriptWritingSchema>;
 
+/** Write scripts for several cases, one after another. */
+export const scriptWritingBatchSchema = z.object({
+  testCaseIds: z
+    .array(z.string().min(1))
+    .min(1, "Select at least one test case")
+    .max(50, "Write at most 50 scripts at a time"),
+  environmentId: z.string().min(1, "Select an environment"),
+  startPath: z
+    .string()
+    .trim()
+    .max(500)
+    .default("/")
+    .transform((v) => (v.startsWith("/") ? v : `/${v}`)),
+  instructions: optionalText(2000),
+  /** Leave cases that already have a script alone. */
+  skipScripted: z.boolean().default(true),
+  /** Save a script that passed against the environment without waiting for review. */
+  autoSave: z.boolean().default(true),
+});
+
+export type ScriptWritingBatchInput = z.input<typeof scriptWritingBatchSchema>;
+
 /** Paths to open, one per line in the form; at most five per exploration. */
 export const exploreAppSchema = z.object({
   environmentId: z.string().min(1, "Select an environment"),

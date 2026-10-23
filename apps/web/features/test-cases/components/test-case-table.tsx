@@ -11,6 +11,7 @@ import {
   ClipboardList,
   MoreHorizontal,
   Pencil,
+  Sparkles,
   Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -47,6 +48,8 @@ import { useQueryParams } from "@/hooks/use-query-params";
 import { api, errorMessage } from "@/utils/api-client";
 import { formatRelative } from "@/utils/format";
 import type { Paginated, Platform, TestCaseListItem } from "@/types";
+import { BulkWriteDialog } from "@/features/automation/components/bulk-write-dialog";
+import type { RunEnvironmentDto } from "@wetestcase/dto";
 
 import {
   TestCaseFormDialog,
@@ -87,15 +90,19 @@ export function TestCaseTable({
   page,
   modules,
   platforms,
+  environments = [],
   canManage,
 }: {
   projectId: string;
   page: Paginated<TestCaseListItem>;
   modules: ModuleOption[];
   platforms: Platform[];
+  /** For "Write scripts with Claude" on the selected cases. */
+  environments?: RunEnvironmentDto[];
   canManage: boolean;
 }) {
   const router = useRouter();
+  const [bulkWriteOpen, setBulkWriteOpen] = useState(false);
   const { get, setParams, isPending } = useQueryParams();
   const [editing, setEditing] = useState<TestCaseListItem | null>(null);
   const [formOpen, setFormOpen] = useState(false);
@@ -227,9 +234,17 @@ export function TestCaseTable({
             Clear
           </Button>
           <Button
-            variant="destructive"
+            variant="outline"
             size="sm"
             className="ml-auto"
+            onClick={() => setBulkWriteOpen(true)}
+          >
+            <Sparkles className="mr-2 size-4" />
+            Write scripts with Claude
+          </Button>
+          <Button
+            variant="destructive"
+            size="sm"
             onClick={() => setBulkDeleteOpen(true)}
           >
             <Trash2 className="mr-2 size-4" />
@@ -485,6 +500,36 @@ export function TestCaseTable({
         confirmLabel="Delete test case"
         onConfirm={handleDelete}
       />
+
+      {canManage && (
+        <BulkWriteDialog
+          projectId={projectId}
+          cases={selectedCases.map((item) => ({
+            id: item.id,
+            tcId: item.tcId,
+            platform: item.platform,
+            hasScript: Boolean(item.script),
+          }))}
+          environments={environments}
+          open={bulkWriteOpen}
+          onOpenChange={setBulkWriteOpen}
+          onStarted={(result) => {
+            toast.success(
+              `Claude is writing ${result.queued.length} script${result.queued.length === 1 ? "" : "s"}`,
+              {
+                description: result.skipped.length
+                  ? `Skipped: ${result.skipped
+                      .slice(0, 4)
+                      .map((s) => `${s.tcId} (${s.reason})`)
+                      .join(", ")}${result.skipped.length > 4 ? "…" : ""}`
+                  : undefined,
+              },
+            );
+            setSelected(new Set());
+            router.refresh();
+          }}
+        />
+      )}
 
       <ConfirmDialog
         open={bulkDeleteOpen}

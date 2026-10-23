@@ -278,6 +278,26 @@ export type RunTriageDto = {
   triagedAt: string;
 };
 
+/** One case of a script-writing batch, for the progress panel. */
+export type ScriptJobRow = {
+  jobId: string;
+  batchId: string | null;
+  status: AiJobStatus;
+  progressDone: number;
+  progressTotal: number;
+  outcome: ScriptWritingResult["outcome"] | null;
+  saved: boolean;
+  error: string | null;
+  createdAt: string;
+  testCase: { id: string; tcId: string; title: string } | null;
+};
+
+export type ScriptBatchResult = {
+  batchId: string;
+  queued: { tcId: string }[];
+  skipped: { tcId: string; reason: string }[];
+};
+
 /** What an EXPLORE_APP job leaves in `AiJobDto.result`. */
 export type ExploreAppResult = {
   pages: { url: string; title: string }[];
@@ -301,6 +321,8 @@ export type ScriptWritingResult = {
   notes: string;
   /** The script check running right now, so the page can show it live. */
   currentRunId?: string | null;
+  /** Saved on the case without review — only ever for a script that passed. */
+  saved?: boolean;
   attempts: {
     code: string;
     runId: string;

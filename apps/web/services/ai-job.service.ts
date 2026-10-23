@@ -113,10 +113,12 @@ export async function enqueueJob(
 
 async function run(jobId: string, token: string, work: JobWork) {
   try {
-    await prisma.aiJob.update({
-      where: { id: jobId },
+    // Guarded on QUEUED: a job stopped while it waited is skipped, not run.
+    const { count } = await prisma.aiJob.updateMany({
+      where: { id: jobId, status: "QUEUED" },
       data: { status: "RUNNING", startedAt: new Date() },
     });
+    if (count === 0) return;
 
     const summary = await work({
       jobId,
@@ -156,8 +158,20 @@ async function run(jobId: string, token: string, work: JobWork) {
   }
 }
 
+/**
+ * Stop jobs that have not started yet. Running ones finish — they are
+ * mid-conversation with Claude and partway through the runner.
+ */
+export async function stopQueuedJobs(where: Prisma.AiJobWhereInput) {
+  const { count } = await prisma.aiJob.updateMany({
+    where: { ...where, status: "QUEUED" },
+    data: { status: "FAILED", error: "Stopped before it started.", finishedAt: new Date() },
+  });
+  return count;
+}
+
 /** Mark jobs left behind by a restart as failed, so nobody waits on them. */
-async function sweepInterrupted(where: Prisma.AiJobWhereInput) {
+export async function sweepInterrupted(where: Prisma.AiJobWhereInput) {
   await prisma.aiJob.updateMany({
     where: {
       ...where,

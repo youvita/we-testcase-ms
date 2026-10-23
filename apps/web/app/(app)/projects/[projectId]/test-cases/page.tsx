@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 
 import { Breadcrumbs } from "@/components/layout/breadcrumbs";
 import { PageHeader } from "@/components/shared/page-header";
+import { ScriptJobsPanel } from "@/features/automation/components/script-jobs-panel";
 import { ExportMenu } from "@/features/reports/components/export-menu";
 import { TestCaseFilters } from "@/features/test-cases/components/test-case-filters";
 import { TestCaseTable } from "@/features/test-cases/components/test-case-table";
@@ -13,6 +14,8 @@ import { testCaseQuerySchema } from "@/lib/validations";
 import { listModules } from "@/services/module.service";
 import { getProject } from "@/services/project.service";
 import { listTestCases } from "@/services/test-case.service";
+import { listScriptJobs } from "@/services/ai-scripts.service";
+import { listRunEnvironments } from "@/services/run-environment.service";
 
 export const metadata: Metadata = { title: "Test Cases" };
 
@@ -37,13 +40,14 @@ export default async function TestCasesPage({
 
   const query = testCaseQuerySchema.parse(normalized);
 
-  const [project, modules, page] = await Promise.all([
+  const canManage = canManageTestCases(user.role);
+  const [project, modules, page, environments, scriptJobs] = await Promise.all([
     getProject(projectId),
     listModules(projectId),
     listTestCases(projectId, query),
+    canManage ? listRunEnvironments(projectId) : Promise.resolve([]),
+    canManage ? listScriptJobs(projectId) : Promise.resolve([]),
   ]);
-
-  const canManage = canManageTestCases(user.role);
 
   return (
     <div className="space-y-6">
@@ -81,8 +85,11 @@ export default async function TestCasesPage({
         platforms={project.platforms}
       />
 
+      {canManage && <ScriptJobsPanel projectId={projectId} initialRows={scriptJobs} />}
+
       <TestCaseTable
         projectId={projectId}
+        environments={environments}
         page={page}
         modules={modules.map((m) => ({ id: m.id, name: m.name }))}
         platforms={project.platforms}

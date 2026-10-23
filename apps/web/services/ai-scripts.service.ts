@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+
 import { z } from "zod";
 
 import { prisma } from "@/lib/prisma";
@@ -13,16 +15,20 @@ import { PLATFORM_LABELS } from "@/lib/constants";
 import { isAutomationConfigured } from "@/lib/runner-auth";
 import type { SessionUser } from "@/lib/session";
 import {
+  AUTOMATABLE_PLATFORMS,
   RUN_SPEEDS,
   TRIAGE_CATEGORIES,
   isAutomatablePlatform,
   type AiJobDto,
   type Platform,
   type RunTriageDto,
+  type ScriptBatchResult,
+  type ScriptJobRow,
   type ScriptWritingResult,
 } from "@wetestcase/dto";
 
-import { enqueueJob } from "./ai-job.service";
+import { enqueueJob, stopQueuedJobs, sweepInterrupted } from "./ai-job.service";
+import { saveAutomationScript } from "./automation-script.service";
 import { getEnvironmentOutline } from "./run-environment.service";
 import { queueRun, readItemEvidence, waitForRun } from "./test-run.service";
 
@@ -204,6 +210,10 @@ export async function startScriptWriting(
     instructions?: string;
     liveView?: boolean;
     speed?: keyof typeof RUN_SPEEDS;
+    /** Save the script on the case if, and only if, it passed. */
+    autoSave?: boolean;
+    /** Groups the jobs of one "write scripts for these cases". */
+    batchId?: string;
   },
 ): Promise<AiJobDto> {
   const testCase = await prisma.testCase.findUnique({
@@ -354,6 +364,13 @@ export async function startScriptWriting(
         evidence = await readItemEvidence(item.id);
       }
 
+      if (input.autoSave && result.outcome === "passed") {
+        // Verified against the environment; anything short of a pass waits
+        // for QA on the case instead.
+        await saveAutomationScript(testCaseId, user.id, result.code);
+        result.saved = true;
+      }
+
       await progress(total, total);
       await setResult(result);
       return {
@@ -364,6 +381,116 @@ export async function startScriptWriting(
       }[result.outcome];
     },
   );
+}
+
+// ---------------------------------------------------------------------------
+// Writing scripts for many cases
+// ---------------------------------------------------------------------------
+
+/**
+ * Queue a script-writing job per case. They run one after another — they all
+ * draw on the same person's subscription — and each is the same loop as for
+ * a single case. Cases that cannot be written are skipped with the reason.
+ */
+export async function startScriptWritingBatch(
+  projectId: string,
+  user: SessionUser,
+  input: {
+    testCaseIds: string[];
+    environmentId: string;
+    startPath: string;
+    instructions?: string;
+    skipScripted: boolean;
+    autoSave: boolean;
+  },
+): Promise<ScriptBatchResult> {
+  const env = await getEnvironmentOutline(input.environmentId, projectId);
+  const cases = await prisma.testCase.findMany({
+    where: { projectId, id: { in: input.testCaseIds } },
+    orderBy: { tcId: "asc" },
+    select: { id: true, tcId: true, platform: true, script: { select: { testCaseId: true } } },
+  });
+  const busy = new Set(
+    (
+      await prisma.aiJob.findMany({
+        where: { projectId, kind: "WRITE_SCRIPT", status: { in: ["QUEUED", "RUNNING"] } },
+        select: { input: true },
+      })
+    ).map((job) => (job.input as { testCaseId?: string } | null)?.testCaseId),
+  );
+
+  const batchId = randomUUID();
+  const result: ScriptBatchResult = { batchId, queued: [], skipped: [] };
+  for (const testCase of cases) {
+    const skip = (reason: string) => result.skipped.push({ tcId: testCase.tcId, reason });
+    if (!(AUTOMATABLE_PLATFORMS as readonly string[]).includes(testCase.platform)) {
+      skip(`${PLATFORM_LABELS[testCase.platform]} cases cannot be automated yet`);
+    } else if (input.skipScripted && testCase.script) {
+      skip("already has a script");
+    } else if (busy.has(testCase.id)) {
+      skip("Claude is already writing its script");
+    } else if (testCase.platform === "API" && !env.apiBaseUrl) {
+      skip(`${env.name} has no API base URL`);
+    } else if (testCase.platform === "WEB" && !env.webBaseUrl) {
+      skip(`${env.name} has no Web base URL`);
+    } else {
+      await startScriptWriting(testCase.id, user, {
+        environmentId: input.environmentId,
+        startPath: input.startPath,
+        instructions: input.instructions,
+        autoSave: input.autoSave,
+        batchId,
+      });
+      result.queued.push({ tcId: testCase.tcId });
+    }
+  }
+  return result;
+}
+
+/** Recent script-writing jobs in a project, newest first, with their cases. */
+export async function listScriptJobs(projectId: string): Promise<ScriptJobRow[]> {
+  await sweepInterrupted({ projectId, kind: "WRITE_SCRIPT" });
+  const jobs = await prisma.aiJob.findMany({
+    where: {
+      projectId,
+      kind: "WRITE_SCRIPT",
+      createdAt: { gt: new Date(Date.now() - 24 * 60 * 60_000) },
+    },
+    orderBy: { createdAt: "desc" },
+    take: 100,
+  });
+  const caseIds = jobs.map((job) => (job.input as { testCaseId?: string } | null)?.testCaseId);
+  const cases = await prisma.testCase.findMany({
+    where: { id: { in: caseIds.filter((id): id is string => Boolean(id)) } },
+    select: { id: true, tcId: true, title: true },
+  });
+  const byId = new Map(cases.map((c) => [c.id, c]));
+
+  return jobs.map((job) => {
+    const input = (job.input ?? {}) as { testCaseId?: string; batchId?: string };
+    const result = job.result as ScriptWritingResult | null;
+    return {
+      jobId: job.id,
+      batchId: input.batchId ?? null,
+      status: job.status,
+      progressDone: job.progressDone,
+      progressTotal: job.progressTotal,
+      outcome: job.status === "SUCCEEDED" ? (result?.outcome ?? null) : null,
+      saved: Boolean(result?.saved),
+      error: job.error,
+      createdAt: job.createdAt.toISOString(),
+      testCase: (input.testCaseId && byId.get(input.testCaseId)) || null,
+    };
+  });
+}
+
+/** Stop the cases of a batch that have not started. */
+export async function stopScriptBatch(projectId: string, batchId: string) {
+  return stopQueuedJobs({
+    projectId,
+    kind: "WRITE_SCRIPT",
+    input: { path: ["batchId"], equals: batchId },
+  });
 }
 
 /** The newest script-writing job for a case, for the test case page. */

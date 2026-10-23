@@ -327,7 +327,12 @@ screenshot and the outline of the page where it stopped, and repairs it — up
 to three tries. It stops early when it judges the product, not the script, is
 wrong (it never weakens an assertion to pass) or when it needs something only
 QA has, such as an account or an OTP bypass. QA reviews the result and chooses
-*Use this script*; nothing is saved on its own. On a run, *Ask Claude why* (or
+*Use this script*; nothing is saved on its own. For many cases at once, select them on the test case
+list and choose *Write scripts with Claude*: they are written one after
+another (they share one subscription), a script that passed can be saved
+straight away while anything else waits on its case for review, progress shows
+above the list, and *Stop the rest* cancels cases that have not started.
+On a run, *Ask Claude why* (or
 *Explain failures*) sorts each failure into product bug, script problem,
 environment or unclear, with a corrected script to apply or a bug report to
 copy. Claude is told variable names, never their values.
