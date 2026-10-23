@@ -228,6 +228,9 @@ export type TestRunDto = {
   recordResults: boolean;
   liveView: boolean;
   slowMoMs: number;
+  inOrder: boolean;
+  /** The case that signed in before each Web case, if one did. */
+  setupTcId: string | null;
   total: number;
   passed: number;
   failed: number;
@@ -353,6 +356,8 @@ export type RunnerJob = {
     projectName: string;
     /** Pause between browser actions, in ms. */
     slowMoMs: number;
+    /** One test at a time, in file order. */
+    inOrder: boolean;
     /** Set when someone is watching: a token good only for this run's frames. */
     liveToken: string | null;
   };

@@ -213,8 +213,10 @@ export default defineConfig({
   testDir: ".",
   testMatch: "*.spec.ts",
   outputDir: "./results",
-  fullyParallel: true,
-  workers: ${WORKERS},
+  // "In order": one worker, files in their numbered order — for cases that
+  // build on each other's data. Otherwise side by side.
+  fullyParallel: ${!job.run.inOrder},
+  workers: ${job.run.inOrder ? 1 : WORKERS},
   timeout: ${TEST_TIMEOUT_MS},
   retries: 0,
   reporter: [["json", { outputFile: "report.json" }]],
@@ -489,7 +491,8 @@ async function executeRun(job: RunnerJob) {
   }, HEARTBEAT_MS);
 
   // A hard ceiling so one hung browser cannot hold the runner forever.
-  const ceilingMs = (Math.ceil(job.items.length / WORKERS) + 1) * TEST_TIMEOUT_MS + 120_000;
+  const workers = job.run.inOrder ? 1 : WORKERS;
+  const ceilingMs = (Math.ceil(job.items.length / workers) + 1) * TEST_TIMEOUT_MS + 120_000;
   const ceiling = setTimeout(() => {
     log(`${job.run.label} exceeded ${Math.round(ceilingMs / 1000)} s — stopping`);
     stop(child);

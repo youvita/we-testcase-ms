@@ -150,6 +150,8 @@ export function RunDetail({
               <span className="text-muted-foreground">
                 {run.environmentName} · by {run.createdBy.name} · {formatDateTime(run.createdAt)}
                 {!run.recordResults && " · results not recorded"}
+                {run.setupTcId && ` · signed in with ${run.setupTcId} first`}
+                {run.inOrder && " · one at a time, in order"}
               </span>
             </div>
             {canManage && !active && unexplained.length > 0 && (

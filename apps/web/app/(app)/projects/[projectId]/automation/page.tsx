@@ -12,6 +12,7 @@ import { requireProjectAccess } from "@/lib/project-access";
 import { isAutomationConfigured } from "@/lib/runner-auth";
 import { requireUser } from "@/lib/session";
 import { AUTOMATABLE_PLATFORMS } from "@wetestcase/dto";
+import { listSignInCases } from "@/services/automation-script.service";
 import { listModules } from "@/services/module.service";
 import { getProject } from "@/services/project.service";
 import { listRunEnvironments } from "@/services/run-environment.service";
@@ -31,7 +32,7 @@ export default async function AutomationPage({
   const project = await getProject(projectId).catch(() => null);
   if (!project) notFound();
 
-  const [runs, environments, modules, automatedCount, automatableCount] = await Promise.all([
+  const [runs, environments, modules, automatedCount, automatableCount, signInCases] = await Promise.all([
     listTestRuns(projectId),
     listRunEnvironments(projectId),
     listModules(projectId),
@@ -41,6 +42,7 @@ export default async function AutomationPage({
     prisma.testCase.count({
       where: { projectId, platform: { in: [...AUTOMATABLE_PLATFORMS] } },
     }),
+    listSignInCases(projectId),
   ]);
 
   // A cancelled run says nothing about the product, so the stats skip it.
@@ -90,6 +92,7 @@ export default async function AutomationPage({
         environments={environments}
         modules={modules.map((m) => ({ id: m.id, name: m.name }))}
         automatedCount={automatedCount}
+        signInCases={signInCases}
         canManage={canManageTestCases(user.role)}
         runnerConfigured={isAutomationConfigured()}
       />

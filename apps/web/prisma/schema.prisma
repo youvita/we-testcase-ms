@@ -704,6 +704,13 @@ model TestRun {
   /// Write results to the test cases as executions, as a manual run would.
   recordResults Boolean @default(true)
 
+  /// One case at a time, in list order — for cases that depend on each
+  /// other's data. Otherwise they run side by side.
+  inOrder         Boolean @default(false)
+  /// The case whose script signs in before each Web case of the run.
+  setupTestCaseId String?
+  setupTcId       String?
+
   /// Stream what the browser shows to the run page while it runs.
   liveView  Boolean @default(false)
   /// Pause between browser actions, so a person watching can follow.

@@ -15,6 +15,7 @@ import { listModules } from "@/services/module.service";
 import { getProject } from "@/services/project.service";
 import { listTestCases } from "@/services/test-case.service";
 import { listScriptJobs } from "@/services/ai-scripts.service";
+import { listSignInCases } from "@/services/automation-script.service";
 import { listRunEnvironments } from "@/services/run-environment.service";
 
 export const metadata: Metadata = { title: "Test Cases" };
@@ -41,12 +42,13 @@ export default async function TestCasesPage({
   const query = testCaseQuerySchema.parse(normalized);
 
   const canManage = canManageTestCases(user.role);
-  const [project, modules, page, environments, scriptJobs] = await Promise.all([
+  const [project, modules, page, environments, scriptJobs, signInCases] = await Promise.all([
     getProject(projectId),
     listModules(projectId),
     listTestCases(projectId, query),
     canManage ? listRunEnvironments(projectId) : Promise.resolve([]),
     canManage ? listScriptJobs(projectId) : Promise.resolve([]),
+    canManage ? listSignInCases(projectId) : Promise.resolve([]),
   ]);
 
   return (
@@ -90,6 +92,7 @@ export default async function TestCasesPage({
       <TestCaseTable
         projectId={projectId}
         environments={environments}
+        signInCases={signInCases}
         page={page}
         modules={modules.map((m) => ({ id: m.id, name: m.name }))}
         platforms={project.platforms}

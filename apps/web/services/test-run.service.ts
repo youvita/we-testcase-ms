@@ -60,6 +60,8 @@ function toRunDto(run: RunRow): TestRunDto {
     recordResults: run.recordResults,
     liveView: run.liveView,
     slowMoMs: run.slowMoMs,
+    inOrder: run.inOrder,
+    setupTcId: run.setupTcId,
     total: run.total,
     passed: run.passed,
     failed: run.failed,
@@ -109,11 +111,13 @@ export async function createTestRun(
       script: { isNot: null },
       platform: { in: [...AUTOMATABLE_PLATFORMS] },
       ...(input.scope === "failed" ? { status: "FAILED" } : {}),
-      ...(input.scope === "module" ? { moduleId: input.moduleId } : {}),
+      ...(input.scope === "module"
+        ? { moduleId: { in: [...(input.moduleIds ?? []), ...(input.moduleId ? [input.moduleId] : [])] } }
+        : {}),
       ...(input.scope === "cases" ? { id: { in: input.testCaseIds ?? [] } } : {}),
     },
     orderBy: [{ module: { position: "asc" } }, { tcId: "asc" }],
-    select: { id: true, platform: true, script: { select: { code: true } } },
+    select: { id: true, tcId: true, platform: true, script: { select: { code: true } } },
   });
   if (cases.length === 0) {
     throw badRequest(
@@ -135,6 +139,18 @@ export async function createTestRun(
     }
   }
 
+  // "Sign in first": the chosen case's script opens each Web case, so a
+  // case like "create a customer" need not repeat the login steps.
+  let setup: { id: string; tcId: string; code: string } | null = null;
+  if (input.setupTestCaseId) {
+    const found = await prisma.testCase.findFirst({
+      where: { id: input.setupTestCaseId, projectId, platform: "WEB" },
+      select: { id: true, tcId: true, script: { select: { code: true } } },
+    });
+    if (!found?.script) throw badRequest("The sign-in case needs a Web automation script.");
+    setup = { id: found.id, tcId: found.tcId, code: found.script.code };
+  }
+
   return queueRun({
     projectId,
     userId,
@@ -143,7 +159,16 @@ export async function createTestRun(
     recordResults: input.recordResults ?? true,
     liveView: input.liveView ?? false,
     slowMoMs: RUN_SPEEDS[input.speed ?? "normal"],
-    items: cases.map((c) => ({ testCaseId: c.id, code: c.script!.code })),
+    inOrder: input.inOrder ?? false,
+    setup,
+    items: cases.map((c) => ({
+      testCaseId: c.id,
+      // Stored with the prefix, so the run shows exactly what executed.
+      code:
+        setup && c.platform === "WEB" && c.id !== setup.id
+          ? `// ---- Sign in first: ${setup.tcId} ----\n${setup.code}\n\n// ---- ${c.tcId} ----\n${c.script!.code}`
+          : c.script!.code,
+    })),
   });
 }
 
@@ -162,6 +187,8 @@ export async function queueRun(options: {
   recordResults: boolean;
   liveView?: boolean;
   slowMoMs?: number;
+  inOrder?: boolean;
+  setup?: { id: string; tcId: string } | null;
   /** testCaseId is null only for an exploration. */
   items: { testCaseId: string | null; code: string }[];
 }): Promise<TestRunDto> {
@@ -188,6 +215,9 @@ export async function queueRun(options: {
             recordResults: options.purpose === "RUN" && options.recordResults,
             liveView: options.liveView ?? false,
             slowMoMs: options.slowMoMs ?? 0,
+            inOrder: options.inOrder ?? false,
+            setupTestCaseId: options.setup?.id ?? null,
+            setupTcId: options.setup?.tcId ?? null,
             createdById: options.userId,
             total: options.items.length,
             items: {
@@ -415,6 +445,7 @@ async function buildRunnerJob(runId: string): Promise<RunnerJob | null> {
       label: run.number ? `Run #${run.number}` : "Script check",
       projectName: run.project.name,
       slowMoMs: run.slowMoMs,
+      inOrder: run.inOrder,
       liveToken: run.liveToken,
     },
     environment,

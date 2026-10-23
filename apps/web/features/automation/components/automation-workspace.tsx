@@ -32,6 +32,7 @@ export function AutomationWorkspace({
   environments,
   modules,
   automatedCount,
+  signInCases,
   canManage,
   runnerConfigured,
 }: {
@@ -40,6 +41,7 @@ export function AutomationWorkspace({
   environments: RunEnvironmentDto[];
   modules: { id: string; name: string }[];
   automatedCount: number;
+  signInCases: { id: string; tcId: string; title: string }[];
   canManage: boolean;
   runnerConfigured: boolean;
 }) {
@@ -147,6 +149,7 @@ export function AutomationWorkspace({
         projectId={projectId}
         environments={environments}
         modules={modules}
+        signInCases={signInCases}
         open={newRunOpen}
         onOpenChange={setNewRunOpen}
       />

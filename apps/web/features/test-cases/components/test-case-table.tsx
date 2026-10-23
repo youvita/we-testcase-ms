@@ -11,6 +11,7 @@ import {
   ClipboardList,
   MoreHorizontal,
   Pencil,
+  Play,
   Sparkles,
   Trash2,
 } from "lucide-react";
@@ -49,6 +50,7 @@ import { api, errorMessage } from "@/utils/api-client";
 import { formatRelative } from "@/utils/format";
 import type { Paginated, Platform, TestCaseListItem } from "@/types";
 import { BulkWriteDialog } from "@/features/automation/components/bulk-write-dialog";
+import { NewRunDialog } from "@/features/automation/components/new-run-dialog";
 import type { RunEnvironmentDto } from "@wetestcase/dto";
 
 import {
@@ -91,6 +93,7 @@ export function TestCaseTable({
   modules,
   platforms,
   environments = [],
+  signInCases = [],
   canManage,
 }: {
   projectId: string;
@@ -99,10 +102,12 @@ export function TestCaseTable({
   platforms: Platform[];
   /** For "Write scripts with Claude" on the selected cases. */
   environments?: RunEnvironmentDto[];
+  signInCases?: { id: string; tcId: string; title: string }[];
   canManage: boolean;
 }) {
   const router = useRouter();
   const [bulkWriteOpen, setBulkWriteOpen] = useState(false);
+  const [bulkRunOpen, setBulkRunOpen] = useState(false);
   const { get, setParams, isPending } = useQueryParams();
   const [editing, setEditing] = useState<TestCaseListItem | null>(null);
   const [formOpen, setFormOpen] = useState(false);
@@ -237,6 +242,20 @@ export function TestCaseTable({
             variant="outline"
             size="sm"
             className="ml-auto"
+            disabled={!selectedCases.some((item) => item.script)}
+            title={
+              selectedCases.some((item) => item.script)
+                ? undefined
+                : "None of the selected cases has a script yet"
+            }
+            onClick={() => setBulkRunOpen(true)}
+          >
+            <Play className="mr-2 size-4" />
+            Run selected
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
             onClick={() => setBulkWriteOpen(true)}
           >
             <Sparkles className="mr-2 size-4" />
@@ -500,6 +519,17 @@ export function TestCaseTable({
         confirmLabel="Delete test case"
         onConfirm={handleDelete}
       />
+
+      {canManage && (
+        <NewRunDialog
+          projectId={projectId}
+          environments={environments}
+          signInCases={signInCases}
+          testCaseIds={selectedCases.filter((item) => item.script).map((item) => item.id)}
+          open={bulkRunOpen}
+          onOpenChange={setBulkRunOpen}
+        />
+      )}
 
       {canManage && (
         <BulkWriteDialog

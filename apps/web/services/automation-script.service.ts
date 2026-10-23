@@ -50,3 +50,12 @@ export async function saveAutomationScript(
 export async function deleteAutomationScript(testCaseId: string) {
   await prisma.automationScript.deleteMany({ where: { testCaseId } });
 }
+
+/** Automated Web cases — any of them can sign in before others run or explore. */
+export async function listSignInCases(projectId: string) {
+  return prisma.testCase.findMany({
+    where: { projectId, platform: "WEB", script: { isNot: null } },
+    orderBy: { tcId: "asc" },
+    select: { id: true, tcId: true, title: true },
+  });
+}

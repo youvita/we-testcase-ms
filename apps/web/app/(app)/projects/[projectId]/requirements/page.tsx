@@ -15,8 +15,8 @@ import { RequirementsWorkspace } from "@/features/requirements/components/requir
 import { canManageTestCases } from "@/lib/permissions";
 import { requireProjectAccess } from "@/lib/project-access";
 import { requireUser } from "@/lib/session";
-import { prisma } from "@/lib/prisma";
 import { listJobs } from "@/services/ai-job.service";
+import { listSignInCases } from "@/services/automation-script.service";
 import { listRunEnvironments } from "@/services/run-environment.service";
 import { getProject } from "@/services/project.service";
 import {
@@ -49,12 +49,7 @@ export default async function RequirementsPage({
     listPendingDrafts(projectId),
     listJobs(projectId, { kinds: [...REQUIREMENT_JOB_KINDS] }),
     listRunEnvironments(projectId),
-    // Automated Web cases — any of them can sign in before exploring.
-    prisma.testCase.findMany({
-      where: { projectId, platform: "WEB", script: { isNot: null } },
-      orderBy: { tcId: "asc" },
-      select: { id: true, tcId: true, title: true },
-    }),
+    listSignInCases(projectId),
     searchParams,
   ]);
 

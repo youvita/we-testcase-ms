@@ -62,6 +62,7 @@ export function AutomationScriptCard({
   environments,
   lastResult,
   latestWriteJob,
+  signInCases = [],
   canManage,
 }: {
   projectId: string;
@@ -72,6 +73,8 @@ export function AutomationScriptCard({
   lastResult: LastAutomatedResult;
   /** The newest "write with Claude" job for this case, finished or not. */
   latestWriteJob: AiJobDto | null;
+  /** Other automated Web cases that can sign in before this one runs. */
+  signInCases?: { id: string; tcId: string; title: string }[];
   canManage: boolean;
 }) {
   const router = useRouter();
@@ -304,6 +307,7 @@ export function AutomationScriptCard({
       <NewRunDialog
         projectId={projectId}
         environments={environments}
+        signInCases={signInCases}
         testCaseIds={[testCaseId]}
         open={runOpen}
         onOpenChange={setRunOpen}

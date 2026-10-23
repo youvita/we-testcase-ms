@@ -309,8 +309,12 @@ automated; iOS and Android come later (they need emulators or devices).
    Playwright test. `page` (Web) or `request` (API), `expect`, `env` and `vars`
    are in scope. Paths join onto the base URL, so `request.get("/users")` on
    `https://sit.example.com/api/v1` calls `…/api/v1/users`.
-3. **Runs** — every automated case, the failing ones, one module, or a single
-   case (*Run this case*). Each result comes back with a screenshot, a trace
+3. **Runs** — every automated case, the failing ones, a group of modules
+   (e.g. Login + Customer), the cases ticked on the list (*Run selected*), or a
+   single case (*Run this case*). *Sign in first with* puts an automated login
+   case's script at the start of every Web case, so "create a customer" needs
+   no login steps of its own; *Run one at a time, in order* is for cases that
+   build on each other's data. Each result comes back with a screenshot, a trace
    (open at trace.playwright.dev) and, on failure, a video.
 4. **Results** — passes and failures are recorded as executions, so the
    dashboard and reports include them; the history marks them *Automated · Run

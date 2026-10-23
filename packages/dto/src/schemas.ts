@@ -426,14 +426,20 @@ export const testRunCreateSchema = z
   .object({
     environmentId: z.string().min(1, "Select an environment"),
     scope: z.enum(RUN_SCOPES).default("all"),
+    /** One module (older clients) or several. */
     moduleId: z.string().optional(),
+    moduleIds: z.array(z.string().min(1)).max(100).optional(),
     testCaseIds: z.array(z.string().min(1)).max(500).optional(),
     recordResults: z.boolean().default(true),
+    /** An automated Web case whose script signs in before each Web case. */
+    setupTestCaseId: z.string().nullish().transform((v) => v || undefined),
+    /** One case at a time, in list order, for cases that depend on each other. */
+    inOrder: z.boolean().default(false),
     ...liveViewFields,
   })
-  .refine((run) => run.scope !== "module" || Boolean(run.moduleId), {
-    message: "Select a module",
-    path: ["moduleId"],
+  .refine((run) => run.scope !== "module" || Boolean(run.moduleId || run.moduleIds?.length), {
+    message: "Select at least one module",
+    path: ["moduleIds"],
   })
   .refine((run) => run.scope !== "cases" || Boolean(run.testCaseIds?.length), {
     message: "Select at least one test case",
