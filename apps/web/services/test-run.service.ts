@@ -115,7 +115,12 @@ export async function createTestRun(
       platform: { in: [...AUTOMATABLE_PLATFORMS] },
       ...(input.scope === "failed" ? { status: "FAILED" } : {}),
       ...(input.scope === "module"
-        ? { moduleId: { in: [...(input.moduleIds ?? []), ...(input.moduleId ? [input.moduleId] : [])] } }
+        ? {
+            OR: [
+              { moduleId: { in: [...(input.moduleIds ?? []), ...(input.moduleId ? [input.moduleId] : [])] } },
+              ...(input.subModules ?? []).map((sub) => ({ moduleId: sub.moduleId, subModule: sub.name })),
+            ],
+          }
         : {}),
       ...(input.scope === "cases" ? { id: { in: input.testCaseIds ?? [] } } : {}),
     },

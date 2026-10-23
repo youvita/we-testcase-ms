@@ -37,7 +37,7 @@ import {
 } from "@/lib/constants";
 import { testCaseSchema, type TestCaseInput } from "@/lib/validations";
 import { ApiError, api, errorMessage } from "@/utils/api-client";
-import type { Platform, TestCaseWithDetails } from "@/types";
+import type { Platform, SubModuleOption, TestCaseWithDetails } from "@/types";
 
 export type ModuleOption = { id: string; name: string };
 
@@ -57,6 +57,7 @@ const NEW_MODULE = "__new-module__";
 export function TestCaseFormDialog({
   projectId,
   modules,
+  subModules = [],
   platforms,
   testCaseId,
   open,
@@ -64,6 +65,8 @@ export function TestCaseFormDialog({
 }: {
   projectId: string;
   modules: ModuleOption[];
+  /** Offered as suggestions for the Sub-module field. */
+  subModules?: SubModuleOption[];
   /** The project's platforms — the only ones offered. */
   platforms: Platform[];
   /** Omitted for create. */
@@ -105,6 +108,7 @@ export function TestCaseFormDialog({
     resolver: zodResolver(testCaseSchema),
     defaultValues: {
       moduleId: modules[0]?.id ?? "",
+      subModule: "",
       tcId: "",
       title: "",
       preconditions: "",
@@ -125,6 +129,7 @@ export function TestCaseFormDialog({
       const options = moduleOptionsRef.current;
       reset({
         moduleId: options[0]?.id ?? "",
+        subModule: "",
         tcId: "",
         title: "",
         preconditions: "",
@@ -150,6 +155,7 @@ export function TestCaseFormDialog({
         if (cancelled) return;
         reset({
           moduleId: testCase.moduleId,
+          subModule: testCase.subModule ?? "",
           tcId: testCase.tcId,
           title: testCase.title,
           preconditions: testCase.preconditions ?? "",
@@ -377,6 +383,32 @@ export function TestCaseFormDialog({
                 {errors.moduleId && (
                   <p className="text-xs text-destructive">
                     {errors.moduleId.message}
+                  </p>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="subModule">Sub-module</Label>
+                <Input
+                  id="subModule"
+                  placeholder="e.g. Create, Delete"
+                  list="sub-module-suggestions"
+                  autoComplete="off"
+                  aria-invalid={Boolean(errors.subModule)}
+                  {...register("subModule")}
+                />
+                <datalist id="sub-module-suggestions">
+                  {subModules
+                    .filter((sub) => sub.moduleId === moduleId)
+                    .map((sub) => (
+                      <option key={sub.name} value={sub.name} />
+                    ))}
+                </datalist>
+                {errors.subModule ? (
+                  <p className="text-xs text-destructive">{errors.subModule.message}</p>
+                ) : (
+                  <p className="text-xs text-muted-foreground">
+                    Optional — groups cases inside the module.
                   </p>
                 )}
               </div>

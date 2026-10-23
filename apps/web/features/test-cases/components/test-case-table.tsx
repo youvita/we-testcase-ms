@@ -8,6 +8,7 @@ import {
   ArrowUp,
   Bot,
   ChevronsUpDown,
+  FolderTree,
   ClipboardList,
   MoreHorizontal,
   Pencil,
@@ -48,7 +49,7 @@ import { cn } from "@/lib/utils";
 import { useQueryParams } from "@/hooks/use-query-params";
 import { api, errorMessage } from "@/utils/api-client";
 import { formatRelative } from "@/utils/format";
-import type { Paginated, Platform, TestCaseListItem } from "@/types";
+import type { Paginated, Platform, SubModuleOption, TestCaseListItem } from "@/types";
 import { BulkWriteDialog } from "@/features/automation/components/bulk-write-dialog";
 import { NewRunDialog } from "@/features/automation/components/new-run-dialog";
 import type { RunEnvironmentDto } from "@wetestcase/dto";
@@ -57,6 +58,7 @@ import {
   TestCaseFormDialog,
   type ModuleOption,
 } from "./test-case-form-dialog";
+import { SubModuleDialog } from "./sub-module-dialog";
 
 type SortKey = "tcId" | "testType" | "priority" | "module" | "updatedAt";
 
@@ -91,6 +93,7 @@ export function TestCaseTable({
   projectId,
   page,
   modules,
+  subModules = [],
   platforms,
   environments = [],
   signInCases = [],
@@ -99,6 +102,7 @@ export function TestCaseTable({
   projectId: string;
   page: Paginated<TestCaseListItem>;
   modules: ModuleOption[];
+  subModules?: SubModuleOption[];
   platforms: Platform[];
   /** For "Write scripts with Claude" on the selected cases. */
   environments?: RunEnvironmentDto[];
@@ -113,6 +117,7 @@ export function TestCaseTable({
   const [formOpen, setFormOpen] = useState(false);
   const [deleting, setDeleting] = useState<TestCaseListItem | null>(null);
   const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
+  const [subModuleOpen, setSubModuleOpen] = useState(false);
 
   const sort = (get("sort", "tcId") || "tcId") as SortKey;
   const order = get("order", "asc") === "desc" ? "desc" : "asc";
@@ -252,6 +257,14 @@ export function TestCaseTable({
           >
             <Play className="mr-2 size-4" />
             Run selected
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setSubModuleOpen(true)}
+          >
+            <FolderTree className="mr-2 size-4" />
+            Set sub-module
           </Button>
           <Button
             variant="outline"
@@ -396,6 +409,9 @@ export function TestCaseTable({
 
                 <TableCell className="text-sm text-muted-foreground">
                   {testCase.module.name}
+                  {testCase.subModule && (
+                    <span className="block text-xs text-foreground/80">› {testCase.subModule}</span>
+                  )}
                 </TableCell>
 
                 <TableCell>
@@ -501,6 +517,7 @@ export function TestCaseTable({
         <TestCaseFormDialog
           projectId={projectId}
           modules={modules}
+          subModules={subModules}
           platforms={platforms}
           testCaseId={editing?.id}
           open={formOpen}
@@ -555,6 +572,20 @@ export function TestCaseTable({
                   : undefined,
               },
             );
+            setSelected(new Set());
+            router.refresh();
+          }}
+        />
+      )}
+
+      {canManage && (
+        <SubModuleDialog
+          projectId={projectId}
+          cases={selectedCases}
+          subModules={subModules}
+          open={subModuleOpen}
+          onOpenChange={setSubModuleOpen}
+          onSaved={() => {
             setSelected(new Set());
             router.refresh();
           }}

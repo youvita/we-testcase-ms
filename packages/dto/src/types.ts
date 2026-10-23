@@ -180,6 +180,7 @@ export type TestCaseDraftDto = {
   id: string;
   status: DraftStatus;
   moduleName: string;
+  subModule: string | null;
   title: string;
   preconditions: string | null;
   steps: string | null;

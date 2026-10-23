@@ -88,6 +88,9 @@ export type ExecutionWithDetails = TestExecution & {
   runItem?: { id: string; run: { id: string; number: number | null } } | null;
 };
 
+/** A module's sub-module, as its cases name it. */
+export type SubModuleOption = { moduleId: string; name: string; count: number };
+
 export type TestCaseListItem = Pick<
   TestCase,
   | "id"
@@ -101,6 +104,7 @@ export type TestCaseListItem = Pick<
   | "lastExecutedAt"
   | "updatedAt"
   | "moduleId"
+  | "subModule"
 > & {
   module: Pick<Module, "id" | "name">;
   /** Present when the case has an automation script. */

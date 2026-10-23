@@ -81,6 +81,13 @@ export const draftReplySchema = z.object({
       }),
     ),
   module: z.string().trim().min(1).max(120).catch("General"),
+  subModule: z
+    .string()
+    .trim()
+    .max(120)
+    .nullish()
+    .catch(null)
+    .transform((value) => value || null),
   title: z.string().trim().min(3).max(500),
   preconditions: textOrList,
   steps: z
@@ -269,6 +276,36 @@ Every case must be executable by a tester who has only the running application a
 You never invent product behaviour. Where a requirement does not say what should happen, the expected result says what to check and ends with "(confirm with PO)".
 You answer with JSON only.`;
 
+/**
+ * The project's modules with the sub-modules their cases use, for Claude to
+ * reuse: "Customers (sub-modules: Create, Delete), Login".
+ */
+export async function moduleOutline(projectId: string): Promise<string> {
+  const [modules, groups] = await Promise.all([
+    prisma.module.findMany({
+      where: { projectId },
+      orderBy: { position: "asc" },
+      select: { id: true, name: true },
+    }),
+    prisma.testCase.groupBy({
+      by: ["moduleId", "subModule"],
+      where: { projectId, subModule: { not: null } },
+      orderBy: { subModule: "asc" },
+    }),
+  ]);
+  if (modules.length === 0) return "none yet";
+  return modules
+    .map((mod) => {
+      const subs = groups.filter((g) => g.moduleId === mod.id).map((g) => g.subModule);
+      return subs.length ? `${mod.name} (sub-modules: ${subs.join(", ")})` : mod.name;
+    })
+    .join(", ");
+}
+
+/** The prompt rule for sub-modules, shared with exploring. */
+export const SUB_MODULE_RULE =
+  "subModule: the part of the module the case belongs to — usually the action or screen, e.g. Create, Edit, Delete, Search, List. Reuse an existing sub-module when one fits; leave it empty when the module has no natural parts.";
+
 const DEPTH_GUIDE: Record<GenerationDepth, string> = {
   essential:
     "1–3 cases per requirement: the main positive path and the most important negative or validation case.",
@@ -304,7 +341,8 @@ function generatePrompt(options: {
   projectName: string;
   platform: Platform;
   depth: GenerationDepth;
-  modules: string[];
+  /** From `moduleOutline`. */
+  modules: string;
   instructions?: string;
   requirements: RequirementForPrompt[];
 }) {
@@ -325,7 +363,7 @@ function generatePrompt(options: {
 
   return `Project: ${options.projectName}
 Platform under test: ${options.platform} — ${PLATFORM_GUIDE[options.platform]}
-Existing modules (reuse a name when one fits): ${options.modules.length ? options.modules.join(", ") : "none yet"}
+Existing modules (reuse a name when one fits): ${options.modules}
 How many cases: ${DEPTH_GUIDE[options.depth]}
 ${options.instructions ? `Extra instructions from QA: ${options.instructions}\n` : ""}
 Requirements:
@@ -336,6 +374,7 @@ Rules:
 - Each case checks one thing, and its title says what, e.g. "Login rejects a wrong password with an error message".
 - requirementCodes: the codes above that the case verifies.
 - module: the feature area, a short name.
+- ${SUB_MODULE_RULE}
 - preconditions: state and data needed before step 1 — accounts, roles, existing records.
 - steps: an array of concrete steps for this platform, with the test data in them, e.g. "Enter \\"user@test.com\\" in Email".
 - expectedResult: the observable outcome a tester can check.
@@ -344,7 +383,7 @@ Rules:
 - Write in the same language as the requirements.
 
 Answer with JSON only, in exactly this shape:
-{"testCases":[{"requirementCodes":[""],"module":"","title":"","preconditions":"","steps":[""],"expectedResult":"","testType":"FUNCTIONAL","priority":"MEDIUM"}]}`;
+{"testCases":[{"requirementCodes":[""],"module":"","subModule":"","title":"","preconditions":"","steps":[""],"expectedResult":"","testType":"FUNCTIONAL","priority":"MEDIUM"}]}`;
 }
 
 export async function startGeneration(
@@ -410,11 +449,7 @@ export async function startGeneration(
               testCases: { select: { testCase: { select: { title: true } } } },
             },
           }),
-          prisma.module.findMany({
-            where: { projectId },
-            orderBy: { position: "asc" },
-            select: { name: true },
-          }),
+          moduleOutline(projectId),
         ]);
         if (requirements.length === 0) continue;
 
@@ -425,7 +460,7 @@ export async function startGeneration(
             projectName: project.name,
             platform: input.platform,
             depth: input.depth,
-            modules: modules.map((mod) => mod.name),
+            modules,
             instructions: input.instructions,
             requirements,
           }),
@@ -443,6 +478,7 @@ export async function startGeneration(
               projectId,
               jobId,
               moduleName: testCase.module,
+              subModule: testCase.subModule,
               title: testCase.title,
               preconditions: testCase.preconditions ?? null,
               steps: testCase.steps ?? null,

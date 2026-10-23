@@ -182,6 +182,8 @@ export type ModuleInput = z.input<typeof moduleSchema>;
 
 export const testCaseSchema = z.object({
   moduleId: z.string().min(1, "Select a module"),
+  /** A group inside the module, e.g. "Create" under Customers. */
+  subModule: optionalText(120),
   tcId: trimmed(60).min(1, "TC ID is required"),
   title: trimmed(500).min(3, "Test case title must be at least 3 characters"),
   preconditions: optionalText(4000),
@@ -202,6 +204,17 @@ export const testCaseBulkDeleteSchema = z.object({
     .min(1, "Select at least one test case")
     .max(200, "Delete at most 200 test cases at a time"),
 });
+
+/** Put the selected cases in one sub-module, or none ("" clears it). */
+export const testCaseBulkSubModuleSchema = z.object({
+  ids: z
+    .array(z.string().min(1))
+    .min(1, "Select at least one test case")
+    .max(200, "Change at most 200 test cases at a time"),
+  subModule: optionalText(120),
+});
+
+export type TestCaseBulkSubModuleInput = z.input<typeof testCaseBulkSubModuleSchema>;
 
 // ---------------------------------------------------------------------------
 // Execution
@@ -328,6 +341,7 @@ export type GenerateTestCasesInput = z.input<typeof generateTestCasesSchema>;
 
 export const testCaseDraftSchema = z.object({
   moduleName: trimmed(120).min(1, "Module is required"),
+  subModule: optionalText(120),
   title: trimmed(500).min(3, "Title must be at least 3 characters"),
   preconditions: optionalText(4000),
   steps: optionalText(8000),
@@ -429,6 +443,11 @@ export const testRunCreateSchema = z
     /** One module (older clients) or several. */
     moduleId: z.string().optional(),
     moduleIds: z.array(z.string().min(1)).max(100).optional(),
+    /** Parts of a module: only its cases in that sub-module. */
+    subModules: z
+      .array(z.object({ moduleId: z.string().min(1), name: trimmed(120).min(1) }))
+      .max(200)
+      .optional(),
     testCaseIds: z.array(z.string().min(1)).max(500).optional(),
     recordResults: z.boolean().default(true),
     /** An automated Web case whose script signs in before each Web case. */
@@ -437,10 +456,15 @@ export const testRunCreateSchema = z
     inOrder: z.boolean().default(false),
     ...liveViewFields,
   })
-  .refine((run) => run.scope !== "module" || Boolean(run.moduleId || run.moduleIds?.length), {
-    message: "Select at least one module",
-    path: ["moduleIds"],
-  })
+  .refine(
+    (run) =>
+      run.scope !== "module" ||
+      Boolean(run.moduleId || run.moduleIds?.length || run.subModules?.length),
+    {
+      message: "Select at least one module",
+      path: ["moduleIds"],
+    },
+  )
   .refine((run) => run.scope !== "cases" || Boolean(run.testCaseIds?.length), {
     message: "Select at least one test case",
     path: ["testCaseIds"],
@@ -515,6 +539,8 @@ export type ExploreAppInput = z.input<typeof exploreAppSchema>;
 export const testCaseQuerySchema = z.object({
   search: z.string().trim().optional(),
   moduleId: z.string().optional(),
+  /** Within the module filter; "-" means cases with no sub-module. */
+  subModule: z.string().trim().optional(),
   testType: testTypeSchema.optional(),
   priority: prioritySchema.optional(),
   status: executionStatusSchema.optional(),

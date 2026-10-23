@@ -17,6 +17,9 @@ const testerSelect = {
   select: { id: true, name: true, email: true, image: true },
 } as const;
 
+/** The sub-module filter's value for cases that have none. */
+export const NO_SUB_MODULE = "-";
+
 function buildWhere(
   projectId: string,
   query: Partial<TestCaseQuery>,
@@ -26,6 +29,9 @@ function buildWhere(
   return {
     projectId,
     ...(query.moduleId ? { moduleId: query.moduleId } : {}),
+    ...(query.subModule
+      ? { subModule: query.subModule === NO_SUB_MODULE ? null : query.subModule }
+      : {}),
     ...(query.testType ? { testType: query.testType } : {}),
     ...(query.priority ? { priority: query.priority } : {}),
     ...(query.status ? { status: query.status } : {}),
@@ -38,6 +44,7 @@ function buildWhere(
           OR: [
             { tcId: { contains: search, mode: "insensitive" } },
             { title: { contains: search, mode: "insensitive" } },
+            { subModule: { contains: search, mode: "insensitive" } },
             { steps: { contains: search, mode: "insensitive" } },
           ],
         }
@@ -60,7 +67,12 @@ function buildOrderBy(
       // Critical ahead of Low.
       return [{ priority: order }, { tcId: "asc" }];
     case "module":
-      return [{ module: { name: order } }, { tcId: "asc" }];
+      // Cases without a sub-module first within each module.
+      return [
+        { module: { name: order } },
+        { subModule: { sort: order, nulls: "first" } },
+        { tcId: "asc" },
+      ];
     case "updatedAt":
       return [{ updatedAt: order }];
     case "tcId":
@@ -97,6 +109,7 @@ export async function listTestCases(
         lastExecutedAt: true,
         updatedAt: true,
         moduleId: true,
+        subModule: true,
         module: { select: { id: true, name: true } },
         script: { select: { updatedAt: true } },
       },
@@ -268,6 +281,7 @@ export async function createTestCase(projectId: string, input: TestCaseInput) {
     data: {
       projectId,
       moduleId: mod.id,
+      subModule: input.subModule ?? null,
       tcId,
       title: input.title.trim(),
       preconditions: input.preconditions ?? null,
@@ -318,6 +332,7 @@ export async function updateTestCase(
     where: { id: testCaseId },
     data: {
       moduleId: mod.id,
+      subModule: input.subModule ?? null,
       tcId,
       title: input.title.trim(),
       preconditions: input.preconditions ?? null,
@@ -360,6 +375,40 @@ export async function deleteTestCases(
   if (count === 0) throw notFound("Test cases");
 
   return { deleted: count, missing: unique.length - count };
+}
+
+/** Put several test cases in one sub-module, or take them out of any. */
+export async function setSubModule(
+  projectId: string,
+  ids: string[],
+  subModule: string | undefined,
+): Promise<{ updated: number }> {
+  const { count } = await prisma.testCase.updateMany({
+    where: { projectId, id: { in: [...new Set(ids)] } },
+    data: { subModule: subModule ?? null },
+  });
+  if (count === 0) throw notFound("Test cases");
+  return { updated: count };
+}
+
+/**
+ * Each module's sub-modules, as its cases name them — for filters, the form's
+ * suggestions and picking part of a module for a run.
+ */
+export async function listSubModules(
+  projectId: string,
+): Promise<{ moduleId: string; name: string; count: number }[]> {
+  const groups = await prisma.testCase.groupBy({
+    by: ["moduleId", "subModule"],
+    where: { projectId, subModule: { not: null } },
+    _count: { _all: true },
+    orderBy: [{ moduleId: "asc" }, { subModule: "asc" }],
+  });
+  return groups.map((group) => ({
+    moduleId: group.moduleId,
+    name: group.subModule!,
+    count: group._count._all,
+  }));
 }
 
 /**

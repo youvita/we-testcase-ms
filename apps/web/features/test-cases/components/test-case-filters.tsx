@@ -23,9 +23,12 @@ import {
   TEST_TYPE_LABELS,
 } from "@/lib/constants";
 import { useQueryParams } from "@/hooks/use-query-params";
-import type { Platform } from "@/types";
+import type { Platform, SubModuleOption } from "@/types";
 
 export type ModuleOption = { id: string; name: string };
+
+/** The sub-module filter's value for cases that have none (NO_SUB_MODULE). */
+const NO_SUB_MODULE = "-";
 
 /**
  * Filter bar for the test case list.
@@ -35,9 +38,11 @@ export type ModuleOption = { id: string; name: string };
  */
 export function TestCaseFilters({
   modules,
+  subModules,
   platforms,
 }: {
   modules: ModuleOption[];
+  subModules: SubModuleOption[];
   /** The project's platforms. The filter is hidden when there is only one. */
   platforms: Platform[];
 }) {
@@ -45,6 +50,8 @@ export function TestCaseFilters({
 
   const search = get("search");
   const moduleId = get("moduleId", "ALL");
+  const subModule = get("subModule", "ALL");
+  const moduleSubModules = subModules.filter((sub) => sub.moduleId === moduleId);
   const testType = get("testType", "ALL");
   const priority = get("priority", "ALL");
   const status = get("status", "ALL");
@@ -55,6 +62,7 @@ export function TestCaseFilters({
   const hasFilters =
     Boolean(search) ||
     moduleId !== "ALL" ||
+    subModule !== "ALL" ||
     testType !== "ALL" ||
     priority !== "ALL" ||
     status !== "ALL" ||
@@ -69,7 +77,7 @@ export function TestCaseFilters({
         onChange={(value) => setParams({ search: value })}
         placeholder="Search TC ID, title or steps…"
         // Matches the OR in buildWhere() — keep the two in step.
-        tooltip="Matches the TC ID, the title and the steps. Case-insensitive, and any part of the text counts."
+        tooltip="Matches the TC ID, the title, the sub-module and the steps. Case-insensitive, and any part of the text counts."
         // A fixed width, not `max-w-*`: with width auto the flex item shrinks
         // to the input's intrinsic size and clips the placeholder.
         className="w-full lg:w-[22rem]"
@@ -78,7 +86,8 @@ export function TestCaseFilters({
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:flex lg:flex-wrap lg:items-center">
         <Select
           value={moduleId}
-          onValueChange={(value) => setParams({ moduleId: value })}
+          // Sub-modules belong to a module; a new module starts without one.
+          onValueChange={(value) => setParams({ moduleId: value, subModule: null })}
         >
           <SelectTrigger className="lg:w-[170px]" aria-label="Filter by module">
             <SelectValue />
@@ -92,6 +101,26 @@ export function TestCaseFilters({
             ))}
           </SelectContent>
         </Select>
+
+        {(moduleSubModules.length > 0 || subModule !== "ALL") && (
+          <Select
+            value={subModule}
+            onValueChange={(value) => setParams({ subModule: value })}
+          >
+            <SelectTrigger className="lg:w-[170px]" aria-label="Filter by sub-module">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="ALL">All sub-modules</SelectItem>
+              {moduleSubModules.map((sub) => (
+                <SelectItem key={sub.name} value={sub.name}>
+                  {sub.name} ({sub.count})
+                </SelectItem>
+              ))}
+              <SelectItem value={NO_SUB_MODULE}>No sub-module</SelectItem>
+            </SelectContent>
+          </Select>
+        )}
 
         {(platforms.length > 1 || platform !== "ALL") && (
           <Select
@@ -211,6 +240,7 @@ export function TestCaseFilters({
             setParams({
               search: null,
               moduleId: null,
+              subModule: null,
               testType: null,
               priority: null,
               status: null,

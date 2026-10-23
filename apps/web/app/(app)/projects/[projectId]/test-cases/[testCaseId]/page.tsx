@@ -162,7 +162,7 @@ export default async function TestCaseDetailPage({
 
             <PageHeader
               title={testCase.title}
-              description={`${testCase.tcId} · ${testCase.module.name}`}
+              description={`${testCase.tcId} · ${testCase.module.name}${testCase.subModule ? ` › ${testCase.subModule}` : ""}`}
               actions={
                 <div className="flex items-center gap-2">
                   {canExecute && <RecordResultButton />}

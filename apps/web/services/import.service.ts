@@ -64,6 +64,8 @@ type ParsedRow = {
   row: number;
   tcId: string;
   module: string;
+  /** Null when the sheet has no Sub-module column: an update keeps the case's own. */
+  subModule: string | null;
   title: string;
   preconditions: string;
   steps: string;
@@ -226,6 +228,7 @@ export function parseWorkbook(buffer: Buffer): {
       row: rowNumber,
       tcId,
       module: read(row, "module") || "Unassigned",
+      subModule: mapping.subModule === undefined ? null : read(row, "subModule"),
       title,
       preconditions: read(row, "preconditions"),
       steps: read(row, "steps"),
@@ -360,6 +363,7 @@ export async function importTestCases(
           where: { id: existingId },
           data: {
             moduleId,
+            ...(row.subModule === null ? {} : { subModule: row.subModule || null }),
             title: row.title,
             preconditions: row.preconditions || null,
             steps: row.steps || null,
@@ -377,6 +381,7 @@ export async function importTestCases(
         data: {
           projectId,
           moduleId,
+          subModule: row.subModule || null,
           tcId: row.tcId,
           title: row.title,
           preconditions: row.preconditions || null,
@@ -496,6 +501,7 @@ export function buildImportTemplate(options?: {
   const headers = [
     "TC ID",
     "Module",
+    "Sub-module",
     "Test Case",
     "Preconditions",
     "Steps",
@@ -510,6 +516,7 @@ export function buildImportTemplate(options?: {
     [
       "TC-LOGIN-001",
       "Login",
+      "Sign in",
       "Sign in with valid credentials",
       "An active user account exists.",
       "1. Open the login page\n2. Enter email and password\n3. Click Sign in",
@@ -521,6 +528,7 @@ export function buildImportTemplate(options?: {
     [
       "TC-LOGIN-002",
       "Login",
+      "Sign in",
       "Reject an incorrect password",
       "An active user account exists.",
       "1. Enter a wrong password\n2. Submit",
@@ -534,6 +542,7 @@ export function buildImportTemplate(options?: {
   const sheet = XLSX.utils.aoa_to_sheet(rows);
   sheet["!cols"] = [
     { wch: 16 },
+    { wch: 14 },
     { wch: 14 },
     { wch: 40 },
     { wch: 30 },

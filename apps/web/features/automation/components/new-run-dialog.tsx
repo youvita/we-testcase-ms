@@ -25,6 +25,7 @@ import {
 } from "@/components/ui/select";
 import type { RunEnvironmentDto, RunScope, TestRunDto } from "@wetestcase/dto";
 import { api, errorMessage } from "@/utils/api-client";
+import type { SubModuleOption } from "@/types";
 
 import { WatchLiveFields, type LiveChoice } from "./live-view";
 
@@ -33,12 +34,14 @@ const NO_SIGN_IN = "none";
 /**
  * Queue a run. With `testCaseIds` it runs exactly those cases ("Run this
  * case", "Run selected"); otherwise QA picks a scope — every case, the failing
- * ones, or a group of modules such as Login and Customer.
+ * ones, or a group of modules such as Login and Customer — or parts of them,
+ * such as Customer › Create.
  */
 export function NewRunDialog({
   projectId,
   environments,
   modules = [],
+  subModules = [],
   signInCases = [],
   testCaseIds,
   open,
@@ -47,6 +50,8 @@ export function NewRunDialog({
   projectId: string;
   environments: RunEnvironmentDto[];
   modules?: { id: string; name: string }[];
+  /** Offered under their module, to run part of it. */
+  subModules?: SubModuleOption[];
   /** Automated Web cases that can sign in before each case. */
   signInCases?: { id: string; tcId: string; title: string }[];
   testCaseIds?: string[];
@@ -57,6 +62,15 @@ export function NewRunDialog({
   const [environmentId, setEnvironmentId] = useState(environments[0]?.id ?? "");
   const [scope, setScope] = useState<RunScope>(testCaseIds ? "cases" : "all");
   const [moduleIds, setModuleIds] = useState<string[]>([]);
+  /** Parts of modules not chosen whole, as `${moduleId}\n${name}`. */
+  const [subKeys, setSubKeys] = useState<string[]>([]);
+  const chosenSubModules = subKeys
+    .map((key) => {
+      const [moduleId, name] = key.split("\n") as [string, string];
+      return { moduleId, name };
+    })
+    .filter((sub) => !moduleIds.includes(sub.moduleId));
+  const nothingChosen = moduleIds.length === 0 && chosenSubModules.length === 0;
   const [signIn, setSignIn] = useState(NO_SIGN_IN);
   const [inOrder, setInOrder] = useState(false);
   const [recordResults, setRecordResults] = useState(true);
@@ -77,6 +91,7 @@ export function NewRunDialog({
         environmentId: selectedEnv,
         scope: testCaseIds ? "cases" : scope,
         moduleIds: scope === "module" ? moduleIds : undefined,
+        subModules: scope === "module" ? chosenSubModules : undefined,
         testCaseIds,
         recordResults,
         setupTestCaseId: signIn === NO_SIGN_IN ? null : signIn,
@@ -153,20 +168,48 @@ export function NewRunDialog({
                   </SelectContent>
                 </Select>
                 {scope === "module" && (
-                  <div className="max-h-40 space-y-1 overflow-y-auto rounded-md border p-2">
-                    {modules.map((mod) => (
-                      <label key={mod.id} className="flex items-center gap-2 text-sm">
-                        <Checkbox
-                          checked={moduleIds.includes(mod.id)}
-                          onCheckedChange={(checked) =>
-                            setModuleIds((ids) =>
-                              checked ? [...ids, mod.id] : ids.filter((id) => id !== mod.id),
-                            )
-                          }
-                        />
-                        {mod.name}
-                      </label>
-                    ))}
+                  <div className="max-h-56 space-y-1 overflow-y-auto rounded-md border p-2">
+                    {modules.map((mod) => {
+                      const whole = moduleIds.includes(mod.id);
+                      return (
+                        <div key={mod.id} className="space-y-1">
+                          <label className="flex items-center gap-2 text-sm">
+                            <Checkbox
+                              checked={whole}
+                              onCheckedChange={(checked) =>
+                                setModuleIds((ids) =>
+                                  checked ? [...ids, mod.id] : ids.filter((id) => id !== mod.id),
+                                )
+                              }
+                            />
+                            {mod.name}
+                          </label>
+                          {subModules
+                            .filter((sub) => sub.moduleId === mod.id)
+                            .map((sub) => {
+                              const key = `${mod.id}\n${sub.name}`;
+                              return (
+                                <label
+                                  key={key}
+                                  className="ml-6 flex items-center gap-2 text-sm text-muted-foreground"
+                                >
+                                  <Checkbox
+                                    // The whole module includes every part of it.
+                                    checked={whole || subKeys.includes(key)}
+                                    disabled={whole}
+                                    onCheckedChange={(checked) =>
+                                      setSubKeys((keys) =>
+                                        checked ? [...keys, key] : keys.filter((k) => k !== key),
+                                      )
+                                    }
+                                  />
+                                  {sub.name}
+                                </label>
+                              );
+                            })}
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
               </div>
@@ -236,7 +279,7 @@ export function NewRunDialog({
             Cancel
           </Button>
           <Button
-            disabled={busy || !selectedEnv || (scope === "module" && !testCaseIds && moduleIds.length === 0)}
+            disabled={busy || !selectedEnv || (scope === "module" && !testCaseIds && nothingChosen)}
             onClick={() => void handleStart()}
           >
             {busy ? <Loader2 className="mr-2 size-4 animate-spin" /> : <Play className="mr-2 size-4" />}

@@ -13,7 +13,7 @@ import { requireUser } from "@/lib/session";
 import { testCaseQuerySchema } from "@/lib/validations";
 import { listModules } from "@/services/module.service";
 import { getProject } from "@/services/project.service";
-import { listTestCases } from "@/services/test-case.service";
+import { listSubModules, listTestCases } from "@/services/test-case.service";
 import { listScriptJobs } from "@/services/ai-scripts.service";
 import { listSignInCases } from "@/services/automation-script.service";
 import { listRunEnvironments } from "@/services/run-environment.service";
@@ -42,9 +42,10 @@ export default async function TestCasesPage({
   const query = testCaseQuerySchema.parse(normalized);
 
   const canManage = canManageTestCases(user.role);
-  const [project, modules, page, environments, scriptJobs, signInCases] = await Promise.all([
+  const [project, modules, subModules, page, environments, scriptJobs, signInCases] = await Promise.all([
     getProject(projectId),
     listModules(projectId),
+    listSubModules(projectId),
     listTestCases(projectId, query),
     canManage ? listRunEnvironments(projectId) : Promise.resolve([]),
     canManage ? listScriptJobs(projectId) : Promise.resolve([]),
@@ -75,6 +76,7 @@ export default async function TestCasesPage({
               <TestCaseToolbar
                 projectId={projectId}
                 modules={modules.map((m) => ({ id: m.id, name: m.name }))}
+                subModules={subModules}
                 platforms={project.platforms}
               />
             )}
@@ -84,6 +86,7 @@ export default async function TestCasesPage({
 
       <TestCaseFilters
         modules={modules.map((m) => ({ id: m.id, name: m.name }))}
+        subModules={subModules}
         platforms={project.platforms}
       />
 
@@ -95,6 +98,7 @@ export default async function TestCasesPage({
         signInCases={signInCases}
         page={page}
         modules={modules.map((m) => ({ id: m.id, name: m.name }))}
+        subModules={subModules}
         platforms={project.platforms}
         canManage={canManage}
       />

@@ -355,6 +355,9 @@ model TestCase {
 
   moduleId String
   module   Module @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+  /// A group inside the module, e.g. "Create" under Customers. Free text:
+  /// the module's sub-modules are whatever its cases use.
+  subModule String?
 
   /// Denormalized from module.projectId. TC IDs are unique per *project*, not
   /// per module, and every list/report query is project-scoped — carrying the
@@ -371,7 +374,7 @@ model TestCase {
   runItems        TestRunItem[]
 
   @@unique([projectId, tcId])
-  @@index([moduleId])
+  @@index([moduleId, subModule])
   @@index([projectId, status])
   @@index([projectId, testType])
   @@index([projectId, priority])
@@ -615,6 +618,7 @@ model TestCaseDraft {
   status         DraftStatus @default(PENDING)
   /// Module by name: accepting creates it if the project does not have it.
   moduleName     String
+  subModule      String?
   title          String
   preconditions  String?
   steps          String?

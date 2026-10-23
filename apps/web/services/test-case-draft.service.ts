@@ -23,7 +23,11 @@ export async function listPendingDrafts(
 ): Promise<TestCaseDraftDto[]> {
   const drafts = await prisma.testCaseDraft.findMany({
     where: { projectId, status: "PENDING" },
-    orderBy: [{ moduleName: "asc" }, { createdAt: "asc" }],
+    orderBy: [
+      { moduleName: "asc" },
+      { subModule: { sort: "asc", nulls: "first" } },
+      { createdAt: "asc" },
+    ],
   });
 
   const requirementIds = Array.from(new Set(drafts.flatMap((d) => d.requirementIds)));
@@ -37,6 +41,7 @@ export async function listPendingDrafts(
     id: draft.id,
     status: draft.status,
     moduleName: draft.moduleName,
+    subModule: draft.subModule,
     title: draft.title,
     preconditions: draft.preconditions,
     steps: draft.steps,
@@ -68,6 +73,7 @@ export async function updateDraft(draftId: string, input: TestCaseDraftInput) {
     where: { id: draftId },
     data: {
       moduleName: input.moduleName.trim(),
+      subModule: input.subModule ?? null,
       title: input.title.trim(),
       preconditions: input.preconditions ?? null,
       steps: input.steps ?? null,
@@ -198,6 +204,7 @@ export async function reviewDrafts(
           data: {
             projectId,
             moduleId,
+            subModule: draft.subModule,
             tcId,
             title: draft.title,
             preconditions: draft.preconditions,

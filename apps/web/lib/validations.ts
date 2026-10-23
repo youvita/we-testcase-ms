@@ -17,6 +17,7 @@ export {
   moduleSchema,
   testCaseSchema,
   testCaseBulkDeleteSchema,
+  testCaseBulkSubModuleSchema,
   executionSchema,
   executionEditSchema,
   commentSchema,

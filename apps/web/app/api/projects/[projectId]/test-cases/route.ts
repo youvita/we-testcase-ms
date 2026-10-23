@@ -3,6 +3,7 @@ import { ok, readJson, route } from "@/lib/api";
 import { assertProjectAccess } from "@/lib/project-access";
 import {
   testCaseBulkDeleteSchema,
+  testCaseBulkSubModuleSchema,
   testCaseQuerySchema,
   testCaseSchema,
 } from "@/lib/validations";
@@ -10,6 +11,7 @@ import {
   createTestCase,
   deleteTestCases,
   listTestCases,
+  setSubModule,
 } from "@/services/test-case.service";
 
 type Ctx = { params: Promise<{ projectId: string }> };
@@ -53,5 +55,16 @@ export const DELETE = route<Ctx>(
     await assertProjectAccess(projectId, user);
     const { ids } = testCaseBulkDeleteSchema.parse(await readJson(request));
     return ok(await deleteTestCases(projectId, ids));
+  },
+);
+
+/** Bulk move into a sub-module (or out of any), ids in the body as above. */
+export const PATCH = route<Ctx>(
+  { roles: [ROLES.ADMIN, ROLES.QA] },
+  async (request, { params, user }) => {
+    const { projectId } = await params;
+    await assertProjectAccess(projectId, user);
+    const { ids, subModule } = testCaseBulkSubModuleSchema.parse(await readJson(request));
+    return ok(await setSubModule(projectId, ids, subModule));
   },
 );

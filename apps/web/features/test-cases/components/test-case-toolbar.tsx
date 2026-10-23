@@ -5,7 +5,7 @@ import Link from "next/link";
 import { FileUp, Plus, Sparkles } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import type { Platform } from "@/types";
+import type { Platform, SubModuleOption } from "@/types";
 
 import { ImportDialog } from "./import-dialog";
 import {
@@ -21,10 +21,12 @@ import {
 export function TestCaseToolbar({
   projectId,
   modules,
+  subModules,
   platforms,
 }: {
   projectId: string;
   modules: ModuleOption[];
+  subModules: SubModuleOption[];
   platforms: Platform[];
 }) {
   const [importOpen, setImportOpen] = useState(false);
@@ -62,6 +64,7 @@ export function TestCaseToolbar({
       <TestCaseFormDialog
         projectId={projectId}
         modules={modules}
+        subModules={subModules}
         platforms={platforms}
         open={formOpen}
         onOpenChange={setFormOpen}

@@ -14,7 +14,12 @@ import {
 } from "@wetestcase/dto";
 
 import { enqueueJob } from "./ai-job.service";
-import { draftReplySchema, parseItems } from "./ai-requirements.service";
+import {
+  draftReplySchema,
+  moduleOutline,
+  parseItems,
+  SUB_MODULE_RULE,
+} from "./ai-requirements.service";
 import { getEnvironmentOutline } from "./run-environment.service";
 import { queueRun, readItemPages, waitForRun } from "./test-run.service";
 
@@ -68,12 +73,18 @@ Rules:
 - Do not repeat cases the project already has.
 - Use test accounts through variable names, never real data.
 - Write in English, whatever language the application is in.
+- ${SUB_MODULE_RULE}
 
 testType is one of ${TEST_TYPES.join(", ")}; priority is one of ${PRIORITIES.join(", ")}.
 
 Answer with JSON only, in exactly this shape:
-{"testCases":[{"module":"","title":"","preconditions":"","steps":[""],"expectedResult":"","testType":"FUNCTIONAL","priority":"MEDIUM"}],"observations":[""]}
+{"testCases":[{"module":"","subModule":"","title":"","preconditions":"","steps":[""],"expectedResult":"","testType":"FUNCTIONAL","priority":"MEDIUM"}],"observations":[""]}
 "observations" are short notes on things a tester should know that are not test cases — e.g. a field without a label, a broken-looking element, text that seems wrong. Leave it empty if there is nothing.`;
+
+/** "Customers › Create", or the module alone. */
+function groupName(module: string, subModule: string | null) {
+  return subModule ? `${module} › ${subModule}` : module;
+}
 
 const DEPTH_GUIDE: Record<GenerationDepth, string> = {
   essential: "About 4–8 cases per page: the main flows and the most important negative cases.",
@@ -164,31 +175,33 @@ export async function startExploration(
 
       // 2. Ask Claude what to test.
       const [modules, current, pending] = await Promise.all([
-        prisma.module.findMany({ where: { projectId }, orderBy: { position: "asc" }, select: { name: true } }),
+        moduleOutline(projectId),
         prisma.testCase.findMany({
           where: { projectId },
           orderBy: { tcId: "asc" },
           take: 300,
-          select: { title: true, module: { select: { name: true } } },
+          select: { title: true, subModule: true, module: { select: { name: true } } },
         }),
         // Suggestions still waiting for review count too — exploring the same
         // page twice before reviewing must not suggest everything again.
         prisma.testCaseDraft.findMany({
           where: { projectId, status: "PENDING" },
           take: 200,
-          select: { title: true, moduleName: true },
+          select: { title: true, moduleName: true, subModule: true },
         }),
       ]);
       const existing = [
-        ...current.map((c) => `- [${c.module.name}] ${c.title}`),
-        ...pending.map((d) => `- [${d.moduleName}] ${d.title} (suggested, awaiting review)`),
+        ...current.map((c) => `- [${groupName(c.module.name, c.subModule)}] ${c.title}`),
+        ...pending.map(
+          (d) => `- [${groupName(d.moduleName, d.subModule)}] ${d.title} (suggested, awaiting review)`,
+        ),
       ];
 
       const images: ClaudeImage[] = pages.flatMap((p) => (p.screenshot ? [p.screenshot] : []));
       const prompt = `Project: ${project.name}
 Environment: ${env.name} (${env.webBaseUrl})
 ${setup ? `Signed in first, using the script of ${setup.tcId}.\n` : ""}Variables available for test data: ${env.variables.map((v) => `vars.${v.key}`).join(", ") || "none"}
-Existing modules (reuse a name when one fits): ${modules.map((m) => m.name).join(", ") || "none yet"}
+Existing modules (reuse a name when one fits): ${modules}
 How many cases: ${DEPTH_GUIDE[input.depth]}
 ${input.instructions ? `Instructions from QA: ${input.instructions}\n` : ""}
 Test cases the project already has or has been suggested (do not repeat these):
@@ -215,6 +228,7 @@ ${p.outline.replace(/^URL: .*\nTitle: .*\n\n/, "").slice(0, OUTLINE_CHARS)}
           projectId,
           jobId,
           moduleName: c.module,
+          subModule: c.subModule,
           title: c.title,
           preconditions: c.preconditions ?? null,
           steps: c.steps ?? null,

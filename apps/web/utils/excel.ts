@@ -10,6 +10,7 @@ import type { Platform, Priority, TestType } from "@prisma/client";
 export const CANONICAL_FIELDS = [
   "tcId",
   "module",
+  "subModule",
   "title",
   "preconditions",
   "steps",
@@ -37,6 +38,7 @@ const HEADER_ALIASES: Record<CanonicalField, string[]> = {
     "serialno",
   ],
   module: ["module", "modulename", "feature", "functionality", "component", "screen", "epic"],
+  subModule: ["submodule", "submodulename", "subfeature", "subfunction", "function", "section", "group"],
   title: [
     "testcase",
     "testcasename",

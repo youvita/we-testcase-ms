@@ -38,7 +38,11 @@ async function loadReportData(projectId: string) {
   const [testCases, moduleProgress] = await Promise.all([
     prisma.testCase.findMany({
       where: { projectId },
-      orderBy: [{ module: { position: "asc" } }, { tcId: "asc" }],
+      orderBy: [
+        { module: { position: "asc" } },
+        { subModule: { sort: "asc", nulls: "first" } },
+        { tcId: "asc" },
+      ],
       include: {
         module: { select: { name: true } },
         executions: {
@@ -203,6 +207,7 @@ export async function buildExcelReport(
     const caseHeader = [
       "TC ID",
       "Module",
+      "Sub-module",
       "Test Case",
       "Preconditions",
       "Steps",
@@ -216,6 +221,7 @@ export async function buildExcelReport(
     const caseRows = rows.map((tc) => [
       tc.tcId,
       tc.module.name,
+      tc.subModule ?? "",
       tc.title,
       tc.preconditions ?? "",
       tc.steps ?? "",
@@ -230,6 +236,7 @@ export async function buildExcelReport(
     caseSheet["!cols"] = [
       { wch: 16 },
       { wch: 16 },
+      { wch: 14 },
       { wch: 44 },
       { wch: 30 },
       { wch: 44 },
@@ -258,6 +265,7 @@ export async function buildExcelReport(
       [
         "TC ID",
         "Module",
+        "Sub-module",
         "Test Case",
         "Status",
         "Test Type",
@@ -273,6 +281,7 @@ export async function buildExcelReport(
         return [
           tc.tcId,
           tc.module.name,
+          tc.subModule ?? "",
           tc.title,
           EXECUTION_STATUS_LABELS[tc.status],
           TEST_TYPE_LABELS[tc.testType],
@@ -288,6 +297,7 @@ export async function buildExcelReport(
     problemSheet["!cols"] = [
       { wch: 16 },
       { wch: 16 },
+      { wch: 14 },
       { wch: 44 },
       { wch: 10 },
       { wch: 12 },
@@ -345,6 +355,7 @@ export async function buildExcelReport(
   const header = [
     "TC ID",
     "Module",
+    "Sub-module",
     "Test Case",
     "Preconditions",
     "Steps",
@@ -1116,7 +1127,7 @@ export async function buildPdfReport(projectId: string): Promise<Buffer> {
         color: accent,
       });
       w.text(
-        `Module: ${tc.module.name}    Platform: ${PLATFORM_LABELS[tc.platform]}    Type: ${TEST_TYPE_LABELS[tc.testType]}    Priority: ${PRIORITY_LABELS[tc.priority]}    Tester: ${latest?.tester.name ?? "—"}    Executed: ${latest ? formatDateTime(latest.executedAt) : "—"}`,
+        `Module: ${tc.module.name}${tc.subModule ? ` › ${tc.subModule}` : ""}    Platform: ${PLATFORM_LABELS[tc.platform]}    Type: ${TEST_TYPE_LABELS[tc.testType]}    Priority: ${PRIORITY_LABELS[tc.priority]}    Tester: ${latest?.tester.name ?? "—"}    Executed: ${latest ? formatDateTime(latest.executedAt) : "—"}`,
         { size: 8, color: COLORS.muted },
       );
 

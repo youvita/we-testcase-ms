@@ -239,6 +239,11 @@ export function DraftsPanel({
                       <span className="space-y-1">
                         <span className="block font-medium">{draft.title}</span>
                         <span className="flex flex-wrap items-center gap-1.5">
+                          {draft.subModule && (
+                            <Badge variant="secondary" title="Sub-module">
+                              {draft.subModule}
+                            </Badge>
+                          )}
                           <TestTypeBadge testType={draft.testType} />
                           <PriorityBadge priority={draft.priority} />
                           {draft.requirements.map((req) => (
@@ -328,6 +333,7 @@ function DraftEditDialog({
     setForm(
       draft && {
         moduleName: draft.moduleName,
+        subModule: draft.subModule ?? "",
         title: draft.title,
         preconditions: draft.preconditions ?? "",
         steps: draft.steps ?? "",
@@ -339,7 +345,7 @@ function DraftEditDialog({
     );
   }
 
-  const text = (key: "moduleName" | "title" | "preconditions" | "steps" | "expectedResult") =>
+  const text = (key: "moduleName" | "subModule" | "title" | "preconditions" | "steps" | "expectedResult") =>
     (event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
       setForm((current) => current && { ...current, [key]: event.target.value });
 
@@ -367,10 +373,19 @@ function DraftEditDialog({
         </DialogHeader>
         {form && (
           <div className="grid max-h-[65vh] gap-4 overflow-y-auto pr-1">
-            <div className="grid gap-4 sm:grid-cols-[200px_1fr]">
+            <div className="grid gap-4 sm:grid-cols-[160px_160px_1fr]">
               <div className="space-y-2">
                 <Label htmlFor="draft-module">Module</Label>
                 <Input id="draft-module" value={form.moduleName} onChange={text("moduleName")} />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="draft-sub-module">Sub-module</Label>
+                <Input
+                  id="draft-sub-module"
+                  placeholder="Optional"
+                  value={form.subModule ?? ""}
+                  onChange={text("subModule")}
+                />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="draft-title">Title</Label>

@@ -18,6 +18,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { EmptyState } from "@/components/shared/empty-state";
 import type { RunEnvironmentDto, TestRunDto } from "@wetestcase/dto";
+import type { SubModuleOption } from "@/types";
 import { formatRelative } from "@/utils/format";
 
 import { EnvironmentsPanel } from "./environments-panel";
@@ -31,6 +32,7 @@ export function AutomationWorkspace({
   runs,
   environments,
   modules,
+  subModules,
   automatedCount,
   signInCases,
   canManage,
@@ -40,6 +42,7 @@ export function AutomationWorkspace({
   runs: TestRunDto[];
   environments: RunEnvironmentDto[];
   modules: { id: string; name: string }[];
+  subModules: SubModuleOption[];
   automatedCount: number;
   signInCases: { id: string; tcId: string; title: string }[];
   canManage: boolean;
@@ -149,6 +152,7 @@ export function AutomationWorkspace({
         projectId={projectId}
         environments={environments}
         modules={modules}
+        subModules={subModules}
         signInCases={signInCases}
         open={newRunOpen}
         onOpenChange={setNewRunOpen}
