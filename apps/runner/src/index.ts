@@ -175,6 +175,20 @@ const test = base.extend({
         noteFailure(request.method(), request.url(), null, reason);
       }
     });
+    // Native alert/confirm/prompt popups are not part of the page, so they
+    // are in no screenshot or outline. Say so in the output. Listening stops
+    // Playwright's own dismissing, so dismiss here unless the script handles
+    // the popup itself (it added a listener of its own).
+    page.on("dialog", async (dialog) => {
+      const handled = page.listenerCount("dialog") > 1;
+      console.log(
+        "[browser " + dialog.type() + "] " + JSON.stringify(mask(dialog.message())) +
+          (handled
+            ? " — handled by the script"
+            : " — dismissed (Cancel), because the script did not handle it. To accept it, call page.once(\\"dialog\\", (d) => d.accept()) before the click that opens it."),
+      );
+      if (!handled) await dialog.dismiss().catch(() => {});
+    });
 ${
   job.run.liveToken
     ? `

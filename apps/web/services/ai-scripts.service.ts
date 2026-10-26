@@ -137,6 +137,7 @@ Rules:
 - Follow the test case's steps in order, with a short comment for each step.
 - End with expect(...) assertions that prove the expected result. A script with no assertion proves nothing.
 - Do not use page.waitForTimeout: locators and expect already wait.
+- A confirmation can be a native browser popup (window.confirm/alert) instead of a dialog on the page. It never appears in the page outline or screenshot, and unless handled it is cancelled. The console output says when one appeared. Handle it with page.once("dialog", async (d) => { expect(d.message()).toContain("…"); await d.accept(); }) registered before the click that opens it.
 - Never weaken or remove an assertion to make a test pass. If the application does not do what the test case expects, that is a finding about the product, not a script problem.
 
 Answer with the complete script in one \`\`\`ts block, then a \`\`\`json block: {"verdict": "...", "notes": "..."}. Notes are for QA: one to three sentences, always in English — whatever language the application or its pages are in.`;
