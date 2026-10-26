@@ -53,7 +53,10 @@ import { formatRelative } from "@/utils/format";
 import type { Paginated, Platform, SubModuleOption, TestCaseListItem } from "@/types";
 import { BulkWriteDialog } from "@/features/automation/components/bulk-write-dialog";
 import { NewRunDialog } from "@/features/automation/components/new-run-dialog";
-import { downloadProjectScripts } from "@/features/automation/download-scripts";
+import {
+  downloadCaseScript,
+  downloadProjectScripts,
+} from "@/features/automation/download-scripts";
 import type { RunEnvironmentDto } from "@wetestcase/dto";
 
 import {
@@ -507,6 +510,12 @@ export function TestCaseTable({
                           <Pencil className="mr-2 size-4" />
                           Edit
                         </DropdownMenuItem>
+                        {testCase.script && (
+                          <DropdownMenuItem onSelect={() => void downloadCaseScript(testCase.id)}>
+                            <Download className="mr-2 size-4" />
+                            Download script
+                          </DropdownMenuItem>
+                        )}
                         <DropdownMenuItem
                           className="text-destructive focus:text-destructive"
                           onSelect={() => setDeleting(testCase)}
