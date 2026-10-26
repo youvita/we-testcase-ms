@@ -59,6 +59,19 @@ export function AutomationSummary({
 
   const writing = isJobActive(writeJob);
 
+  /**
+   * Glide to the Script & Claude card rather than jump, and outline it for a
+   * moment so it is clear where the page went.
+   */
+  function scrollToScript(event: React.MouseEvent<HTMLAnchorElement>) {
+    const card = document.getElementById("automation");
+    if (!card) return;
+    event.preventDefault();
+    card.scrollIntoView({ behavior: "smooth", block: "start" });
+    card.classList.add("ring-2", "ring-primary/40");
+    window.setTimeout(() => card.classList.remove("ring-2", "ring-primary/40"), 1500);
+  }
+
   /** QA vouches for the script: from now on its failures count. */
   async function markVerified() {
     try {
@@ -112,6 +125,7 @@ export function AutomationSummary({
         {writing && (
           <a
             href="#automation"
+            onClick={scrollToScript}
             className="flex items-center gap-2 rounded-md bg-primary/5 px-3 py-2 text-xs text-primary hover:underline"
           >
             <Loader2 className="size-3.5 animate-spin" />
@@ -151,7 +165,7 @@ export function AutomationSummary({
             </Button>
           )}
           <Button size="sm" variant="outline" asChild>
-            <a href="#automation">
+            <a href="#automation" onClick={scrollToScript}>
               <Code2 className="mr-2 size-4" />
               {script ? "Script & Claude" : "Write a script"}
             </a>

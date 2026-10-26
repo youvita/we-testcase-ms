@@ -203,7 +203,7 @@ export function AutomationScriptCard({
   }
 
   return (
-    <Card id="automation" className="scroll-mt-6">
+    <Card id="automation" className="scroll-mt-20 transition-shadow duration-500">
       <CardHeader className="space-y-1">
         <CardTitle className="flex items-center gap-2 text-base">
           <Code2 className="size-4" />
