@@ -11,8 +11,8 @@ import {
 /**
  * Desktop layout for the test-case detail page.
  *
- * The frosted header overlays both columns so scrolling content passes under it
- * (same blur treatment as before). The two columns scroll independently beneath.
+ * The header overlays both columns, solid white, so scrolling content passes
+ * under it. The two columns scroll independently beneath, a line between them.
  * On smaller screens everything stacks and the page scrolls normally.
  */
 export function TestCaseDetailShell({
@@ -51,22 +51,23 @@ export function TestCaseDetailShell({
       }
     >
       {/*
-        Frosted bar: in normal flow on mobile; absolute overlay on desktop so
-        column content can scroll underneath and pick up the blur.
+        Header: in normal flow on mobile; absolute overlay on desktop so
+        column content can scroll underneath it.
       */}
       <div
         ref={headerRef}
-        className="z-10 space-y-3 border-b bg-background/95 px-0 py-4 backdrop-blur supports-[backdrop-filter]:bg-background/80 lg:absolute lg:inset-x-0 lg:top-0 lg:-mx-6 lg:px-6"
+        className="z-10 space-y-3 border-b bg-background px-0 py-4 lg:absolute lg:inset-x-0 lg:top-0 lg:-mx-6 lg:px-6"
       >
         {header}
       </div>
 
-      <div className="grid gap-6 lg:h-full lg:grid-cols-3 lg:overflow-hidden">
-        <div className="space-y-6 lg:col-span-2 lg:min-h-0 lg:overflow-y-auto lg:overscroll-contain lg:pb-8 lg:pr-1 lg:pt-[calc(var(--detail-header-h)+1.5rem)]">
+      {/* A line between the columns on desktop, running from the header down. */}
+      <div className="grid gap-6 lg:h-full lg:grid-cols-3 lg:gap-0 lg:overflow-hidden">
+        <div className="space-y-6 lg:col-span-2 lg:min-h-0 lg:overflow-y-auto lg:overscroll-contain lg:pb-8 lg:pr-6 lg:pt-[calc(var(--detail-header-h)+1.5rem)]">
           {left}
         </div>
 
-        <div className="space-y-6 lg:min-h-0 lg:overflow-y-auto lg:overscroll-contain lg:pb-8 lg:pr-1 lg:pt-[calc(var(--detail-header-h)+1.5rem)]">
+        <div className="space-y-6 lg:min-h-0 lg:overflow-y-auto lg:overscroll-contain lg:border-l lg:pb-8 lg:pl-6 lg:pr-1 lg:pt-[calc(var(--detail-header-h)+1.5rem)]">
           {right}
         </div>
       </div>
