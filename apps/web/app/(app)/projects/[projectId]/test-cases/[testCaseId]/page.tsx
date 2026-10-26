@@ -233,6 +233,7 @@ export default async function TestCaseDetailPage({
                 <TestCaseCardActions
                   testCaseId={testCase.id}
                   hasFrd={testCase.requirements.length > 0}
+                  canManage={canManageTestCases(user.role)}
                   // Marks a case still to automate: gone once it has a script or
                   // the AI's work on one, whose card is then always on the page.
                   showAutomation={

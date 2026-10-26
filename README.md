@@ -358,7 +358,12 @@ copy. Claude is told variable names, never their values.
 — PDF, Word, Markdown or text — whose text goes to the AI for this job only,
 not saved as a document; and the model: Sonnet (default), Opus or Haiku.
 *Keep trying* reuses both. The Test case card's *FRD* button downloads the
-text of the document the case's requirements come from.
+text of the document the case's requirements come from. A case with no FRD —
+written by hand, or suggested by exploring the app — gets one written from it:
+*Written by AI* (an FRD with rules, fields, messages and open questions, as a
+background job) or *Quick* (the case laid out as a requirement, at once). It is
+saved to Requirements → Documents with the case linked, so the button
+downloads it from then on.
 
 **Taking scripts elsewhere.** Scripts live in the database, one per case. A
 case's *Download .spec.ts* gives a single runnable Playwright file; *Download

@@ -37,6 +37,7 @@ export {
   automationScriptSchema,
   testRunCreateSchema,
   scriptWritingSchema,
+  frdGenerateSchema,
   exploreAppSchema,
   scriptWritingBatchSchema,
   scriptContinueSchema,

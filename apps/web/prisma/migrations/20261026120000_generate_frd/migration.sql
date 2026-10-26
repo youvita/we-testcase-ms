@@ -1,0 +1,2 @@
+-- AlterEnum
+ALTER TYPE "AiJobKind" ADD VALUE 'GENERATE_FRD';

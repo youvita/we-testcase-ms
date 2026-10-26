@@ -488,6 +488,15 @@ export const scriptWritingSchema = z.object({
   ...liveViewFields,
 });
 
+/** Make an FRD for a test case that has none. */
+export const frdGenerateSchema = z.object({
+  /** "ai": written by the AI, in the background. "quick": laid out from the case, at once. */
+  method: z.enum(["ai", "quick"]).default("ai"),
+  model: z.enum(AI_MODELS).optional(),
+});
+
+export type FrdGenerateInput = z.input<typeof frdGenerateSchema>;
+
 export type ScriptWritingInput = z.input<typeof scriptWritingSchema>;
 
 /** Keep trying from an earlier script-writing job, with a hint from QA. */

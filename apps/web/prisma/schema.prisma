@@ -115,6 +115,8 @@ enum AiJobKind {
   TRIAGE_FAILURE
   /// Open pages of the app under test and suggest test cases from them.
   EXPLORE_APP
+  /// Write an FRD from a test case that has none.
+  GENERATE_FRD
 }
 
 enum AiJobStatus {

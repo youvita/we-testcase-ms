@@ -15,6 +15,7 @@ const KIND_LABELS: Record<AiJobDto["kind"], string> = {
   WRITE_SCRIPT: "Writing a script",
   TRIAGE_FAILURE: "Explaining a failure",
   EXPLORE_APP: "Exploring the app",
+  GENERATE_FRD: "Writing an FRD",
 };
 
 /** How many finished jobs to keep on screen under the running ones. */
