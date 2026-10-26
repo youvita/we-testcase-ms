@@ -56,7 +56,10 @@ export function TestCaseDetailShell({
       */}
       <div
         ref={headerRef}
-        className="z-10 space-y-3 border-b bg-background px-0 py-4 lg:absolute lg:inset-x-0 lg:top-0 lg:-mx-6 lg:px-6"
+        // On desktop the white and its bottom line run the full width of the
+        // screen, past the centred content: a spread shadow, clipped to the
+        // header's height (plus the 1px line), paints the sides.
+        className="z-10 space-y-3 border-b bg-background px-0 py-4 lg:absolute lg:inset-x-0 lg:top-0 lg:-mx-6 lg:border-b-0 lg:px-6 lg:shadow-[0_0_0_100vmax_hsl(var(--background)),0_1px_0_100vmax_hsl(var(--border))] lg:[clip-path:inset(0_-100vmax_-1px)]"
       >
         {header}
       </div>
