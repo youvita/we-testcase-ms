@@ -600,6 +600,23 @@ export async function stopScriptBatch(projectId: string, batchId: string) {
 }
 
 /** The newest script-writing job for a case, for the test case page. */
+/**
+ * The newest script-writing job that finished, for "Keep trying" after a
+ * later job broke (the runner was unreachable, the server restarted): its
+ * script is still the best place to pick up from.
+ */
+export async function getLastFinishedScriptJob(testCaseId: string) {
+  return prisma.aiJob.findFirst({
+    where: {
+      kind: "WRITE_SCRIPT",
+      status: "SUCCEEDED",
+      input: { path: ["testCaseId"], equals: testCaseId },
+    },
+    orderBy: { createdAt: "desc" },
+    select: { id: true },
+  });
+}
+
 export async function getLatestScriptJob(testCaseId: string) {
   return prisma.aiJob.findFirst({
     where: { kind: "WRITE_SCRIPT", input: { path: ["testCaseId"], equals: testCaseId } },

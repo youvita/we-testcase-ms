@@ -38,7 +38,7 @@ import {
 } from "@/lib/project-access";
 import { getSessionUser, requireUser } from "@/lib/session";
 import { getJob } from "@/services/ai-job.service";
-import { getLatestScriptJob } from "@/services/ai-scripts.service";
+import { getLastFinishedScriptJob, getLatestScriptJob } from "@/services/ai-scripts.service";
 import { getAutomationScript, listSignInCases } from "@/services/automation-script.service";
 import { listComments } from "@/services/comment.service";
 import { listRunEnvironments } from "@/services/run-environment.service";
@@ -86,7 +86,7 @@ export default async function TestCaseDetailPage({
   // project's URL.
   if (testCase.projectId !== projectId) notFound();
 
-  const [neighbours, comments, script, environments, lastRunItem, latestWrite, signInCases] = await Promise.all([
+  const [neighbours, comments, script, environments, lastRunItem, latestWrite, lastFinishedWrite, signInCases] = await Promise.all([
     getTestCaseNeighbours(projectId, testCase.tcId),
     listComments(testCaseId),
     getAutomationScript(testCaseId),
@@ -102,6 +102,7 @@ export default async function TestCaseDetailPage({
       select: { status: true, finishedAt: true, run: { select: { id: true, number: true } } },
     }),
     getLatestScriptJob(testCaseId),
+    getLastFinishedScriptJob(testCaseId),
     listSignInCases(projectId),
   ]);
   const latestWriteJob = latestWrite ? await getJob(latestWrite.id) : null;
@@ -288,6 +289,7 @@ export default async function TestCaseDetailPage({
                 }
               }
               latestWriteJob={latestWriteJob}
+              lastFinishedWriteJobId={lastFinishedWrite?.id ?? null}
               signInCases={signInCases.filter((c) => c.id !== testCase.id)}
               lastResult={
                 lastRunItem && {

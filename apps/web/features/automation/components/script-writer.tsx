@@ -250,6 +250,51 @@ export function ScriptWritingPanel({
   const active = job.status === "QUEUED" || job.status === "RUNNING";
   const outcome = result && !active && job.status === "SUCCEEDED" ? OUTCOMES[result.outcome] : null;
 
+  const passed = outcome !== null && result?.outcome === "passed";
+  const hintBox = (
+    <div className="space-y-2 rounded-md border bg-background p-3">
+      <Label htmlFor={`hint-${job.id}`} className="text-xs">
+        {passed
+          ? "Want it changed? Tell Claude how"
+          : "Tell Claude what it got wrong, or what it cannot see"}
+      </Label>
+      <Textarea
+        id={`hint-${job.id}`}
+        rows={3}
+        value={hint}
+        onChange={(e) => setHint(e.target.value)}
+        placeholder={
+          passed
+            ? "e.g. Also check that the phone number is saved."
+            : 'e.g. Click "New", then the "Customer" button (it is a button, not a menu item). The form has English Name, Khmer Name and Phone; save with "Save".'
+        }
+        className="text-sm"
+      />
+      <Button
+        size="sm"
+        variant="outline"
+        disabled={continuing || hint.trim().length < 3}
+        onClick={async () => {
+          if (!onContinue) return;
+          setContinuing(true);
+          try {
+            if (await onContinue(hint.trim())) setHint("");
+          } finally {
+            setContinuing(false);
+          }
+        }}
+      >
+        {continuing ? <Loader2 className="mr-2 size-4 animate-spin" /> : <Sparkles className="mr-2 size-4" />}
+        {passed ? "Improve it" : "Keep trying"}
+      </Button>
+      <p className="text-xs text-muted-foreground">
+        {job.status === "FAILED"
+          ? "This job broke before it finished. Claude picks up from its last finished script instead, with three more tries."
+          : "Claude picks up from this script and where it stopped, with three more tries."}
+      </p>
+    </div>
+  );
+
   return (
     <div className="space-y-3 rounded-lg border bg-muted/30 p-3 text-sm">
       <div className="flex items-center gap-2 font-medium">
@@ -307,6 +352,7 @@ export function ScriptWritingPanel({
       )}
 
       {job.status === "FAILED" && <p className="text-status-failed">{job.error}</p>}
+      {job.status === "FAILED" && onContinue && hintBox}
 
       {outcome && result && (
         <>
@@ -331,46 +377,7 @@ export function ScriptWritingPanel({
               errorText={lastFailure ? errorHeadline(lastFailure.error) : undefined}
             />
           </details>
-          {onContinue && (
-            <div className="space-y-2 rounded-md border bg-background p-3">
-              <Label htmlFor={`hint-${job.id}`} className="text-xs">
-                {result.outcome === "passed"
-                  ? "Want it changed? Tell Claude how"
-                  : "Tell Claude what it got wrong, or what it cannot see"}
-              </Label>
-              <Textarea
-                id={`hint-${job.id}`}
-                rows={3}
-                value={hint}
-                onChange={(e) => setHint(e.target.value)}
-                placeholder={
-                  result.outcome === "passed"
-                    ? "e.g. Also check that the phone number is saved."
-                    : 'e.g. Click "New", then the "Customer" button (it is a button, not a menu item). The form has English Name, Khmer Name and Phone; save with "Save".'
-                }
-                className="text-sm"
-              />
-              <Button
-                size="sm"
-                variant="outline"
-                disabled={continuing || hint.trim().length < 3}
-                onClick={async () => {
-                  setContinuing(true);
-                  try {
-                    if (await onContinue(hint.trim())) setHint("");
-                  } finally {
-                    setContinuing(false);
-                  }
-                }}
-              >
-                {continuing ? <Loader2 className="mr-2 size-4 animate-spin" /> : <Sparkles className="mr-2 size-4" />}
-                {result.outcome === "passed" ? "Improve it" : "Keep trying"}
-              </Button>
-              <p className="text-xs text-muted-foreground">
-                Claude picks up from this script and where it stopped, with three more tries.
-              </p>
-            </div>
-          )}
+          {onContinue && hintBox}
           {savedCode?.trim() === result.code.trim() ? (
             <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
               <CheckCircle2 className="size-3.5 text-status-passed" />

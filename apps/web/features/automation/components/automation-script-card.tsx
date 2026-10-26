@@ -74,6 +74,7 @@ export function AutomationScriptCard({
   environments,
   lastResult,
   latestWriteJob,
+  lastFinishedWriteJobId = null,
   signInCases = [],
   canManage,
 }: {
@@ -85,6 +86,8 @@ export function AutomationScriptCard({
   lastResult: LastAutomatedResult;
   /** The newest "write with Claude" job for this case, finished or not. */
   latestWriteJob: AiJobDto | null;
+  /** The newest one that finished — where "Keep trying" resumes after a broken job. */
+  lastFinishedWriteJobId?: string | null;
   /** Other automated Web cases that can sign in before this one runs. */
   signInCases?: { id: string; tcId: string; title: string }[];
   canManage: boolean;
@@ -166,10 +169,13 @@ export function AutomationScriptCard({
 
   /** Keep Claude going from its last result with QA's hint. */
   async function continueWithHint(hint: string): Promise<boolean> {
-    if (!writeJob) return false;
+    // A job that broke has no result of its own to continue; the last one
+    // that finished does.
+    const fromJobId = writeJob?.status === "SUCCEEDED" ? writeJob.id : lastFinishedWriteJobId;
+    if (!fromJobId) return false;
     try {
       const job = await api.post<AiJobDto>(`/api/test-cases/${testCaseId}/script/continue`, {
-        jobId: writeJob.id,
+        jobId: fromJobId,
         hint,
       });
       setWriteJob(job);
@@ -273,7 +279,11 @@ export function AutomationScriptCard({
               setShowScript(true);
               toast.message("Script placed in the editor — review it, then save.");
             }}
-            onContinue={canManage ? continueWithHint : undefined}
+            onContinue={
+              canManage && (writeJob.status === "SUCCEEDED" || lastFinishedWriteJobId)
+                ? continueWithHint
+                : undefined
+            }
           />
         )}
 
