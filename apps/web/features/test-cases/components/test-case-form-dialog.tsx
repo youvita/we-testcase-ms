@@ -39,7 +39,7 @@ import { testCaseSchema, type TestCaseInput } from "@/lib/validations";
 import { ApiError, api, errorMessage } from "@/utils/api-client";
 import type { Platform, SubModuleOption, TestCaseWithDetails } from "@/types";
 
-import { SubModuleSuggestions } from "./sub-module-suggestions";
+import { SubModuleField } from "./sub-module-field";
 
 export type ModuleOption = { id: string; name: string };
 
@@ -391,17 +391,15 @@ export function TestCaseFormDialog({
 
               <div className="space-y-2">
                 <Label htmlFor="subModule">Sub-module</Label>
-                <Input
+                <SubModuleField
+                  // Remounts per module, so a new module starts from its own list.
+                  key={moduleId}
                   id="subModule"
-                  placeholder="e.g. Create, Delete"
-                  autoComplete="off"
-                  aria-invalid={Boolean(errors.subModule)}
-                  {...register("subModule")}
-                />
-                <SubModuleSuggestions
                   names={subModules.filter((sub) => sub.moduleId === moduleId).map((sub) => sub.name)}
                   value={watch("subModule") ?? ""}
-                  onPick={(name) => setValue("subModule", name, { shouldDirty: true })}
+                  onChange={(name) => setValue("subModule", name, { shouldDirty: true })}
+                  allowNone
+                  invalid={Boolean(errors.subModule)}
                 />
                 {errors.subModule ? (
                   <p className="text-xs text-destructive">{errors.subModule.message}</p>

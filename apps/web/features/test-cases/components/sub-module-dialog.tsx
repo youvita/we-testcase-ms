@@ -13,12 +13,11 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { api, errorMessage } from "@/utils/api-client";
 import type { SubModuleOption, TestCaseListItem } from "@/types";
 
-import { SubModuleSuggestions } from "./sub-module-suggestions";
+import { SubModuleField } from "./sub-module-field";
 
 /** Put the selected cases in one sub-module, or take them out of any. */
 export function SubModuleDialog({
@@ -88,15 +87,7 @@ export function SubModuleDialog({
           }}
         >
           <Label htmlFor="bulk-sub-module">Sub-module</Label>
-          <Input
-            id="bulk-sub-module"
-            value={name}
-            maxLength={120}
-            autoComplete="off"
-            placeholder="Create"
-            onChange={(event) => setName(event.target.value)}
-          />
-          <SubModuleSuggestions names={suggestions} value={name} onPick={setName} />
+          <SubModuleField id="bulk-sub-module" names={suggestions} value={name} onChange={setName} />
         </form>
 
         <DialogFooter className="gap-2 sm:justify-between">
