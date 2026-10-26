@@ -175,6 +175,7 @@ export function AutomationScriptCard({
         <>
           <Bot className="size-4" />
           Automation
+          {script && <ScriptStatusBadge verified={Boolean(script.verifiedAt)} />}
         </>
       }
       description={description}
@@ -294,107 +295,57 @@ export function AutomationScriptCard({
   return (
     <Card id="automation" className="scroll-mt-20">
       {header(
-        script && !open ? (
-          // Closed: where the script stands, without opening it.
+        script ? (
           <>
-            <ScriptStatusBadge verified={Boolean(script.verifiedAt)} />
+            <span>
+              Playwright script · saved by {script.updatedBy.name} {formatRelative(script.updatedAt)}
+            </span>
+            <span aria-hidden>·</span>
+            {/* The last real run — recorded on the case, unlike the AI's tries. */}
             {lastResult ? (
-              <span className="inline-flex items-center gap-2">
-                <span>Last run</span>
+              <Link
+                href={`/projects/${projectId}/automation/runs/${lastResult.runId}`}
+                className="inline-flex items-center gap-1.5 hover:underline"
+              >
+                Last run
                 <RunStatusBadge status={lastResult.status} />
-                {lastResult.finishedAt && <span>{formatRelative(lastResult.finishedAt)}</span>}
-              </span>
+                #{lastResult.runNumber}
+                {lastResult.finishedAt && ` · ${formatRelative(lastResult.finishedAt)}`}
+              </Link>
             ) : (
               <span>Not run yet</span>
             )}
-            {writing && (
+            {!open && writing && (
               <span className="inline-flex items-center gap-1 text-primary">
                 <Loader2 className="size-3.5 animate-spin" />
                 The AI is writing
               </span>
             )}
-            {dirty && <span className="text-status-blocked">· unsaved changes</span>}
+            {!open && dirty && <span className="text-status-blocked">· unsaved changes</span>}
           </>
-        ) : script ? (
-          `Playwright script · saved by ${script.updatedBy.name} ${formatRelative(script.updatedAt)}`
         ) : (
           "Write this case as a Playwright script and the runner can execute it."
         ),
       )}
       {open && (
         <CardContent className="space-y-3">
-          {script && (
-            <div className="space-y-3 rounded-lg border p-3 text-sm">
-              <dl className="grid grid-cols-[auto_1fr] items-center gap-x-3 gap-y-2">
-                <dt className="text-muted-foreground">Script</dt>
-                <dd>
-                  <ScriptStatusBadge verified={Boolean(script.verifiedAt)} />
-                </dd>
-                <dt className="text-muted-foreground">Last run</dt>
-                <dd className="min-w-0">
-                  {lastResult ? (
-                    <Link
-                      href={`/projects/${projectId}/automation/runs/${lastResult.runId}`}
-                      className="inline-flex flex-wrap items-center gap-x-2 gap-y-1 hover:underline"
-                    >
-                      <RunStatusBadge status={lastResult.status} />
-                      <span className="text-xs text-muted-foreground">
-                        #{lastResult.runNumber}
-                        {lastResult.finishedAt && ` · ${formatRelative(lastResult.finishedAt)}`}
-                      </span>
-                    </Link>
-                  ) : (
-                    <span className="text-muted-foreground">Not run yet</span>
-                  )}
-                </dd>
-              </dl>
-              {!script.verifiedAt && (
-                <p className="text-xs text-muted-foreground">
-                  A draft&apos;s failures are not recorded on the case — the script may be what is
-                  wrong. It becomes verified the first time it passes.
-                  {canManage && (
-                    <>
-                      {" "}
-                      <button
-                        type="button"
-                        className="text-primary hover:underline"
-                        onClick={() => void markVerified()}
-                      >
-                        Mark as verified now
-                      </button>
-                    </>
-                  )}
-                </p>
-              )}
-              <div className="flex flex-wrap gap-2">
-                {canManage && (
-                  <Button
-                    size="sm"
-                    disabled={dirty || environments.length === 0}
-                    title={
-                      dirty
-                        ? "Save the script first"
-                        : environments.length === 0
-                          ? "Add an environment under Automation first"
-                          : undefined
-                    }
-                    onClick={() => setRunOpen(true)}
+          {script && !script.verifiedAt && (
+            <p className="text-xs text-muted-foreground">
+              A draft&apos;s failures are not recorded on the case — the script may be what is
+              wrong. It becomes verified the first time it passes.
+              {canManage && (
+                <>
+                  {" "}
+                  <button
+                    type="button"
+                    className="text-primary hover:underline"
+                    onClick={() => void markVerified()}
                   >
-                    <Play className="mr-2 size-4" />
-                    Run this case
-                  </Button>
-                )}
-                <Button
-                  size="sm"
-                  variant="outline"
-                  title="The saved script as a runnable Playwright file (.spec.ts)"
-                  onClick={() => void downloadCaseScript(testCaseId)}
-                >
-                  <Download className="mr-2 size-4" />
-                  Download script
-                </Button>
-              </div>
-            </div>
+                    Mark as verified now
+                  </button>
+                </>
+              )}
+            </p>
           )}
 
           {writeJob && (
@@ -441,34 +392,64 @@ export function AutomationScriptCard({
             )
           )}
 
-          {canManage && (
+          {(canManage || script) && (
             <div className="flex flex-wrap items-center gap-2">
-              {editorOpen && (
+              {canManage && script && (
+                <Button
+                  size="sm"
+                  disabled={dirty || environments.length === 0}
+                  title={
+                    dirty
+                      ? "Save the script first"
+                      : environments.length === 0
+                        ? "Add an environment under Automation first"
+                        : undefined
+                  }
+                  onClick={() => setRunOpen(true)}
+                >
+                  <Play className="mr-2 size-4" />
+                  Run this case
+                </Button>
+              )}
+              {script && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  title="The saved script as a runnable Playwright file (.spec.ts)"
+                  onClick={() => void downloadCaseScript(testCaseId)}
+                >
+                  <Download className="mr-2 size-4" />
+                  Download script
+                </Button>
+              )}
+              {canManage && editorOpen && (
                 <Button size="sm" disabled={saving || !dirty || !code.trim()} onClick={() => void handleSave()}>
                   {saving ? <Loader2 className="mr-2 size-4 animate-spin" /> : <Save className="mr-2 size-4" />}
                   Save script
                 </Button>
               )}
-              <Button
-                size="sm"
-                variant="outline"
-                disabled={isJobActive(writeJob)}
-                onClick={() => setWriteOpen(true)}
-              >
-                {isJobActive(writeJob) ? (
-                  <Loader2 className="mr-2 size-4 animate-spin" />
-                ) : (
-                  <Sparkles className="mr-2 size-4" />
-                )}
-                {script || code ? "Rewrite with AI" : "Write with AI"}
-              </Button>
-              {!script && !editorOpen && (
+              {canManage && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={isJobActive(writeJob)}
+                  onClick={() => setWriteOpen(true)}
+                >
+                  {isJobActive(writeJob) ? (
+                    <Loader2 className="mr-2 size-4 animate-spin" />
+                  ) : (
+                    <Sparkles className="mr-2 size-4" />
+                  )}
+                  {script || code ? "Rewrite with AI" : "Write with AI"}
+                </Button>
+              )}
+              {canManage && !script && !editorOpen && (
                 <Button size="sm" variant="ghost" onClick={() => setShowScript(true)}>
                   <Code2 className="mr-2 size-4" />
                   Write it myself
                 </Button>
               )}
-              {editorOpen && !code && (
+              {canManage && editorOpen && !code && (
                 <Button size="sm" variant="ghost" onClick={() => setCode(EXAMPLES[platform])}>
                   Insert example
                 </Button>
@@ -478,7 +459,7 @@ export function AutomationScriptCard({
                   Hide script
                 </Button>
               )}
-              {(script || !isJobActive(writeJob)) && (
+              {canManage && (script || !isJobActive(writeJob)) && (
                 <Button
                   size="sm"
                   variant="ghost"

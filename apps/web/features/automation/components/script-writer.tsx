@@ -524,7 +524,8 @@ function AttemptList({
                 <RunStatusBadge status={attempt.status} className="shrink-0" />
                 <span className="min-w-0 flex-1 truncate text-muted-foreground" title={attempt.error ?? undefined}>
                   {attempt.status === "PASSED" ? (
-                    `in ${formatDuration(attempt.durationMs)}`
+                    // Older tries have no duration recorded.
+                    attempt.durationMs != null ? `in ${formatDuration(attempt.durationMs)}` : ""
                   ) : (
                     <>
                       {line && <span className="font-medium text-status-failed">line {line}: </span>}
