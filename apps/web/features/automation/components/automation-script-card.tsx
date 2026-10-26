@@ -523,9 +523,22 @@ export function AutomationScriptCard({
         onOpenChange={setDeleteOpen}
         title={script ? "Remove the script?" : "Discard this draft?"}
         description={
-          script
-            ? "The case goes back to manual. Past runs keep the script they ran."
-            : "The script typed here has not been saved and will be lost."
+          !script ? (
+            "The script typed here has not been saved and will be lost."
+          ) : (
+            <div className="space-y-2">
+              {/* Spell out what a proven script is worth before it goes. */}
+              {(script.verifiedAt || lastResult?.status === "PASSED") && (
+                <p className="font-medium text-foreground">
+                  {script.verifiedAt ? "This script is verified" : "This script works"}
+                  {lastResult?.status === "PASSED"
+                    ? ` and passed its last run${lastResult.runNumber ? ` (#${lastResult.runNumber})` : ""}.`
+                    : "."}
+                </p>
+              )}
+              <p>The case goes back to manual. Past runs keep the script they ran.</p>
+            </div>
+          )
         }
         confirmLabel="Remove"
         onConfirm={handleDelete}
