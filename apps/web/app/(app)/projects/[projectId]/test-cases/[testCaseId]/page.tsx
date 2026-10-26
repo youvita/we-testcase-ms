@@ -233,7 +233,13 @@ export default async function TestCaseDetailPage({
                 <TestCaseCardActions
                   testCaseId={testCase.id}
                   hasFrd={testCase.requirements.length > 0}
-                  showAutomation={canManageTestCases(user.role) || Boolean(script)}
+                  // Marks a case still to automate: gone once it has a script,
+                  // whose card is then always on the page.
+                  showAutomation={
+                    canManageTestCases(user.role) &&
+                    !script &&
+                    (testCase.platform === "WEB" || testCase.platform === "API")
+                  }
                 />
               </CardHeader>
               <CardContent className="space-y-5">

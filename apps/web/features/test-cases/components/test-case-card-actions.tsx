@@ -11,8 +11,9 @@ import {
 import { downloadFile, errorMessage } from "@/utils/api-client";
 
 /**
- * The Test case card's own actions: the FRD it comes from, and the
- * Automation card (script, runs and AI), shown on demand.
+ * The Test case card's own actions: the FRD it comes from, and — for a
+ * case not automated yet — Automation, which shows the card to write its
+ * script. A case with a script has that card on the page already.
  */
 export function TestCaseCardActions({
   testCaseId,
