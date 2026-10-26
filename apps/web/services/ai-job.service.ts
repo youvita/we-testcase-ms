@@ -31,7 +31,12 @@ export type JobContext = {
   progress: (done: number, total: number) => Promise<void>;
   /** Store what the job produced, as it goes — the page shows it live. */
   setResult: (result: Prisma.InputJsonValue) => Promise<void>;
+  /** Stop here if someone cancelled the job. Call it before each long step. */
+  throwIfCancelled: () => void;
 };
+
+/** Thrown at a checkpoint of a job that was cancelled while it ran. */
+class JobCancelled extends Error {}
 
 /** Does the work and returns the one-line summary shown when it succeeds. */
 export type JobWork = (context: JobContext) => Promise<string>;
@@ -39,6 +44,8 @@ export type JobWork = (context: JobContext) => Promise<string>;
 type Runtime = {
   /** Jobs this process owns, queued or running. */
   active: Set<string>;
+  /** Running jobs asked to stop; they do at their next checkpoint. */
+  cancelled: Set<string>;
   /** The tail of each user's queue. */
   queues: Map<string, Promise<void>>;
 };
@@ -46,8 +53,11 @@ type Runtime = {
 // On globalThis so dev hot reloads do not forget jobs that are still running.
 const runtime: Runtime = ((globalThis as { __aiJobs?: Runtime }).__aiJobs ??= {
   active: new Set(),
+  cancelled: new Set(),
   queues: new Map(),
 });
+// A runtime from before cancelling existed, kept across a dev hot reload.
+runtime.cancelled ??= new Set();
 
 const jobInclude = {
   createdBy: { select: { id: true, name: true } },
@@ -120,25 +130,33 @@ async function run(jobId: string, token: string, work: JobWork) {
     });
     if (count === 0) return;
 
+    const throwIfCancelled = () => {
+      if (runtime.cancelled.has(jobId)) throw new JobCancelled();
+    };
     const summary = await work({
       jobId,
       token,
+      // Guarded on RUNNING: a cancelled job's row says so and stays that way.
       progress: async (done, total) => {
-        await prisma.aiJob.update({
-          where: { id: jobId },
+        throwIfCancelled();
+        await prisma.aiJob.updateMany({
+          where: { id: jobId, status: "RUNNING" },
           data: { progressDone: done, progressTotal: total },
         });
       },
       setResult: async (result) => {
-        await prisma.aiJob.update({ where: { id: jobId }, data: { result } });
+        await prisma.aiJob.updateMany({ where: { id: jobId, status: "RUNNING" }, data: { result } });
       },
+      throwIfCancelled,
     });
 
-    await prisma.aiJob.update({
-      where: { id: jobId },
+    await prisma.aiJob.updateMany({
+      where: { id: jobId, status: "RUNNING" },
       data: { status: "SUCCEEDED", summary, finishedAt: new Date() },
     });
   } catch (error) {
+    // Cancelled: the row was marked when it was asked for.
+    if (error instanceof JobCancelled || runtime.cancelled.has(jobId)) return;
     // AI and HTTP errors are written for people; anything else is not.
     const message =
       error instanceof AiError || error instanceof HttpError
@@ -147,15 +165,34 @@ async function run(jobId: string, token: string, work: JobWork) {
     if (!(error instanceof AiError)) console.error(`[ai-job ${jobId}]`, error);
 
     await prisma.aiJob
-      .update({
-        where: { id: jobId },
+      .updateMany({
+        where: { id: jobId, status: "RUNNING" },
         data: { status: "FAILED", error: message, finishedAt: new Date() },
       })
       // The job itself may be gone — its project or document was deleted.
       .catch(() => undefined);
   } finally {
     runtime.active.delete(jobId);
+    runtime.cancelled.delete(jobId);
   }
+}
+
+/**
+ * Cancel a job. One still queued never starts; a running one is marked
+ * cancelled at once and stops at its next checkpoint — an answer the AI is
+ * already writing is let finish and thrown away.
+ */
+export async function cancelJob(jobId: string, byName: string): Promise<AiJobDto> {
+  const job = await prisma.aiJob.findUnique({ where: { id: jobId }, select: { status: true } });
+  if (!job) throw notFound("Job");
+  if (job.status === "QUEUED" || job.status === "RUNNING") {
+    if (job.status === "RUNNING") runtime.cancelled.add(jobId);
+    await prisma.aiJob.updateMany({
+      where: { id: jobId, status: { in: ["QUEUED", "RUNNING"] } },
+      data: { status: "FAILED", error: `Cancelled by ${byName}.`, finishedAt: new Date() },
+    });
+  }
+  return getJob(jobId);
 }
 
 /**

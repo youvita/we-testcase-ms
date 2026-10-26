@@ -358,7 +358,7 @@ export async function startScriptWriting(
       userId: user.id,
       input: { testCaseId, ...input, startPath },
     },
-    async ({ token, progress, setResult }) => {
+    async ({ token, progress, setResult, throwIfCancelled }) => {
       const isWeb = testCase.platform === "WEB";
       // One step before the tries: the start-page look, or picking up the
       // earlier script.
@@ -375,6 +375,7 @@ export async function startScriptWriting(
       };
 
       const tryScript = async (code: string) => {
+        throwIfCancelled();
         const queued = await queueRun({
           projectId: testCase.projectId,
           userId: user.id,
@@ -443,6 +444,7 @@ export async function startScriptWriting(
 
       // 2. Draft, try, repair.
       for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
+        throwIfCancelled();
         const reply = await askClaude({
           token,
           model: input.model,

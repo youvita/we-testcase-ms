@@ -254,6 +254,18 @@ export function AutomationScriptCard({
     }
   }
 
+  /** Stop the AI: it stops at its next step, and its script check is cancelled. */
+  async function cancelWriting() {
+    if (!writeJob) return;
+    try {
+      setWriteJob(await api.post<AiJobDto>(`/api/ai-jobs/${writeJob.id}/cancel`));
+      toast.message("Cancelled — the AI stops at its next step.");
+      router.refresh();
+    } catch (error) {
+      toast.error(errorMessage(error));
+    }
+  }
+
   /** Keep the AI going from its last result with QA's hint. */
   async function continueWithHint(hint: string): Promise<boolean> {
     // A job that broke has no result of its own to continue; the last one
@@ -363,6 +375,7 @@ export function AutomationScriptCard({
                   ? continueWithHint
                   : undefined
               }
+              onCancel={canManage ? cancelWriting : undefined}
             />
           )}
 

@@ -12,6 +12,7 @@ import {
   MessageCircleQuestion,
   Sparkles,
   Upload,
+  X,
   XCircle,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -302,6 +303,7 @@ export function ScriptWritingPanel({
   savedCode,
   onUse,
   onContinue,
+  onCancel,
 }: {
   projectId: string;
   job: AiJobDto;
@@ -310,7 +312,10 @@ export function ScriptWritingPanel({
   onUse: (code: string) => void;
   /** Keep trying from this result with QA's hint; resolves true once started. */
   onContinue?: (hint: string) => Promise<boolean>;
+  /** Stop the job while it is queued or running; absent for viewers. */
+  onCancel?: () => Promise<void>;
 }) {
+  const [cancelling, setCancelling] = useState(false);
   const [hint, setHint] = useState("");
   const [continuing, setContinuing] = useState(false);
   // The last try's failure, located in the final script — by content, so it
@@ -392,6 +397,25 @@ export function ScriptWritingPanel({
                 : `trying draft ${Math.max(1, result?.attempts.length ?? 0)}…`}
           </span>
         )}
+        {active && onCancel && (
+          <Button
+            size="sm"
+            variant="ghost"
+            className="ml-auto h-7"
+            disabled={cancelling}
+            onClick={async () => {
+              setCancelling(true);
+              try {
+                await onCancel();
+              } finally {
+                setCancelling(false);
+              }
+            }}
+          >
+            {cancelling ? <Loader2 className="mr-1.5 size-3.5 animate-spin" /> : <X className="mr-1.5 size-3.5" />}
+            Cancel
+          </Button>
+        )}
       </div>
 
       {active && job.progressTotal > 0 && (
@@ -411,7 +435,12 @@ export function ScriptWritingPanel({
         />
       )}
 
-      {job.status === "FAILED" && <p className="text-status-failed">{job.error}</p>}
+      {job.status === "FAILED" && (
+        // Cancelling is a choice, not a failure: say it plainly.
+        <p className={job.error?.startsWith("Cancelled") ? "text-muted-foreground" : "text-status-failed"}>
+          {job.error}
+        </p>
+      )}
       {job.status === "FAILED" && onContinue && hintBox}
 
       {outcome && result && (
