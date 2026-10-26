@@ -13,6 +13,7 @@ import {
   ShieldCheck,
   Sparkles,
   Trash2,
+  Download,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -22,6 +23,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { ClaudeConnectionDialog } from "@/features/ai/components/claude-connection-dialog";
 import { isJobActive, useAiJob } from "@/features/ai/use-ai-job";
+import { downloadCaseScript } from "@/features/automation/download-scripts";
 import type { AiJobDto, Platform, RunEnvironmentDto, RunItemStatus } from "@wetestcase/dto";
 import { ApiError, api, errorMessage } from "@/utils/api-client";
 import { formatRelative } from "@/utils/format";
@@ -367,8 +369,25 @@ export function AutomationScriptCard({
                 Hide script
               </Button>
             )}
+            {script && !dirty && (
+              <Button
+                size="sm"
+                variant="ghost"
+                className="ml-auto"
+                title="The saved script as a runnable Playwright file"
+                onClick={() => void downloadCaseScript(testCaseId)}
+              >
+                <Download className="mr-2 size-4" />
+                Download .spec.ts
+              </Button>
+            )}
             {script && (
-              <Button size="sm" variant="ghost" className="ml-auto" onClick={() => setDeleteOpen(true)}>
+              <Button
+                size="sm"
+                variant="ghost"
+                className={dirty ? "ml-auto" : undefined}
+                onClick={() => setDeleteOpen(true)}
+              >
                 <Trash2 className="mr-2 size-4" />
                 Remove
               </Button>

@@ -10,6 +10,7 @@ import {
   ChevronsUpDown,
   FolderTree,
   ClipboardList,
+  Download,
   MoreHorizontal,
   Pencil,
   Play,
@@ -52,6 +53,7 @@ import { formatRelative } from "@/utils/format";
 import type { Paginated, Platform, SubModuleOption, TestCaseListItem } from "@/types";
 import { BulkWriteDialog } from "@/features/automation/components/bulk-write-dialog";
 import { NewRunDialog } from "@/features/automation/components/new-run-dialog";
+import { downloadProjectScripts } from "@/features/automation/download-scripts";
 import type { RunEnvironmentDto } from "@wetestcase/dto";
 
 import {
@@ -257,6 +259,25 @@ export function TestCaseTable({
           >
             <Play className="mr-2 size-4" />
             Run selected
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={!selectedCases.some((item) => item.script)}
+            title={
+              selectedCases.some((item) => item.script)
+                ? "The selected cases' scripts as a Playwright project (.zip)"
+                : "None of the selected cases has a script yet"
+            }
+            onClick={() =>
+              void downloadProjectScripts(
+                projectId,
+                selectedCases.filter((item) => item.script).map((item) => item.id),
+              )
+            }
+          >
+            <Download className="mr-2 size-4" />
+            Download scripts
           </Button>
           <Button
             variant="outline"

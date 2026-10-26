@@ -2,11 +2,12 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Bot, Code2, Loader2, Play } from "lucide-react";
+import { Bot, Code2, Download, Loader2, Play } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { isJobActive, useAiJob } from "@/features/ai/use-ai-job";
+import { downloadCaseScript } from "@/features/automation/download-scripts";
 import type { AiJobDto, Platform, RunEnvironmentDto, ScriptWritingResult } from "@wetestcase/dto";
 import { formatRelative } from "@/utils/format";
 
@@ -127,6 +128,17 @@ export function AutomationSummary({
               {script ? "Script & Claude" : "Write a script"}
             </a>
           </Button>
+          {script && (
+            <Button
+              size="sm"
+              variant="ghost"
+              title="The saved script as a runnable Playwright file"
+              onClick={() => void downloadCaseScript(testCaseId)}
+            >
+              <Download className="mr-2 size-4" />
+              .spec.ts
+            </Button>
+          )}
         </div>
       </CardContent>
 

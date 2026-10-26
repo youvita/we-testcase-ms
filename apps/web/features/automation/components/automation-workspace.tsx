@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Bot, Play } from "lucide-react";
+import { Bot, Download, Play } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -20,6 +20,7 @@ import { EmptyState } from "@/components/shared/empty-state";
 import type { RunEnvironmentDto, TestRunDto } from "@wetestcase/dto";
 import type { SubModuleOption } from "@/types";
 import { formatRelative } from "@/utils/format";
+import { downloadProjectScripts } from "@/features/automation/download-scripts";
 
 import { EnvironmentsPanel } from "./environments-panel";
 import { NewRunDialog } from "./new-run-dialog";
@@ -68,15 +69,26 @@ export function AutomationWorkspace({
           <TabsTrigger value="runs">Runs</TabsTrigger>
           <TabsTrigger value="environments">Environments ({environments.length})</TabsTrigger>
         </TabsList>
-        {canManage && (
+        <div className="flex flex-wrap gap-2">
           <Button
-            disabled={automatedCount === 0 || environments.length === 0}
-            onClick={() => setNewRunOpen(true)}
+            variant="outline"
+            disabled={automatedCount === 0}
+            title="Every automated case as a Playwright project (.zip), to run outside TestCase MS"
+            onClick={() => void downloadProjectScripts(projectId)}
           >
-            <Play className="mr-2 size-4" />
-            New run
+            <Download className="mr-2 size-4" />
+            Download all scripts
           </Button>
-        )}
+          {canManage && (
+            <Button
+              disabled={automatedCount === 0 || environments.length === 0}
+              onClick={() => setNewRunOpen(true)}
+            >
+              <Play className="mr-2 size-4" />
+              New run
+            </Button>
+          )}
+        </div>
       </div>
 
       {!runnerConfigured && (

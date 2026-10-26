@@ -354,6 +354,14 @@ On a run, *Ask Claude why* (or
 environment or unclear, with a corrected script to apply or a bug report to
 copy. Claude is told variable names, never their values.
 
+**Taking scripts elsewhere.** Scripts live in the database, one per case. A
+case's *Download .spec.ts* gives a single runnable Playwright file; *Download
+scripts* (selected cases) and *Download all scripts* (Automation) give a
+Playwright project as a .zip — one file per case under
+`tests/<module>/<sub-module>/`, with `playwright.config.ts`, `package.json`
+and a `.env.example` filled from the first environment. Secret values are
+never exported, and edits made to the files do not come back to the platform.
+
 **The runner** (`apps/runner`) is a separate container built on the Playwright
 image. It holds no database credentials: it claims queued runs from
 `/api/runner/*` with a shared `RUNNER_TOKEN`, runs them, and posts results
