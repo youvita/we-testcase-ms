@@ -33,6 +33,10 @@ export default async function RunPage({
   if (!belongs) notFound();
 
   const title = run.number ? `Run #${run.number}` : "Script check";
+  // A script check tries one case's script while it is being written: it
+  // belongs under that case, which is where the way back should lead.
+  const checkedCase =
+    run.purpose === "SCRIPT_CHECK" && run.items.length === 1 ? run.items[0]!.testCase : null;
 
   return (
     <div className="space-y-6">
@@ -40,7 +44,15 @@ export default async function RunPage({
         items={[
           { label: "Projects", href: "/projects" },
           { label: project.name, href: `/projects/${projectId}` },
-          { label: "Automation", href: `/projects/${projectId}/automation` },
+          ...(checkedCase
+            ? [
+                { label: "Test Cases", href: `/projects/${projectId}/test-cases` },
+                {
+                  label: checkedCase.tcId,
+                  href: `/projects/${projectId}/test-cases/${checkedCase.id}`,
+                },
+              ]
+            : [{ label: "Automation", href: `/projects/${projectId}/automation` }]),
           { label: title },
         ]}
       />

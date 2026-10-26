@@ -282,6 +282,14 @@ function RunItemRow({
           <span className="shrink-0 font-mono text-xs">{caseLabel}</span>
           <span className="truncate text-sm">{testCase?.title ?? "Pages Claude looked at"}</span>
         </button>
+        {testCase && (
+          <Link
+            href={`/projects/${projectId}/test-cases/${testCase.id}`}
+            className="shrink-0 text-xs text-primary hover:underline"
+          >
+            Open test case
+          </Link>
+        )}
         <PlatformBadge platform={testCase?.platform ?? "WEB"} />
         <span className="w-16 shrink-0 text-right text-xs text-muted-foreground">
           {formatDuration(item.durationMs)}
@@ -395,14 +403,6 @@ function RunItemRow({
                 </a>{" "}
                 to step through every action, network call and DOM snapshot.
               </span>
-            )}
-            {testCase && (
-              <Link
-                href={`/projects/${projectId}/test-cases/${testCase.id}`}
-                className="text-xs text-primary hover:underline"
-              >
-                Open test case
-              </Link>
             )}
           </div>
 
