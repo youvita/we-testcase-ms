@@ -51,7 +51,16 @@ export function TestCaseFilters({
   const search = get("search");
   const moduleId = get("moduleId", "ALL");
   const subModule = get("subModule", "ALL");
-  const moduleSubModules = subModules.filter((sub) => sub.moduleId === moduleId);
+  // Every module's sub-modules until a module is chosen, then just its own.
+  const subModuleOptions =
+    moduleId === "ALL" ? subModules : subModules.filter((sub) => sub.moduleId === moduleId);
+  const moduleName = new Map(modules.map((mod) => [mod.id, mod.name]));
+  // An option names its module too: picking one sets both filters.
+  const optionValue = (sub: { moduleId: string; name: string }) => `${sub.moduleId}\t${sub.name}`;
+  const subModuleValue =
+    subModule === "ALL" || subModule === NO_SUB_MODULE || moduleId === "ALL"
+      ? subModule
+      : optionValue({ moduleId, name: subModule });
   const testType = get("testType", "ALL");
   const priority = get("priority", "ALL");
   const status = get("status", "ALL");
@@ -102,21 +111,34 @@ export function TestCaseFilters({
           </SelectContent>
         </Select>
 
-        {(moduleSubModules.length > 0 || subModule !== "ALL") && (
+        {(subModules.length > 0 || subModule !== "ALL") && (
           <Select
-            value={subModule}
-            onValueChange={(value) => setParams({ subModule: value })}
+            value={subModuleValue}
+            onValueChange={(value) => {
+              if (value === "ALL" || value === NO_SUB_MODULE) {
+                setParams({ subModule: value === "ALL" ? null : value });
+                return;
+              }
+              const [pickedModule, name] = value.split("\t") as [string, string];
+              setParams({ moduleId: pickedModule, subModule: name });
+            }}
           >
-            <SelectTrigger className="lg:w-[170px]" aria-label="Filter by sub-module">
+            <SelectTrigger className="lg:w-[190px]" aria-label="Filter by sub-module">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="ALL">All sub-modules</SelectItem>
-              {moduleSubModules.map((sub) => (
-                <SelectItem key={sub.name} value={sub.name}>
-                  {sub.name} ({sub.count})
+              {subModuleOptions.map((sub) => (
+                <SelectItem key={optionValue(sub)} value={optionValue(sub)}>
+                  {moduleId === "ALL" ? `${moduleName.get(sub.moduleId) ?? "?"} › ${sub.name}` : sub.name} ({sub.count})
                 </SelectItem>
               ))}
+              {/* A sub-module from a shared link that no case uses any more. */}
+              {subModuleValue !== "ALL" &&
+                subModuleValue !== NO_SUB_MODULE &&
+                !subModuleOptions.some((sub) => optionValue(sub) === subModuleValue) && (
+                  <SelectItem value={subModuleValue}>{subModule}</SelectItem>
+                )}
               <SelectItem value={NO_SUB_MODULE}>No sub-module</SelectItem>
             </SelectContent>
           </Select>
