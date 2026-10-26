@@ -290,39 +290,6 @@ export function AutomationScriptCard({
               className="font-mono text-xs leading-relaxed"
               aria-label="Playwright script"
             />
-
-            <details className="text-xs text-muted-foreground">
-              <summary className="cursor-pointer">What the script can use</summary>
-              <ul className="mt-2 list-disc space-y-1 pl-5">
-                {platform === "WEB" ? (
-                  <li>
-                    <code className="font-mono">page</code>, <code className="font-mono">context</code>,{" "}
-                    <code className="font-mono">browser</code> — a Chromium page already pointed at the
-                    environment&apos;s Web base URL, so <code className="font-mono">page.goto(&quot;/login&quot;)</code> works.
-                    <code className="font-mono">request</code> is on the API base URL, for setting up data.
-                  </li>
-                ) : (
-                  <li>
-                    <code className="font-mono">request</code> — an HTTP client on the environment&apos;s API base
-                    URL, so <code className="font-mono">request.get(&quot;/users&quot;)</code> works. No browser is
-                    started.
-                  </li>
-                )}
-                <li>
-                  <code className="font-mono">expect</code> — Playwright assertions. A failed assertion fails the
-                  case; a timeout does too.
-                </li>
-                <li>
-                  <code className="font-mono">vars.NAME</code> — the environment&apos;s variables, such as test
-                  accounts. <code className="font-mono">env.name</code>, <code className="font-mono">env.webUrl</code>,{" "}
-                  <code className="font-mono">env.apiUrl</code> describe where it runs.
-                </li>
-                <li>
-                  A script that crashes on its own mistake (TypeError, ReferenceError) is reported as a script
-                  error and does not mark the case failed.
-                </li>
-              </ul>
-            </details>
           </>
         ) : (
           script && (
