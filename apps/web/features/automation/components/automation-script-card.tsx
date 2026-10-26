@@ -149,6 +149,10 @@ export function AutomationScriptCard({
     // Leaving the case (prev/next) starts the next one hidden again.
     return () => setScriptCardShown(false);
   }, [testCaseId]);
+  // Shown by the Automation button: open, ready to write.
+  useEffect(() => {
+    if (shown) setExpanded(true);
+  }, [shown]);
   const writing = isJobActive(writeJob);
   useEffect(() => {
     if (!writing) return;
@@ -158,14 +162,14 @@ export function AutomationScriptCard({
 
   if (platform !== "WEB" && platform !== "API") return null;
   if (!hasScript && !shown) return null;
-  // Without a script the card is all there is to see once shown; its
-  // header hides it again, and the Automation button comes back.
-  const open = hasScript ? expanded : true;
+  // The header only opens and closes the card. Whether a case without a
+  // script has the card at all is the Automation button's call.
+  const open = expanded;
 
   const header = (description: React.ReactNode) => (
     <CollapsibleCardHeader
       expanded={open}
-      onToggle={() => (hasScript ? setExpanded(!expanded) : setScriptCardShown(false))}
+      onToggle={() => setExpanded(!expanded)}
       title={
         <>
           <Bot className="size-4" />
