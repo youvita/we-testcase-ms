@@ -59,7 +59,7 @@ export function RequirementsWorkspace({
   canManage: boolean;
   environments: RunEnvironmentDto[];
   signInCases: SignInCase[];
-  /** Arrived from "Suggest with AI" on the test case list. */
+  /** Arrived with ?explore=1: open "Explore the app" straight away. */
   openExplore?: boolean;
 }) {
   const router = useRouter();

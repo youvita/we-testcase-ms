@@ -78,6 +78,8 @@ export default async function TestCasesPage({
                 modules={modules.map((m) => ({ id: m.id, name: m.name }))}
                 subModules={subModules}
                 platforms={project.platforms}
+                environments={environments}
+                signInCases={signInCases}
               />
             )}
           </>
