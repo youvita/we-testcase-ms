@@ -160,7 +160,7 @@ export function ExploreAppDialog({
               </p>
             </div>
 
-            <div className="grid gap-4 sm:grid-cols-[180px_1fr]">
+            <div className="grid gap-4">
               <div className="space-y-2">
                 <Label>How many</Label>
                 <Select value={depth} onValueChange={(v) => setDepth(v as GenerationDepth)}>
