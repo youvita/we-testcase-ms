@@ -1,19 +1,16 @@
 "use client";
 
 import { useRef, useState } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   Bot,
   Code2,
   Loader2,
   PencilRuler,
-  Play,
   Save,
   ShieldCheck,
   Sparkles,
   Trash2,
-  Download,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -23,13 +20,10 @@ import { Textarea } from "@/components/ui/textarea";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { ClaudeConnectionDialog } from "@/features/ai/components/claude-connection-dialog";
 import { isJobActive, useAiJob } from "@/features/ai/use-ai-job";
-import { downloadCaseScript } from "@/features/automation/download-scripts";
 import type { AiJobDto, Platform, RunEnvironmentDto, RunItemStatus } from "@wetestcase/dto";
 import { ApiError, api, errorMessage } from "@/utils/api-client";
 import { formatRelative } from "@/utils/format";
 
-import { NewRunDialog } from "./new-run-dialog";
-import { RunStatusBadge } from "./run-status-badge";
 import { ScriptWritingPanel, WriteWithClaudeDialog } from "./script-writer";
 
 const EXAMPLES: Record<"WEB" | "API", string> = {
@@ -92,10 +86,8 @@ export function AutomationScriptCard({
   platform,
   script,
   environments,
-  lastResult,
   latestWriteJob,
   lastFinishedWriteJobId = null,
-  signInCases = [],
   canManage,
 }: {
   projectId: string;
@@ -103,22 +95,18 @@ export function AutomationScriptCard({
   platform: Platform;
   script: ScriptState;
   environments: RunEnvironmentDto[];
-  lastResult: LastAutomatedResult;
   /** The newest "write with Claude" job for this case, finished or not. */
   latestWriteJob: AiJobDto | null;
   /** The newest one that finished — where "Keep trying" resumes after a broken job. */
   lastFinishedWriteJobId?: string | null;
-  /** Other automated Web cases that can sign in before this one runs. */
-  signInCases?: { id: string; tcId: string; title: string }[];
   canManage: boolean;
 }) {
   const router = useRouter();
   const [code, setCode] = useState(script?.code ?? "");
   const [saving, setSaving] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
-  const [runOpen, setRunOpen] = useState(false);
-  // Hidden until asked for: most people only need to know the case is
-  // automated and how it last ran.
+  // Hidden until asked for: the summary beside the case already says
+  // whether it is automated and how it last ran.
   const [showScript, setShowScript] = useState(false);
   const [writeOpen, setWriteOpen] = useState(false);
   const [connectOpen, setConnectOpen] = useState(false);
@@ -176,17 +164,6 @@ export function AutomationScriptCard({
     }
   }
 
-  /** QA vouches for the script: from now on its failures count. */
-  async function markVerified() {
-    try {
-      await api.post(`/api/test-cases/${testCaseId}/script/verify`);
-      toast.success("Script verified — its failures will now be recorded");
-      router.refresh();
-    } catch (error) {
-      toast.error(errorMessage(error));
-    }
-  }
-
   /** Keep Claude going from its last result with QA's hint. */
   async function continueWithHint(hint: string): Promise<boolean> {
     // A job that broke has no result of its own to continue; the last one
@@ -228,52 +205,15 @@ export function AutomationScriptCard({
   return (
     <Card id="automation" className="scroll-mt-6">
       <CardHeader className="space-y-1">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <CardTitle className="flex items-center gap-2 text-base">
-            <Bot className="size-4" />
-            Automation
-          </CardTitle>
-          {lastResult && (
-            <Link
-              href={`/projects/${projectId}/automation/runs/${lastResult.runId}`}
-              className="flex items-center gap-2 text-xs text-muted-foreground hover:underline"
-            >
-              Last run #{lastResult.runNumber}
-              <RunStatusBadge status={lastResult.status} />
-              {lastResult.finishedAt && formatRelative(lastResult.finishedAt)}
-            </Link>
-          )}
-        </div>
-        <CardDescription className="flex flex-wrap items-center gap-x-2 gap-y-1">
-          {script ? (
-            <>
-              <ScriptStatusBadge verified={Boolean(script.verifiedAt)} />
-              <span>
-                Playwright script · saved by {script.updatedBy.name} {formatRelative(script.updatedAt)}
-              </span>
-            </>
-          ) : (
-            "Write this case as a Playwright script and the runner can execute it."
-          )}
+        <CardTitle className="flex items-center gap-2 text-base">
+          <Code2 className="size-4" />
+          Script &amp; Claude
+        </CardTitle>
+        <CardDescription>
+          {script
+            ? `Playwright script · saved by ${script.updatedBy.name} ${formatRelative(script.updatedAt)}`
+            : "Write this case as a Playwright script and the runner can execute it."}
         </CardDescription>
-        {script && !script.verifiedAt && (
-          <p className="text-xs text-muted-foreground">
-            A draft script has not passed yet, so when it fails the case is not marked failed —
-            the script may be what is wrong. It becomes verified the first time it passes.
-            {canManage && (
-              <>
-                {" "}
-                <button
-                  type="button"
-                  className="text-primary hover:underline"
-                  onClick={() => void markVerified()}
-                >
-                  Mark as verified now
-                </button>
-              </>
-            )}
-          </p>
-        )}
       </CardHeader>
       <CardContent className="space-y-3">
         {writeJob && (
@@ -333,16 +273,6 @@ export function AutomationScriptCard({
             <Button
               size="sm"
               variant="outline"
-              disabled={!script || dirty}
-              title={dirty ? "Save the script first" : undefined}
-              onClick={() => setRunOpen(true)}
-            >
-              <Play className="mr-2 size-4" />
-              Run this case
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
               disabled={isJobActive(writeJob)}
               onClick={() => setWriteOpen(true)}
             >
@@ -369,25 +299,8 @@ export function AutomationScriptCard({
                 Hide script
               </Button>
             )}
-            {script && !dirty && (
-              <Button
-                size="sm"
-                variant="ghost"
-                className="ml-auto"
-                title="The saved script as a runnable Playwright file"
-                onClick={() => void downloadCaseScript(testCaseId)}
-              >
-                <Download className="mr-2 size-4" />
-                Download .spec.ts
-              </Button>
-            )}
             {script && (
-              <Button
-                size="sm"
-                variant="ghost"
-                className={dirty ? "ml-auto" : undefined}
-                onClick={() => setDeleteOpen(true)}
-              >
+              <Button size="sm" variant="ghost" className="ml-auto" onClick={() => setDeleteOpen(true)}>
                 <Trash2 className="mr-2 size-4" />
                 Remove
               </Button>
@@ -423,15 +336,6 @@ export function AutomationScriptCard({
           retryRef.current = null;
           retry?.();
         }}
-      />
-
-      <NewRunDialog
-        projectId={projectId}
-        environments={environments}
-        signInCases={signInCases}
-        testCaseIds={[testCaseId]}
-        open={runOpen}
-        onOpenChange={setRunOpen}
       />
 
       <ConfirmDialog

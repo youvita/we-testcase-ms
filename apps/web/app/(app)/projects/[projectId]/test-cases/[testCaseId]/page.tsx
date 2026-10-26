@@ -291,15 +291,6 @@ export default async function TestCaseDetailPage({
               }
               latestWriteJob={latestWriteJob}
               lastFinishedWriteJobId={lastFinishedWrite?.id ?? null}
-              signInCases={signInCases.filter((c) => c.id !== testCase.id)}
-              lastResult={
-                lastRunItem && {
-                  status: lastRunItem.status,
-                  runId: lastRunItem.run.id,
-                  runNumber: lastRunItem.run.number,
-                  finishedAt: lastRunItem.finishedAt?.toISOString() ?? null,
-                }
-              }
             />
 
             <ExecutionHistory

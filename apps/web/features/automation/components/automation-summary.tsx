@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 import { Bot, Code2, Download, Loader2, Play } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -9,6 +11,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { isJobActive, useAiJob } from "@/features/ai/use-ai-job";
 import { downloadCaseScript } from "@/features/automation/download-scripts";
 import type { AiJobDto, Platform, RunEnvironmentDto, ScriptWritingResult } from "@wetestcase/dto";
+import { api, errorMessage } from "@/utils/api-client";
 import { formatRelative } from "@/utils/format";
 
 import {
@@ -46,6 +49,7 @@ export function AutomationSummary({
   signInCases?: { id: string; tcId: string; title: string }[];
   canManage: boolean;
 }) {
+  const router = useRouter();
   const [runOpen, setRunOpen] = useState(false);
   const [writeJob] = useAiJob(latestWriteJob);
 
@@ -54,6 +58,17 @@ export function AutomationSummary({
   if (!script && !canManage) return null;
 
   const writing = isJobActive(writeJob);
+
+  /** QA vouches for the script: from now on its failures count. */
+  async function markVerified() {
+    try {
+      await api.post(`/api/test-cases/${testCaseId}/script/verify`);
+      toast.success("Script verified — its failures will now be recorded");
+      router.refresh();
+    } catch (error) {
+      toast.error(errorMessage(error));
+    }
+  }
   const tries = (writeJob?.result as ScriptWritingResult | null)?.attempts.filter((a) => !a.earlier).length ?? 0;
 
   return (
@@ -106,7 +121,20 @@ export function AutomationSummary({
 
         {script && !script.verifiedAt && (
           <p className="text-xs text-muted-foreground">
-            Draft: its failures are not recorded on the case until it passes once.
+            A draft&apos;s failures are not recorded on the case — the script may be
+            what is wrong. It becomes verified the first time it passes.
+            {canManage && (
+              <>
+                {" "}
+                <button
+                  type="button"
+                  className="text-primary hover:underline"
+                  onClick={() => void markVerified()}
+                >
+                  Mark as verified now
+                </button>
+              </>
+            )}
           </p>
         )}
 
@@ -131,12 +159,12 @@ export function AutomationSummary({
           {script && (
             <Button
               size="sm"
-              variant="ghost"
-              title="The saved script as a runnable Playwright file"
+              variant="outline"
+              title="The saved script as a runnable Playwright file (.spec.ts)"
               onClick={() => void downloadCaseScript(testCaseId)}
             >
               <Download className="mr-2 size-4" />
-              .spec.ts
+              Download script
             </Button>
           )}
         </div>
