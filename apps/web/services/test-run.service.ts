@@ -5,7 +5,7 @@ import path from "node:path";
 import { Prisma, type TestRun } from "@prisma/client";
 
 import { prisma } from "@/lib/prisma";
-import { badRequest, conflict, notFound } from "@/lib/api";
+import { badRequest, conflict, HttpError, notFound } from "@/lib/api";
 import { PLATFORM_LABELS } from "@/lib/constants";
 import { dropFrame } from "@/lib/live-frames";
 import {
@@ -713,14 +713,20 @@ export async function waitForRun(runId: string, timeoutMs = 10 * 60_000) {
     await sweepStaleRuns();
     const run = await prisma.testRun.findUniqueOrThrow({
       where: { id: runId },
-      select: { status: true },
+      select: { status: true, startedAt: true },
     });
     if (run.status !== "QUEUED" && run.status !== "RUNNING") {
       return getTestRun(runId);
     }
     if (Date.now() > deadline) {
       await cancelTestRun(runId).catch(() => undefined);
-      throw new Error("The runner did not finish the script check in time.");
+      // Said to the person who started it, so it names what to look at.
+      throw new HttpError(
+        504,
+        run.startedAt
+          ? "The runner started the script check but did not finish it within 10 minutes. Check the runner's log (docker logs wetestcase-runner-dev)."
+          : "The runner never picked up the script check. Make sure it is running and can reach this app — its log (docker logs wetestcase-runner-dev) says \"cannot reach the app\" when it cannot.",
+      );
     }
     await new Promise((resolve) => setTimeout(resolve, 3000));
   }
