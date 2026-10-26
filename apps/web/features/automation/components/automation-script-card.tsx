@@ -134,11 +134,12 @@ export function AutomationScriptCard({
     else toast.error(job.error ?? "The AI could not write the script");
   });
 
-  // A case with a script always has this card, opened and closed by its
-  // header (closed by default). A case without one shows it only once the
-  // Test case card's Automation button asks — or when a link points here or
-  // the AI is writing, so neither goes unseen.
+  // A case with automation — a saved script, or the AI's work on one — always
+  // has this card, opened and closed by its header (closed by default). A
+  // case with neither shows it only once the Test case card's Automation
+  // button adds it, or when a link points here.
   const hasScript = Boolean(script);
+  const hasAutomation = hasScript || Boolean(writeJob);
   const shown = useScriptCardShown();
   const [expanded, setExpanded] = useState(false);
   useEffect(() => {
@@ -161,7 +162,7 @@ export function AutomationScriptCard({
   }, [writing]);
 
   if (platform !== "WEB" && platform !== "API") return null;
-  if (!hasScript && !shown) return null;
+  if (!hasAutomation && !shown) return null;
   // The header only opens and closes the card. Whether a case without a
   // script has the card at all is the Automation button's call.
   const open = expanded;
@@ -206,13 +207,30 @@ export function AutomationScriptCard({
     setScriptCardShown(false);
   }
 
+  /** Clear the AI's tries on this case: with the script, nothing is left. */
+  async function discardAiWork() {
+    await api.delete(`/api/test-cases/${testCaseId}/script/jobs`);
+    setWriteJob(null);
+  }
+
   async function handleDelete() {
     if (!script) {
+      if (writeJob) {
+        try {
+          await discardAiWork();
+          toast.success("The AI's drafts were discarded");
+          router.refresh();
+        } catch (error) {
+          toast.error(errorMessage(error));
+          throw error;
+        }
+      }
       removeCard();
       return;
     }
     try {
       await api.delete(`/api/test-cases/${testCaseId}/script`);
+      if (writeJob) await discardAiWork();
       setCode("");
       // Back to a case without a script: the card goes, the button returns.
       setScriptCardShown(false);
@@ -465,9 +483,9 @@ export function AutomationScriptCard({
                   size="sm"
                   variant="ghost"
                   className="ml-auto"
-                  title={script ? "Delete the script; the case goes back to manual" : "Take this card away"}
-                  // Nothing to lose without a script or a draft: no question.
-                  onClick={() => (script || code.trim() ? setDeleteOpen(true) : removeCard())}
+                  title={script || writeJob ? "Take the case back to manual" : "Take this card away"}
+                  // Nothing to lose without a script, the AI's work or a draft: no question.
+                  onClick={() => (script || writeJob || code.trim() ? setDeleteOpen(true) : removeCard())}
                 >
                   <Trash2 className="mr-2 size-4" />
                   Remove
@@ -521,10 +539,14 @@ export function AutomationScriptCard({
       <ConfirmDialog
         open={deleteOpen}
         onOpenChange={setDeleteOpen}
-        title={script ? "Remove the script?" : "Discard this draft?"}
+        title={script ? "Remove the script?" : writeJob ? "Discard the AI's script?" : "Discard this draft?"}
         description={
           !script ? (
-            "The script typed here has not been saved and will be lost."
+            writeJob ? (
+              "The AI's tries on this case are cleared and the case goes back to manual. The script checks it ran stay under Automation → Runs."
+            ) : (
+              "The script typed here has not been saved and will be lost."
+            )
           ) : (
             <div className="space-y-2">
               {/* Spell out what a proven script is worth before it goes. */}
@@ -536,7 +558,10 @@ export function AutomationScriptCard({
                     : "."}
                 </p>
               )}
-              <p>The case goes back to manual. Past runs keep the script they ran.</p>
+              <p>
+                The case goes back to manual. Past runs keep the script they ran.
+                {writeJob && " The AI's tries on this case are cleared too."}
+              </p>
             </div>
           )
         }

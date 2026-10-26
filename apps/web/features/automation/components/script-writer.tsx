@@ -517,10 +517,12 @@ function AttemptList({
           const timedOut = attempt.error?.startsWith("Timed out");
           return (
             <li key={attempt.runId} className="text-xs">
-              <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+              {/* One line whatever the error's length: it truncates, and
+                  the full text is on hover and in the run. */}
+              <div className="flex items-center gap-2">
                 <span className="w-24 shrink-0 text-muted-foreground">{label}</span>
-                <RunStatusBadge status={attempt.status} />
-                <span className="min-w-0 truncate text-muted-foreground" title={attempt.error ?? undefined}>
+                <RunStatusBadge status={attempt.status} className="shrink-0" />
+                <span className="min-w-0 flex-1 truncate text-muted-foreground" title={attempt.error ?? undefined}>
                   {attempt.status === "PASSED" ? (
                     `in ${formatDuration(attempt.durationMs)}`
                   ) : (

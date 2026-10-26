@@ -660,6 +660,19 @@ export async function getLastFinishedScriptJob(testCaseId: string) {
   });
 }
 
+/**
+ * Clear the AI's script-writing history on a case, taking it back to "not
+ * automated". The script checks it ran stay listed under Automation → Runs.
+ * Refused while a job for the case is still queued or running.
+ */
+export async function discardScriptJobs(testCaseId: string) {
+  const where = { kind: "WRITE_SCRIPT" as const, input: { path: ["testCaseId"], equals: testCaseId } };
+  const active = await prisma.aiJob.count({ where: { ...where, status: { in: ["QUEUED", "RUNNING"] } } });
+  if (active > 0) throw badRequest("The AI is still writing this script. Wait for it to finish first.");
+  const { count } = await prisma.aiJob.deleteMany({ where });
+  return { discarded: count };
+}
+
 export async function getLatestScriptJob(testCaseId: string) {
   return prisma.aiJob.findFirst({
     where: {
