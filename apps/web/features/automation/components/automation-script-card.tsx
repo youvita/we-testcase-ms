@@ -4,8 +4,8 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   Bot,
-  ChevronDown,
-  ChevronRight,
+  ChevronsDownUp,
+  ChevronsUpDown,
   Code2,
   Loader2,
   PencilRuler,
@@ -226,11 +226,6 @@ export function AutomationScriptCard({
           onClick={() => setExpanded(!expanded)}
           className="-m-1 flex w-full items-start gap-2 rounded-md p-1 text-left hover:bg-muted/40"
         >
-          {expanded ? (
-            <ChevronDown className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
-          ) : (
-            <ChevronRight className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
-          )}
           <span className="min-w-0 flex-1 space-y-1">
             <CardTitle className="flex items-center gap-2 text-base">
               <Code2 className="size-4" />
@@ -252,6 +247,12 @@ export function AutomationScriptCard({
               {!expanded && dirty && <span className="text-status-blocked">· unsaved changes</span>}
             </CardDescription>
           </span>
+          {/* Arrows apart to open, together to close. */}
+          {expanded ? (
+            <ChevronsDownUp className="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-hidden />
+          ) : (
+            <ChevronsUpDown className="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-hidden />
+          )}
         </button>
       </CardHeader>
       {expanded && (
