@@ -381,8 +381,13 @@ function RunItemRow({
             <video
               src={artifactUrl(video.index)}
               controls
-              preload="metadata"
-              className="max-h-80 rounded-md border"
+              // Playwright's WebM does not state its length up front: with
+              // only the metadata loaded the player shows 0:00 on black and
+              // looks broken. The files are small, so load them whole — and
+              // show where the test ended until it plays.
+              preload="auto"
+              poster={screenshots.length ? artifactUrl(screenshots.at(-1)!.index) : undefined}
+              className="max-h-80 rounded-md border bg-muted"
             />
           )}
 
