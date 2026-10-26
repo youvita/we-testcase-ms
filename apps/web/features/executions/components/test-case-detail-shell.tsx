@@ -41,7 +41,9 @@ export function TestCaseDetailShell({
 
   return (
     <div
-      className="space-y-6 lg:relative lg:-my-8 lg:h-[calc(100dvh-3.5rem)] lg:space-y-0 lg:overflow-hidden"
+      // Not clipped: the header's white reaches past these edges. The columns
+      // below clip their own scrolling.
+      className="space-y-6 lg:relative lg:-my-8 lg:h-[calc(100dvh-3.5rem)] lg:space-y-0"
       style={
         {
           // Only consumed on lg (see column padding classes) so mobile does not
