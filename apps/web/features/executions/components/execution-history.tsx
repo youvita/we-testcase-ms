@@ -42,8 +42,8 @@ export function ExecutionHistory({
   // Null on pages with no Record result card (the developer's read-only view),
   // which is exactly when entries should not be clickable.
   const editor = useExecutionEditor();
-  // Open by default: it is the audit trail, and what most visits are for.
-  const [expanded, setExpanded] = useState(true);
+  // Closed by default, like Script & Claude; the header says how many results.
+  const [expanded, setExpanded] = useState(false);
 
   return (
     <Card>
