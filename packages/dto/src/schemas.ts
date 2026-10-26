@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import {
+  AI_MODELS,
   CLOSING_FIX_STATUSES,
   EXECUTION_STATUSES,
   FIX_STATUSES,
@@ -479,6 +480,11 @@ export const scriptWritingSchema = z.object({
   startPath: startPathSchema,
   /** Anything the steps leave out, e.g. "the OTP on SIT is always 000000". */
   instructions: optionalText(2000),
+  /** Blank means the server's default model. */
+  model: z.enum(AI_MODELS).optional(),
+  /** An FRD's text for context on this one job — not saved as a document. */
+  frdText: optionalText(120_000),
+  frdName: optionalText(200),
   ...liveViewFields,
 });
 
@@ -487,7 +493,7 @@ export type ScriptWritingInput = z.input<typeof scriptWritingSchema>;
 /** Keep trying from an earlier script-writing job, with a hint from QA. */
 export const scriptContinueSchema = z.object({
   jobId: z.string().min(1),
-  hint: trimmed(2000).min(3, "Tell Claude what it got wrong or what it cannot see"),
+  hint: trimmed(2000).min(3, "Tell the AI what it got wrong or what it cannot see"),
   ...liveViewFields,
 });
 

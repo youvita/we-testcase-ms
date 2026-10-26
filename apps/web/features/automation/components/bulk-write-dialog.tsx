@@ -100,9 +100,9 @@ export function BulkWriteDialog({
       <Dialog open={open} onOpenChange={(next) => !busy && onOpenChange(next)}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle>Write scripts with Claude</DialogTitle>
+            <DialogTitle>Write scripts with AI</DialogTitle>
             <DialogDescription>
-              Claude writes each case&apos;s script against the environment — trying
+              The AI writes each case&apos;s script against the environment — trying
               it and fixing it, as for a single case — one case after another.
             </DialogDescription>
           </DialogHeader>
@@ -172,7 +172,7 @@ export function BulkWriteDialog({
                 <Checkbox className="mt-0.5" checked={skipScripted} onCheckedChange={(v) => setSkipScripted(v === true)} />
                 <span>
                   Skip cases that already have a script
-                  <span className="block text-xs text-muted-foreground">Off, Claude rewrites them too.</span>
+                  <span className="block text-xs text-muted-foreground">Off, the AI rewrites them too.</span>
                 </span>
               </label>
               <label className="flex items-start gap-2 text-sm">

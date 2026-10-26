@@ -128,7 +128,7 @@ export function ScriptJobsPanel({
         <div className="flex flex-wrap items-center gap-3">
           <Sparkles className="size-4 text-primary" />
           <span className="font-medium">
-            {running ? "Claude is writing scripts" : "Claude finished writing scripts"}
+            {running ? "The AI is writing scripts" : "The AI finished writing scripts"}
           </span>
           <span className="text-sm text-muted-foreground">
             {done} of {shown.length} done · {saved} saved · {review} to review

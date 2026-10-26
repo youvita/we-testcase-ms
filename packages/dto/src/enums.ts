@@ -171,6 +171,16 @@ export type DraftStatus = (typeof DRAFT_STATUSES)[number];
 
 /** How many cases to ask for per requirement. */
 export const GENERATION_DEPTHS = ["essential", "thorough"] as const;
+
+/** AI models a person can pick for a job; the bridge takes these aliases. */
+export const AI_MODELS = ["sonnet", "opus", "haiku"] as const;
+export type AiModel = (typeof AI_MODELS)[number];
+
+export const AI_MODEL_LABELS: Record<AiModel, { label: string; hint: string }> = {
+  sonnet: { label: "Sonnet", hint: "Balanced — the default" },
+  opus: { label: "Opus", hint: "Most capable, slower; uses more of your plan" },
+  haiku: { label: "Haiku", hint: "Fastest, for simple flows" },
+};
 export type GenerationDepth = (typeof GENERATION_DEPTHS)[number];
 
 // ---------------------------------------------------------------------------

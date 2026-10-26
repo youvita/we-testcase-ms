@@ -296,7 +296,7 @@ export function TestCaseTable({
             onClick={() => setBulkWriteOpen(true)}
           >
             <Sparkles className="mr-2 size-4" />
-            Write scripts with Claude
+            Write scripts with AI
           </Button>
           <Button
             variant="destructive"
@@ -592,7 +592,7 @@ export function TestCaseTable({
           onOpenChange={setBulkWriteOpen}
           onStarted={(result) => {
             toast.success(
-              `Claude is writing ${result.queued.length} script${result.queued.length === 1 ? "" : "s"}`,
+              `The AI is writing ${result.queued.length} script${result.queued.length === 1 ? "" : "s"}`,
               {
                 description: result.skipped.length
                   ? `Skipped: ${result.skipped

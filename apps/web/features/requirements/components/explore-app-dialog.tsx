@@ -95,7 +95,7 @@ export function ExploreAppDialog({
         <DialogHeader>
           <DialogTitle>Explore the app</DialogTitle>
           <DialogDescription>
-            The runner opens these pages in a real browser and Claude suggests
+            The runner opens these pages in a real browser and the AI suggests
             test cases from what is on them — no document needed. Suggestions
             wait in Review drafts for you to accept.
           </DialogDescription>

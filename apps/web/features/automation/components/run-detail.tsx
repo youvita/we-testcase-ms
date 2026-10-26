@@ -58,7 +58,7 @@ export function RunDetail({
           const job = await api.get<AiJobDto>(`/api/ai-jobs/${jobId}`);
           if (job.status === "SUCCEEDED" || job.status === "FAILED") {
             finished.push(itemId);
-            if (job.status === "FAILED") toast.error(job.error ?? "Claude could not explain this failure");
+            if (job.status === "FAILED") toast.error(job.error ?? "The AI could not explain this failure");
           }
         } catch {
           // Retried on the next tick.
@@ -91,7 +91,7 @@ export function RunDetail({
         });
         return next;
       });
-      toast.message(jobs.length === 1 ? "Claude is looking at it…" : `Claude is looking at ${jobs.length} failures…`);
+      toast.message(jobs.length === 1 ? "The AI is looking at it…" : `The AI is looking at ${jobs.length} failures…`);
     } catch (error) {
       if (error instanceof ApiError && error.status === 412) {
         retryRef.current = () => void explain(itemIds);
@@ -160,7 +160,7 @@ export function RunDetail({
             {canManage && !active && unexplained.length > 0 && (
               <Button size="sm" variant="outline" onClick={() => void explain("all")}>
                 <Sparkles className="mr-2 size-4" />
-                Explain {unexplained.length} failure{unexplained.length === 1 ? "" : "s"} with Claude
+                Explain {unexplained.length} failure{unexplained.length === 1 ? "" : "s"} with AI
               </Button>
             )}
             {canManage && active && (
@@ -280,7 +280,7 @@ function RunItemRow({
             <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
           )}
           <span className="shrink-0 font-mono text-xs">{caseLabel}</span>
-          <span className="truncate text-sm">{testCase?.title ?? "Pages Claude looked at"}</span>
+          <span className="truncate text-sm">{testCase?.title ?? "Pages the AI looked at"}</span>
         </button>
         {testCase && (
           <Link
@@ -357,7 +357,7 @@ function RunItemRow({
             (item.status === "FAILED" || item.status === "ERROR") && (
               <Button size="sm" variant="outline" disabled={triaging} onClick={onExplain}>
                 {triaging ? <Loader2 className="mr-2 size-4 animate-spin" /> : <Sparkles className="mr-2 size-4" />}
-                {triaging ? "Claude is looking…" : "Ask Claude why"}
+                {triaging ? "The AI is looking…" : "Ask AI why"}
               </Button>
             )
           )}
@@ -450,7 +450,7 @@ function SnapshotDetails({ url }: { url: string }) {
       }}
     >
       <summary className="cursor-pointer text-xs text-muted-foreground">
-        Page outline at the end (what Claude reads)
+        Page outline at the end (what the AI reads)
       </summary>
       <pre className="mt-1 max-h-80 overflow-auto whitespace-pre-wrap rounded-md bg-muted p-3 font-mono text-xs">
         {text ?? "Loading…"}

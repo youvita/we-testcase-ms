@@ -128,7 +128,7 @@ export function TriageCard({
           {category.label}
         </span>
         <span className="font-medium">{triage.summary}</span>
-        <span className="ml-auto text-xs text-muted-foreground">Claude · {formatRelative(triage.triagedAt)}</span>
+        <span className="ml-auto text-xs text-muted-foreground">AI · {formatRelative(triage.triagedAt)}</span>
       </div>
       {triage.explanation && <p className="whitespace-pre-wrap text-muted-foreground">{triage.explanation}</p>}
 

@@ -141,7 +141,7 @@ function Observations({ result }: { result: ExploreAppResult | null }) {
   if (!result?.observations.length) return null;
   return (
     <div className="text-xs">
-      <p className="font-medium text-foreground">Claude also noticed</p>
+      <p className="font-medium text-foreground">The AI also noticed</p>
       <ul className="list-disc space-y-0.5 pl-4 text-muted-foreground">
         {result.observations.map((note, index) => (
           <li key={index}>{note}</li>

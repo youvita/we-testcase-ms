@@ -270,7 +270,7 @@ function EnvironmentDialog({
             />
             <p className="text-xs text-muted-foreground">
               Where Web tests usually begin, after the Web base URL — often the login page.
-              Claude opens it first when writing scripts or exploring; blank means /.
+              The AI opens it first when writing scripts or exploring; blank means /.
             </p>
           </div>
 

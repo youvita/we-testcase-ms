@@ -109,7 +109,7 @@ export function DocumentsPanel({
           title="No documents yet"
           description={
             canManage
-              ? "Upload the PRD or FRD — PDF, Word, Markdown or HTML — or paste its text. Claude reads it into a list of testable requirements."
+              ? "Upload the PRD or FRD — PDF, Word, Markdown or HTML — or paste its text. The AI reads it into a list of testable requirements."
               : "QA has not added any requirement documents to this project yet."
           }
           action={
@@ -288,7 +288,7 @@ function UploadDialog({
         <DialogHeader>
           <DialogTitle>Add a requirements document</DialogTitle>
           <DialogDescription>
-            Claude starts reading it as soon as it is added, on your Claude
+            The AI starts reading it as soon as it is added, on your Claude
             subscription.
           </DialogDescription>
         </DialogHeader>
@@ -355,7 +355,7 @@ function UploadDialog({
             <Textarea
               rows={12}
               value={content}
-              placeholder="Paste the document here. Headings help Claude keep sections apart."
+              placeholder="Paste the document here. Headings help the AI keep sections apart."
               onChange={(event) => setContent(event.target.value)}
             />
           </TabsContent>
@@ -405,7 +405,7 @@ function DocumentTextDialog({
       <DialogContent className="sm:max-w-3xl">
         <DialogHeader>
           <DialogTitle>{doc?.title}</DialogTitle>
-          <DialogDescription>The text Claude reads — as extracted from {doc?.fileName ?? "the pasted text"}.</DialogDescription>
+          <DialogDescription>The text the AI reads — as extracted from {doc?.fileName ?? "the pasted text"}.</DialogDescription>
         </DialogHeader>
         {content === null ? (
           <div className="flex justify-center py-10">

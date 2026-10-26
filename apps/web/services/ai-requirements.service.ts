@@ -116,7 +116,7 @@ export function parseItems<T>(
   const json = parseJsonReply(reply) as Record<string, unknown>;
   const list = json[key];
   if (!Array.isArray(list)) {
-    throw new AiError(`Claude's answer had no "${key}" list.`);
+    throw new AiError(`The AI's answer had no "${key}" list.`);
   }
   return list.flatMap((item) => {
     const parsed = schema.safeParse(item);
@@ -251,7 +251,7 @@ export async function startExtraction(
 
       if (created + updated === 0) {
         throw new AiError(
-          "Claude found no testable requirements in this document.",
+          "The AI found no testable requirements in this document.",
         );
       }
       const kept = existing.length - updated;
@@ -502,7 +502,7 @@ export async function startGeneration(
       }
 
       if (drafted === 0) {
-        throw new AiError("Claude did not write any test cases. Try again.");
+        throw new AiError("The AI did not write any test cases. Try again.");
       }
       return `Drafted ${drafted} test case${drafted === 1 ? "" : "s"} for ${requirementIds.length} requirement${requirementIds.length === 1 ? "" : "s"} — review them before they are added`;
     },

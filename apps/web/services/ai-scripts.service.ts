@@ -20,6 +20,7 @@ import {
   TRIAGE_CATEGORIES,
   isAutomatablePlatform,
   type AiJobDto,
+  type AiModel,
   type FailedRequest,
   type Platform,
   type RunTriageDto,
@@ -226,6 +227,24 @@ const verdictSchema = z
   })
   .catch({ verdict: "draft", notes: "", change: "" });
 
+/** How much of an FRD goes into a prompt; the rest is cut. */
+const FRD_PROMPT_CHARS = 60_000;
+
+/**
+ * An FRD given for this job, ahead of the usual prompt: the rules, field
+ * names and messages the test case's steps may leave out.
+ */
+function withFrd(text: string | undefined, name: string | undefined): string {
+  if (!text) return "";
+  const body = text.length > FRD_PROMPT_CHARS ? `${text.slice(0, FRD_PROMPT_CHARS)}\n… (cut)` : text;
+  return `Functional requirements document${name ? ` (${name})` : ""}, for context — use it for field names, rules and the messages to expect, but the test case's steps decide what to test:
+<frd>
+${body}
+</frd>
+
+`;
+}
+
 /** One try for the panel: the script, how its run went, and what Claude changed. */
 function attemptOf(
   draft: { code: string; change: string },
@@ -244,7 +263,7 @@ function attemptOf(
 
 function readDraft(reply: string) {
   const code = parseCodeReply(reply);
-  if (!code) throw new AiError("Claude did not return a script.");
+  if (!code) throw new AiError("The AI did not return a script.");
   return { code, ...verdictSchema.parse(parseJsonBlock(reply)) };
 }
 
@@ -256,6 +275,11 @@ export async function startScriptWriting(
     /** Blank means the environment's start page. */
     startPath?: string;
     instructions?: string;
+    /** The AI model to use; the server's default when absent. */
+    model?: AiModel;
+    /** An FRD's text, for context on the expected behaviour — this job only. */
+    frdText?: string;
+    frdName?: string;
     liveView?: boolean;
     speed?: keyof typeof RUN_SPEEDS;
     /** Save the script on the case if, and only if, it passed. */
@@ -289,7 +313,7 @@ export async function startScriptWriting(
     throw badRequest(`${PLATFORM_LABELS[testCase.platform]} cases cannot be automated yet.`);
   }
   if (!isAutomationConfigured()) {
-    throw new HttpError(503, "Automation is not set up on this server (RUNNER_TOKEN), so Claude cannot try its scripts.");
+    throw new HttpError(503, "Automation is not set up on this server (RUNNER_TOKEN), so the AI cannot try its scripts.");
   }
 
   const env = await getEnvironmentOutline(input.environmentId, testCase.projectId);
@@ -307,7 +331,7 @@ export async function startScriptWriting(
     },
     select: { id: true },
   });
-  if (busy) throw badRequest("Claude is already writing a script for this case.");
+  if (busy) throw badRequest("The AI is already writing a script for this case.");
 
   let earlier: ScriptWritingResult | null = null;
   if (input.continueFrom) {
@@ -323,7 +347,7 @@ export async function startScriptWriting(
       earlier?.testCaseId !== testCaseId ||
       !earlier.code
     ) {
-      throw badRequest("There is no finished script from Claude on this case to continue from.");
+      throw badRequest("There is no finished script from the AI on this case to continue from.");
     }
   }
 
@@ -421,9 +445,10 @@ export async function startScriptWriting(
       for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
         const reply = await askClaude({
           token,
+          model: input.model,
           system: WRITE_SYSTEM,
           images: evidence.screenshot ? [evidence.screenshot] : undefined,
-          prompt: previous
+          prompt: withFrd(input.frdText, input.frdName) + (previous
             ? repairPrompt({
                 testCase,
                 env,
@@ -443,7 +468,7 @@ export async function startScriptWriting(
                 startPath,
                 instructions: input.instructions,
                 snapshot: evidence.snapshot,
-              }),
+              })),
         });
         const draft = readDraft(reply);
         result.code = draft.code;
@@ -463,7 +488,7 @@ export async function startScriptWriting(
           await progress(++step, total);
           if (item.status === "PASSED") {
             result.outcome = "passed";
-            result.notes = `Claude expected the product to fail this check, but the script passed when it ran. ${draft.notes}`.trim();
+            result.notes = `The AI expected the product to fail this check, but the script passed when it ran. ${draft.notes}`.trim();
             await setResult(result);
             break;
           }
@@ -500,7 +525,7 @@ export async function startScriptWriting(
       return {
         passed: `Wrote a script that passes on ${env.name}`,
         product_bug: "Wrote a script — and it looks like the product does not meet the expected result",
-        needs_info: "Wrote what it could — Claude needs something from QA to finish",
+        needs_info: "Wrote what it could — the AI needs something from QA to finish",
         failing: `Wrote a script, but it still fails after ${MAX_ATTEMPTS} attempts`,
       }[result.outcome];
     },
@@ -552,7 +577,7 @@ export async function startScriptWritingBatch(
     } else if (input.skipScripted && testCase.script) {
       skip("already has a script");
     } else if (busy.has(testCase.id)) {
-      skip("Claude is already writing its script");
+      skip("The AI is already writing its script");
     } else if (testCase.platform === "API" && !env.apiBaseUrl) {
       skip(`${env.name} has no API base URL`);
     } else if (testCase.platform === "WEB" && !env.webBaseUrl) {
@@ -738,7 +763,7 @@ ${describePage(evidence.snapshot, "at the end of the test")}`,
       });
 
       const parsed = triageSchema.safeParse(parseJsonBlock(reply));
-      if (!parsed.success) throw new AiError("Claude's answer did not contain a readable verdict.");
+      if (!parsed.success) throw new AiError("The AI's answer did not contain a readable verdict.");
       const fixedCode = parsed.data.category === "script_issue" ? parseCodeReply(reply) : null;
 
       const triage: Omit<RunTriageDto, "triagedAt"> = {

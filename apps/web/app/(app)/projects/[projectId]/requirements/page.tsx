@@ -71,7 +71,7 @@ export default async function RequirementsPage({
 
       <PageHeader
         title="Requirements"
-        description="Upload the PRD or FRD, let Claude read it into requirements, then draft and review test cases that trace back to them."
+        description="Upload the PRD or FRD, let the AI read it into requirements, then draft and review test cases that trace back to them."
       />
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">

@@ -83,7 +83,7 @@ export async function askClaude(options: {
     });
   } catch (error) {
     if (error instanceof Error && error.name === "TimeoutError") {
-      throw new AiError("Claude took too long to answer.");
+      throw new AiError("The AI took too long to answer.");
     }
     throw new AiError(
       "Could not reach the Claude bridge. Check that the claude-bridge container is running.",
@@ -97,7 +97,7 @@ export async function askClaude(options: {
 
   if (!response.ok) {
     throw new AiError(
-      body?.error?.message ?? `Claude request failed with status ${response.status}`,
+      body?.error?.message ?? `The AI request failed with status ${response.status}`,
     );
   }
 
@@ -105,7 +105,7 @@ export async function askClaude(options: {
     .filter((block) => block.type === "text" && typeof block.text === "string")
     .map((block) => block.text)
     .join("");
-  if (!text.trim()) throw new AiError("Claude returned an empty answer.");
+  if (!text.trim()) throw new AiError("The AI returned an empty answer.");
   return text;
 }
 
@@ -122,12 +122,12 @@ export function parseJsonReply(text: string): unknown {
   const start = candidate.indexOf("{");
   const end = candidate.lastIndexOf("}");
   if (start === -1 || end <= start) {
-    throw new AiError("Claude's answer did not contain the expected JSON.");
+    throw new AiError("The AI's answer did not contain the expected JSON.");
   }
   try {
     return JSON.parse(candidate.slice(start, end + 1));
   } catch {
-    throw new AiError("Claude's answer was not valid JSON.");
+    throw new AiError("The AI's answer was not valid JSON.");
   }
 }
 

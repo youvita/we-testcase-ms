@@ -244,7 +244,7 @@ ${p.outline.replace(/^URL: .*\nTitle: .*\n\n/, "").slice(0, OUTLINE_CHARS)}
       await progress(2, 2);
 
       if (cases.length === 0) {
-        throw new AiError("Claude did not suggest any new test cases for these pages.");
+        throw new AiError("The AI did not suggest any new test cases for these pages.");
       }
       return `Suggested ${cases.length} test case${cases.length === 1 ? "" : "s"} from ${pages.length} page${pages.length === 1 ? "" : "s"} — review them before they are added`;
     },

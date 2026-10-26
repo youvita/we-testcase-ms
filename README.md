@@ -330,8 +330,8 @@ automated; iOS and Android come later (they need emulators or devices).
    *script error*: it is reported on the run but does not mark the case failed.
    Untick *Record results* to try scripts without touching results.
 
-**Claude writes and explains scripts.** On a Web or API case, *Write with
-Claude* writes the script against a real environment, not from the steps
+**The AI writes and explains scripts.** On a test case, *Automation* →
+*Write with AI* writes the script against a real environment, not from the steps
 alone: the runner opens the start page and returns its outline (Playwright's
 aria snapshot — every field and button by role and name); Claude drafts from
 the case and that outline; the runner tries the draft as a *script check*
@@ -345,14 +345,20 @@ misreads, a form it never reached — *Keep trying* takes a hint from QA ("Custo
 is a button, not a menu item") and continues from its last script and the page
 where it stopped, rather than starting over; on a passing script the same box
 (*Improve it*) asks for a change. For many cases at once, select them on the test case
-list and choose *Write scripts with Claude*: they are written one after
+list and choose *Write scripts with AI*: they are written one after
 another (they share one subscription), a script that passed can be saved
 straight away while anything else waits on its case for review, progress shows
 above the list, and *Stop the rest* cancels cases that have not started.
-On a run, *Ask Claude why* (or
+On a run, *Ask AI why* (or
 *Explain failures*) sorts each failure into product bug, script problem,
 environment or unclear, with a corrected script to apply or a bug report to
 copy. Claude is told variable names, never their values.
+
+**Model and FRD.** *Write with AI* (and *Rewrite with AI*) can take an FRD
+— PDF, Word, Markdown or text — whose text goes to the AI for this job only,
+not saved as a document; and the model: Sonnet (default), Opus or Haiku.
+*Keep trying* reuses both. The Test case card's *FRD* button downloads the
+text of the document the case's requirements come from.
 
 **Taking scripts elsewhere.** Scripts live in the database, one per case. A
 case's *Download .spec.ts* gives a single runnable Playwright file; *Download
@@ -379,7 +385,7 @@ docker compose -f docker-compose.prod.yml --env-file .env.production up -d app
 docker compose -f docker-compose.prod.yml --env-file .env.production --profile automation up -d --build runner
 ```
 
-**Watch live.** *New run*, *Run this case* and *Write with Claude* have a
+**Watch live.** *New run*, *Run this case* and *Write with AI* have a
 *Watch live* option: the run page then shows what each Web test's browser
 shows, a few frames a second (Chrome's screencast, relayed by the app and kept
 in memory only), with an optional slow motion of 0.5 s or 1.2 s between

@@ -7,9 +7,11 @@ import {
   ChevronDown,
   ChevronRight,
   CircleAlert,
+  FileText,
   Loader2,
   MessageCircleQuestion,
   Sparkles,
+  Upload,
   XCircle,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -41,6 +43,7 @@ import type {
   RunEnvironmentDto,
   ScriptWritingResult,
 } from "@wetestcase/dto";
+import { AI_MODELS, AI_MODEL_LABELS, type AiModel } from "@wetestcase/dto";
 import { ApiError, api, errorMessage } from "@/utils/api-client";
 
 import { LiveView, WatchLiveFields, type LiveChoice } from "./live-view";
@@ -76,6 +79,10 @@ export function WriteWithClaudeDialog({
   const [startPath, setStartPath] = useState("");
   const [instructions, setInstructions] = useState("");
   const [live, setLive] = useState<LiveChoice>({ liveView: false, speed: "slow" });
+  const [model, setModel] = useState<AiModel>("sonnet");
+  // An FRD read for this job only; its text goes with the request.
+  const [frd, setFrd] = useState<{ fileName: string; text: string } | null>(null);
+  const [readingFrd, setReadingFrd] = useState(false);
   const [busy, setBusy] = useState(false);
   const selected = environments.some((e) => e.id === environmentId)
     ? environmentId
@@ -84,6 +91,21 @@ export function WriteWithClaudeDialog({
   const envName = selectedEnvironment?.name ?? "the environment";
   const envStart = selectedEnvironment?.startPath ?? "/";
 
+  async function readFrd(file: File | undefined) {
+    if (!file) return;
+    setReadingFrd(true);
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      const read = await api.post<{ fileName: string; text: string }>("/api/documents/extract", form);
+      setFrd({ fileName: read.fileName, text: read.text });
+    } catch (error) {
+      toast.error(errorMessage(error));
+    } finally {
+      setReadingFrd(false);
+    }
+  }
+
   async function start() {
     setBusy(true);
     try {
@@ -91,6 +113,9 @@ export function WriteWithClaudeDialog({
         environmentId: selected,
         startPath: startPath.trim() || undefined,
         instructions,
+        model,
+        frdText: frd?.text,
+        frdName: frd?.fileName,
         liveView: live.liveView,
         speed: live.liveView ? live.speed : "normal",
       });
@@ -112,9 +137,9 @@ export function WriteWithClaudeDialog({
     <Dialog open={open} onOpenChange={(next) => !busy && onOpenChange(next)}>
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>Write the script with Claude</DialogTitle>
+          <DialogTitle>Write the script with AI</DialogTitle>
           <DialogDescription>
-            Claude reads this test case, looks at the real{" "}
+            The AI reads this test case, looks at the real{" "}
             {platform === "API" ? "API" : "page"}, writes the script and tries it — up
             to three times — fixing what fails. Tries are script checks: nothing
             is recorded on the case, and nothing is saved until you choose to.
@@ -169,6 +194,60 @@ export function WriteWithClaudeDialog({
                 placeholder="e.g. Use vars.LOGIN_ID and vars.LOGIN_PASSWORD. After login the home page shows “My Bills”."
               />
             </div>
+            <div className="space-y-2">
+              <Label htmlFor="write-frd">FRD (optional)</Label>
+              {frd ? (
+                <div className="flex items-center gap-2 rounded-md border px-3 py-2 text-sm">
+                  <FileText className="size-4 shrink-0 text-muted-foreground" />
+                  <span className="min-w-0 flex-1 truncate">{frd.fileName}</span>
+                  <span className="shrink-0 text-xs text-muted-foreground">
+                    {frd.text.length.toLocaleString()} characters
+                  </span>
+                  <Button type="button" size="sm" variant="ghost" onClick={() => setFrd(null)}>
+                    Remove
+                  </Button>
+                </div>
+              ) : (
+                <label
+                  htmlFor="write-frd"
+                  className="flex cursor-pointer items-center gap-2 rounded-md border border-dashed px-3 py-2 text-sm text-muted-foreground hover:bg-muted/40"
+                >
+                  {readingFrd ? <Loader2 className="size-4 animate-spin" /> : <Upload className="size-4" />}
+                  {readingFrd ? "Reading the document…" : "Upload a PDF, Word, Markdown or text file"}
+                  <input
+                    id="write-frd"
+                    type="file"
+                    className="sr-only"
+                    // The formats Requirements → Documents reads.
+                    accept=".pdf,.docx,.md,.markdown,.txt,.html,.htm"
+                    disabled={readingFrd}
+                    onChange={(e) => {
+                      void readFrd(e.target.files?.[0]);
+                      e.target.value = "";
+                    }}
+                  />
+                </label>
+              )}
+              <p className="text-xs text-muted-foreground">
+                Gives the AI the rules, field names and messages the steps leave out. Used for this
+                script only — not saved to the project.
+              </p>
+            </div>
+            <div className="space-y-2">
+              <Label>AI model</Label>
+              <Select value={model} onValueChange={(value) => setModel(value as AiModel)}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {AI_MODELS.map((option) => (
+                    <SelectItem key={option} value={option}>
+                      {AI_MODEL_LABELS[option].label} — {AI_MODEL_LABELS[option].hint}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
             {platform === "WEB" && <WatchLiveFields value={live} onChange={setLive} />}
           </div>
         )}
@@ -177,7 +256,7 @@ export function WriteWithClaudeDialog({
           <Button variant="outline" disabled={busy} onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
-          <Button disabled={busy || !selected} onClick={() => void start()}>
+          <Button disabled={busy || readingFrd || !selected} onClick={() => void start()}>
             {busy ? <Loader2 className="mr-2 size-4 animate-spin" /> : <Sparkles className="mr-2 size-4" />}
             Start
           </Button>
@@ -202,7 +281,7 @@ const OUTCOMES: Record<
     tone: "border-status-failed/30 bg-status-failed/10 text-status-failed",
   },
   needs_info: {
-    label: "Claude needs something from you to finish",
+    label: "The AI needs something from you to finish",
     icon: MessageCircleQuestion,
     tone: "border-status-blocked/30 bg-status-blocked/10 text-status-blocked",
   },
@@ -258,8 +337,8 @@ export function ScriptWritingPanel({
     <div className="space-y-2 rounded-md border bg-background p-3">
       <Label htmlFor={`hint-${job.id}`} className="text-xs">
         {passed
-          ? "Want it changed? Tell Claude how"
-          : "Tell Claude what it got wrong, or what it cannot see"}
+          ? "Want it changed? Tell the AI how"
+          : "Tell the AI what it got wrong, or what it cannot see"}
       </Label>
       <Textarea
         id={`hint-${job.id}`}
@@ -292,8 +371,8 @@ export function ScriptWritingPanel({
       </Button>
       <p className="text-xs text-muted-foreground">
         {job.status === "FAILED"
-          ? "This job broke before it finished. Claude picks up from its last finished script instead, with three more tries."
-          : "Claude picks up from this script and where it stopped, with three more tries."}
+          ? "This job broke before it finished. The AI picks up from its last finished script instead, with three more tries."
+          : "The AI picks up from this script and where it stopped, with three more tries."}
       </p>
     </div>
   );
@@ -302,7 +381,7 @@ export function ScriptWritingPanel({
     <div className="space-y-3 rounded-lg border bg-muted/30 p-3 text-sm">
       <div className="flex items-center gap-2 font-medium">
         <Sparkles className="size-4 text-primary" />
-        Claude
+        AI
         {active && (
           <span className="flex items-center gap-1.5 font-normal text-muted-foreground">
             <Loader2 className="size-3.5 animate-spin" />
@@ -346,7 +425,7 @@ export function ScriptWritingPanel({
           </p>
           <details>
             <summary className="cursor-pointer text-xs text-muted-foreground">
-              Show the script Claude wrote
+              Show the script the AI wrote
               {lastFailure && failingLine && (
                 <span className="text-status-failed"> — failed at line {failingLine}</span>
               )}

@@ -60,7 +60,7 @@ export default async function RunPage({
         title={title}
         description={
           run.purpose === "SCRIPT_CHECK"
-            ? "Claude tried a draft script here while writing it. Nothing was recorded on the test case."
+            ? "The AI tried a draft script here while writing it. Nothing was recorded on the test case."
             : undefined
         }
       />

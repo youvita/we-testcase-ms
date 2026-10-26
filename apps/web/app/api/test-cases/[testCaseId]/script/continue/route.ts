@@ -4,11 +4,12 @@ import { prisma } from "@/lib/prisma";
 import { assertTestCaseAccess } from "@/lib/project-access";
 import { scriptContinueSchema } from "@/lib/validations";
 import { startScriptWriting } from "@/services/ai-scripts.service";
+import type { AiModel } from "@wetestcase/dto";
 
 type Ctx = { params: Promise<{ testCaseId: string }> };
 
 /**
- * Keep Claude going from where an earlier script-writing job stopped, with
+ * Keep the AI going from where an earlier script-writing job stopped, with
  * a hint from QA — same environment and start page as that job.
  */
 export const POST = route<Ctx>(
@@ -26,6 +27,9 @@ export const POST = route<Ctx>(
       environmentId?: string;
       startPath?: string;
       instructions?: string;
+      model?: AiModel;
+      frdText?: string;
+      frdName?: string;
     };
     if (!earlierInput.environmentId) throw badRequest("That job cannot be continued.");
 
@@ -34,6 +38,10 @@ export const POST = route<Ctx>(
         environmentId: earlierInput.environmentId,
         startPath: earlierInput.startPath,
         instructions: earlierInput.instructions,
+        // The same model and FRD as the job it picks up from.
+        model: earlierInput.model,
+        frdText: earlierInput.frdText,
+        frdName: earlierInput.frdName,
         liveView: body.liveView,
         speed: body.speed,
         continueFrom: { jobId: body.jobId, hint: body.hint },

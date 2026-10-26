@@ -144,7 +144,7 @@ export function RequirementsPanel({
       <EmptyState
         icon={FileText}
         title="No requirements yet"
-        description="Add a PRD or FRD in Documents and Claude reads it into requirements here. You can also add requirements by hand."
+        description="Add a PRD or FRD in Documents and the AI reads it into requirements here. You can also add requirements by hand."
         action={
           <div className="flex gap-2">
             <Button onClick={onOpenDocuments}>Go to documents</Button>
@@ -473,7 +473,7 @@ function GenerateDialog({
         <DialogHeader>
           <DialogTitle>Draft test cases</DialogTitle>
           <DialogDescription>
-            Claude writes black-box test cases for {count} requirement
+            The AI writes black-box test cases for {count} requirement
             {count === 1 ? "" : "s"}. They wait in Review drafts until you
             accept them.
           </DialogDescription>

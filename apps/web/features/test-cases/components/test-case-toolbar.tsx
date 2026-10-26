@@ -57,7 +57,7 @@ export function TestCaseToolbar({
     if (job.status !== "SUCCEEDED") {
       toast.error(job.error ?? "Exploring the app failed");
     } else if (drafted === 0) {
-      toast.message(job.summary ?? "Claude found nothing new to suggest");
+      toast.message(job.summary ?? "The AI found nothing new to suggest");
     } else {
       toast.success(job.summary ?? "Suggestions are ready");
       router.push(`/projects/${projectId}/requirements`);
@@ -68,7 +68,7 @@ export function TestCaseToolbar({
   const startAi: StartAi = useCallback(async (start) => {
     try {
       setExploreJob(await start());
-      toast.message("Claude is exploring the app — stay here; the suggestions open when they are ready.");
+      toast.message("The AI is exploring the app — stay here; the suggestions open when they are ready.");
       return true;
     } catch (error) {
       if (error instanceof ApiError && error.status === 412) {

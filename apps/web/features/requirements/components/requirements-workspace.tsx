@@ -125,7 +125,7 @@ export function RequirementsWorkspace({
     try {
       const job = await start();
       setJobs((previous) => [job, ...previous.filter((j) => j.id !== job.id)]);
-      toast.message("Claude is working on it — you can keep using the page.");
+      toast.message("The AI is working on it — you can keep using the page.");
       return true;
     } catch (error) {
       if (error instanceof ApiError && error.status === 412) {

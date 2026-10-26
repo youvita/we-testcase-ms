@@ -1,12 +1,15 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   Bot,
   Code2,
+  Download,
   Loader2,
   PencilRuler,
+  Play,
   Save,
   ShieldCheck,
   Sparkles,
@@ -15,17 +18,23 @@ import {
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
-import { cn } from "@/lib/utils";
 import { CollapsibleCardHeader } from "@/components/shared/collapsible-card-header";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { ClaudeConnectionDialog } from "@/features/ai/components/claude-connection-dialog";
 import { isJobActive, useAiJob } from "@/features/ai/use-ai-job";
+import { downloadCaseScript } from "@/features/automation/download-scripts";
+import {
+  setScriptCardShown,
+  useScriptCardShown,
+} from "@/features/automation/script-card-visibility";
 import type { AiJobDto, Platform, RunEnvironmentDto, RunItemStatus } from "@wetestcase/dto";
 import { ApiError, api, errorMessage } from "@/utils/api-client";
 import { formatRelative } from "@/utils/format";
 
+import { NewRunDialog } from "./new-run-dialog";
+import { RunStatusBadge } from "./run-status-badge";
 import { ScriptWritingPanel, WriteWithClaudeDialog } from "./script-writer";
 
 const EXAMPLES: Record<"WEB" | "API", string> = {
@@ -61,9 +70,6 @@ export function ScriptStatusBadge({ verified }: { verified: boolean }) {
   );
 }
 
-/** Sent by the summary's Script & Claude link: open the card. */
-export const OPEN_SCRIPT_CARD = "wtc:open-script-card";
-
 export type ScriptState = {
   code: string;
   updatedAt: string;
@@ -80,10 +86,12 @@ export type LastAutomatedResult = {
 } | null;
 
 /**
- * The test case's Playwright script: edit, save, and run it on its own.
+ * Everything about automating the case, shown when the Test case card's
+ * Automation button asks for it: where the script stands (verified, last
+ * run), running and downloading it, the AI's tries, and the editor.
  *
  * The script is the body of a Playwright test; the runner wraps it. Mobile
- * cases get an explanation instead of an editor until device runs exist.
+ * cases get an explanation instead until device runs exist.
  */
 export function AutomationScriptCard({
   projectId,
@@ -91,8 +99,10 @@ export function AutomationScriptCard({
   platform,
   script,
   environments,
+  lastResult,
   latestWriteJob,
   lastFinishedWriteJobId = null,
+  signInCases = [],
   canManage,
 }: {
   projectId: string;
@@ -100,49 +110,61 @@ export function AutomationScriptCard({
   platform: Platform;
   script: ScriptState;
   environments: RunEnvironmentDto[];
-  /** The newest "write with Claude" job for this case, finished or not. */
+  lastResult: LastAutomatedResult;
+  /** The newest "write with AI" job for this case, finished or not. */
   latestWriteJob: AiJobDto | null;
   /** The newest one that finished — where "Keep trying" resumes after a broken job. */
   lastFinishedWriteJobId?: string | null;
+  /** Other automated Web cases that can sign in before this one runs. */
+  signInCases?: { id: string; tcId: string; title: string }[];
   canManage: boolean;
 }) {
   const router = useRouter();
   const [code, setCode] = useState(script?.code ?? "");
   const [saving, setSaving] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
-  // Hidden until asked for: the summary beside the case already says
-  // whether it is automated and how it last ran.
+  const [runOpen, setRunOpen] = useState(false);
+  // The code itself stays folded until asked for.
   const [showScript, setShowScript] = useState(false);
   const [writeOpen, setWriteOpen] = useState(false);
   const [connectOpen, setConnectOpen] = useState(false);
   const retryRef = useRef<(() => void) | null>(null);
   const [writeJob, setWriteJob] = useAiJob(latestWriteJob, (job) => {
-    if (job.status === "SUCCEEDED") toast.success(job.summary ?? "Claude finished the script");
-    else toast.error(job.error ?? "Claude could not write the script");
+    if (job.status === "SUCCEEDED") toast.success(job.summary ?? "The AI finished the script");
+    else toast.error(job.error ?? "The AI could not write the script");
   });
-  // Closed by default: the summary beside the case covers what most people
-  // need. Opened by its header, or by the summary's Script & Claude link.
-  const [expanded, setExpanded] = useState(false);
+
+  // Hidden until the Automation button shows it — or straight away when a
+  // link points here or the AI is still writing, so neither goes unseen.
+  const shown = useScriptCardShown();
   useEffect(() => {
-    if (window.location.hash === "#automation") setExpanded(true);
-    const open = () => setExpanded(true);
-    window.addEventListener(OPEN_SCRIPT_CARD, open);
-    return () => window.removeEventListener(OPEN_SCRIPT_CARD, open);
-  }, []);
+    setScriptCardShown(window.location.hash === "#automation" || isJobActive(latestWriteJob));
+    // Leaving the case (prev/next) starts the next one hidden again.
+    return () => setScriptCardShown(false);
+  }, [testCaseId, latestWriteJob]);
+
+  if (!shown) return null;
+
+  const header = (description: React.ReactNode) => (
+    <CollapsibleCardHeader
+      expanded
+      onToggle={() => setScriptCardShown(false)}
+      title={
+        <>
+          <Bot className="size-4" />
+          Automation
+        </>
+      }
+      description={description}
+    />
+  );
 
   if (platform !== "WEB" && platform !== "API") {
     return (
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-base">
-            <Bot className="size-4" />
-            Automation
-          </CardTitle>
-          <CardDescription>
-            iOS and Android cases cannot be automated yet. The runner handles
-            Web and API; device runs come in a later phase.
-          </CardDescription>
-        </CardHeader>
+      <Card id="automation" className="scroll-mt-20">
+        {header(
+          "iOS and Android cases cannot be automated yet. The runner handles Web and API; device runs come in a later phase.",
+        )}
       </Card>
     );
   }
@@ -178,7 +200,18 @@ export function AutomationScriptCard({
     }
   }
 
-  /** Keep Claude going from its last result with QA's hint. */
+  /** QA vouches for the script: from now on its failures count. */
+  async function markVerified() {
+    try {
+      await api.post(`/api/test-cases/${testCaseId}/script/verify`);
+      toast.success("Script verified — its failures will now be recorded");
+      router.refresh();
+    } catch (error) {
+      toast.error(errorMessage(error));
+    }
+  }
+
+  /** Keep the AI going from its last result with QA's hint. */
   async function continueWithHint(hint: string): Promise<boolean> {
     // A job that broke has no result of its own to continue; the last one
     // that finished does.
@@ -190,7 +223,7 @@ export function AutomationScriptCard({
         hint,
       });
       setWriteJob(job);
-      toast.message("Claude is picking up from where it stopped…");
+      toast.message("The AI is picking up from where it stopped…");
       return true;
     } catch (error) {
       if (error instanceof ApiError && error.status === 412) {
@@ -217,129 +250,177 @@ export function AutomationScriptCard({
   }
 
   return (
-    <Card id="automation" className="scroll-mt-20 transition-shadow duration-500">
-      <CollapsibleCardHeader
-        expanded={expanded}
-        onToggle={() => setExpanded(!expanded)}
-        title={
-          <>
-            <Code2 className="size-4" />
-            Script &amp; Claude
-          </>
-        }
-        description={
-          <>
-            <span>
-              {script
-                ? `Playwright script · saved by ${script.updatedBy.name} ${formatRelative(script.updatedAt)}`
-                : "Write this case as a Playwright script and the runner can execute it."}
-            </span>
-            {/* What would otherwise be missed while it is closed. */}
-            {!expanded && isJobActive(writeJob) && (
-              <span className="inline-flex items-center gap-1 text-primary">
-                <Loader2 className="size-3.5 animate-spin" />
-                Claude is writing
-              </span>
+    <Card id="automation" className="scroll-mt-20">
+      {header(
+        script
+          ? `Playwright script · saved by ${script.updatedBy.name} ${formatRelative(script.updatedAt)}`
+          : "Write this case as a Playwright script and the runner can execute it.",
+      )}
+      <CardContent className="space-y-3">
+        {script && (
+          <div className="space-y-3 rounded-lg border p-3 text-sm">
+            <dl className="grid grid-cols-[auto_1fr] items-center gap-x-3 gap-y-2">
+              <dt className="text-muted-foreground">Script</dt>
+              <dd>
+                <ScriptStatusBadge verified={Boolean(script.verifiedAt)} />
+              </dd>
+              <dt className="text-muted-foreground">Last run</dt>
+              <dd className="min-w-0">
+                {lastResult ? (
+                  <Link
+                    href={`/projects/${projectId}/automation/runs/${lastResult.runId}`}
+                    className="inline-flex flex-wrap items-center gap-x-2 gap-y-1 hover:underline"
+                  >
+                    <RunStatusBadge status={lastResult.status} />
+                    <span className="text-xs text-muted-foreground">
+                      #{lastResult.runNumber}
+                      {lastResult.finishedAt && ` · ${formatRelative(lastResult.finishedAt)}`}
+                    </span>
+                  </Link>
+                ) : (
+                  <span className="text-muted-foreground">Not run yet</span>
+                )}
+              </dd>
+            </dl>
+            {!script.verifiedAt && (
+              <p className="text-xs text-muted-foreground">
+                A draft&apos;s failures are not recorded on the case — the script may be what is
+                wrong. It becomes verified the first time it passes.
+                {canManage && (
+                  <>
+                    {" "}
+                    <button
+                      type="button"
+                      className="text-primary hover:underline"
+                      onClick={() => void markVerified()}
+                    >
+                      Mark as verified now
+                    </button>
+                  </>
+                )}
+              </p>
             )}
-            {!expanded && dirty && <span className="text-status-blocked">· unsaved changes</span>}
-          </>
-        }
-      />
-      {expanded && (
-        <CardContent className="space-y-3">
-          {writeJob && (
-            <ScriptWritingPanel
-              projectId={projectId}
-              job={writeJob}
-              savedCode={script?.code ?? null}
-              onUse={(next) => {
-                setCode(next);
-                setShowScript(true);
-                toast.message("Script placed in the editor — review it, then save.");
-              }}
-              onContinue={
-                canManage && (writeJob.status === "SUCCEEDED" || lastFinishedWriteJobId)
-                  ? continueWithHint
-                  : undefined
-              }
-            />
-          )}
-
-          {editorOpen ? (
-            <>
-              <Textarea
-                value={code}
-                onChange={(event) => setCode(event.target.value)}
-                onKeyDown={handleKeyDown}
-                readOnly={!canManage}
-                spellCheck={false}
-                rows={Math.min(24, Math.max(8, code.split("\n").length + 1))}
-                placeholder={EXAMPLES[platform]}
-                className="font-mono text-xs leading-relaxed"
-                aria-label="Playwright script"
-              />
-            </>
-          ) : (
-            script && (
-              <button
-                type="button"
-                onClick={() => setShowScript(true)}
-                className="flex w-full items-center gap-2 rounded-md border border-dashed px-3 py-2 text-left text-sm text-muted-foreground hover:bg-muted/40"
-              >
-                <Code2 className="size-4" />
-                Show script
-                <span className="text-xs">· {lineCount} line{lineCount === 1 ? "" : "s"}</span>
-              </button>
-            )
-          )}
-
-          {canManage && (
-            <div className="flex flex-wrap items-center gap-2">
-              {editorOpen && (
-                <Button size="sm" disabled={saving || !dirty || !code.trim()} onClick={() => void handleSave()}>
-                  {saving ? <Loader2 className="mr-2 size-4 animate-spin" /> : <Save className="mr-2 size-4" />}
-                  Save script
+            <div className="flex flex-wrap gap-2">
+              {canManage && (
+                <Button
+                  size="sm"
+                  disabled={dirty || environments.length === 0}
+                  title={
+                    dirty
+                      ? "Save the script first"
+                      : environments.length === 0
+                        ? "Add an environment under Automation first"
+                        : undefined
+                  }
+                  onClick={() => setRunOpen(true)}
+                >
+                  <Play className="mr-2 size-4" />
+                  Run this case
                 </Button>
               )}
               <Button
                 size="sm"
                 variant="outline"
-                disabled={isJobActive(writeJob)}
-                onClick={() => setWriteOpen(true)}
+                title="The saved script as a runnable Playwright file (.spec.ts)"
+                onClick={() => void downloadCaseScript(testCaseId)}
               >
-                {isJobActive(writeJob) ? (
-                  <Loader2 className="mr-2 size-4 animate-spin" />
-                ) : (
-                  <Sparkles className="mr-2 size-4" />
-                )}
-                {script || code ? "Rewrite with Claude" : "Write with Claude"}
+                <Download className="mr-2 size-4" />
+                Download script
               </Button>
-              {!script && !editorOpen && (
-                <Button size="sm" variant="ghost" onClick={() => setShowScript(true)}>
-                  <Code2 className="mr-2 size-4" />
-                  Write it myself
-                </Button>
-              )}
-              {editorOpen && !code && (
-                <Button size="sm" variant="ghost" onClick={() => setCode(EXAMPLES[platform])}>
-                  Insert example
-                </Button>
-              )}
-              {editorOpen && script && !dirty && (
-                <Button size="sm" variant="ghost" onClick={() => setShowScript(false)}>
-                  Hide script
-                </Button>
-              )}
-              {script && (
-                <Button size="sm" variant="ghost" className="ml-auto" onClick={() => setDeleteOpen(true)}>
-                  <Trash2 className="mr-2 size-4" />
-                  Remove
-                </Button>
-              )}
             </div>
-          )}
-        </CardContent>
-      )}
+          </div>
+        )}
+
+        {writeJob && (
+          <ScriptWritingPanel
+            projectId={projectId}
+            job={writeJob}
+            savedCode={script?.code ?? null}
+            onUse={(next) => {
+              setCode(next);
+              setShowScript(true);
+              toast.message("Script placed in the editor — review it, then save.");
+            }}
+            onContinue={
+              canManage && (writeJob.status === "SUCCEEDED" || lastFinishedWriteJobId)
+                ? continueWithHint
+                : undefined
+            }
+          />
+        )}
+
+        {editorOpen ? (
+          <Textarea
+            value={code}
+            onChange={(event) => setCode(event.target.value)}
+            onKeyDown={handleKeyDown}
+            readOnly={!canManage}
+            spellCheck={false}
+            rows={Math.min(24, Math.max(8, code.split("\n").length + 1))}
+            placeholder={EXAMPLES[platform]}
+            className="font-mono text-xs leading-relaxed"
+            aria-label="Playwright script"
+          />
+        ) : (
+          script && (
+            <button
+              type="button"
+              onClick={() => setShowScript(true)}
+              className="flex w-full items-center gap-2 rounded-md border border-dashed px-3 py-2 text-left text-sm text-muted-foreground hover:bg-muted/40"
+            >
+              <Code2 className="size-4" />
+              Show script
+              <span className="text-xs">· {lineCount} line{lineCount === 1 ? "" : "s"}</span>
+            </button>
+          )
+        )}
+
+        {canManage && (
+          <div className="flex flex-wrap items-center gap-2">
+            {editorOpen && (
+              <Button size="sm" disabled={saving || !dirty || !code.trim()} onClick={() => void handleSave()}>
+                {saving ? <Loader2 className="mr-2 size-4 animate-spin" /> : <Save className="mr-2 size-4" />}
+                Save script
+              </Button>
+            )}
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={isJobActive(writeJob)}
+              onClick={() => setWriteOpen(true)}
+            >
+              {isJobActive(writeJob) ? (
+                <Loader2 className="mr-2 size-4 animate-spin" />
+              ) : (
+                <Sparkles className="mr-2 size-4" />
+              )}
+              {script || code ? "Rewrite with AI" : "Write with AI"}
+            </Button>
+            {!script && !editorOpen && (
+              <Button size="sm" variant="ghost" onClick={() => setShowScript(true)}>
+                <Code2 className="mr-2 size-4" />
+                Write it myself
+              </Button>
+            )}
+            {editorOpen && !code && (
+              <Button size="sm" variant="ghost" onClick={() => setCode(EXAMPLES[platform])}>
+                Insert example
+              </Button>
+            )}
+            {editorOpen && script && !dirty && (
+              <Button size="sm" variant="ghost" onClick={() => setShowScript(false)}>
+                Hide script
+              </Button>
+            )}
+            {script && (
+              <Button size="sm" variant="ghost" className="ml-auto" onClick={() => setDeleteOpen(true)}>
+                <Trash2 className="mr-2 size-4" />
+                Remove
+              </Button>
+            )}
+          </div>
+        )}
+      </CardContent>
 
       <WriteWithClaudeDialog
         testCaseId={testCaseId}
@@ -349,7 +430,7 @@ export function AutomationScriptCard({
         onOpenChange={setWriteOpen}
         onStarted={(job) => {
           setWriteJob(job);
-          toast.message("Claude is on it — this takes a minute or two.");
+          toast.message("The AI is on it — this takes a minute or two.");
         }}
         onNeedsSubscription={(retry) => {
           retryRef.current = retry;
@@ -369,6 +450,17 @@ export function AutomationScriptCard({
           retry?.();
         }}
       />
+
+      {canManage && script && (
+        <NewRunDialog
+          projectId={projectId}
+          environments={environments}
+          signInCases={signInCases}
+          testCaseIds={[testCaseId]}
+          open={runOpen}
+          onOpenChange={setRunOpen}
+        />
+      )}
 
       <ConfirmDialog
         open={deleteOpen}

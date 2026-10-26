@@ -132,7 +132,7 @@ export function DraftsPanel({
       <EmptyState
         icon={Inbox}
         title="Nothing to review"
-        description="Have Claude suggest test cases — from a PRD or FRD under Requirements, or by exploring the app's pages. What it writes waits here until you accept or reject it."
+        description="Have the AI suggest test cases — from a PRD or FRD under Requirements, or by exploring the app's pages. What it writes waits here until you accept or reject it."
         action={
           <div className="flex flex-wrap justify-center gap-2">
             {canManage && onExplore && (
