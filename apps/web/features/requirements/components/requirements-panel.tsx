@@ -624,7 +624,7 @@ function RequirementFormDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="grid max-h-[65vh] gap-4 overflow-y-auto pr-1">
+        <div className="-m-1 grid max-h-[65vh] gap-4 overflow-y-auto p-1">
           {requirement === "new" && (
             <div className="space-y-2">
               <Label>Document</Label>

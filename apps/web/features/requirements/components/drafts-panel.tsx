@@ -372,7 +372,7 @@ function DraftEditDialog({
           <DialogDescription>Changes are kept on the draft until you accept it.</DialogDescription>
         </DialogHeader>
         {form && (
-          <div className="grid max-h-[65vh] gap-4 overflow-y-auto pr-1">
+          <div className="-m-1 grid max-h-[65vh] gap-4 overflow-y-auto p-1">
             <div className="grid gap-4 sm:grid-cols-[160px_160px_1fr]">
               <div className="space-y-2">
                 <Label htmlFor="draft-module">Module</Label>
