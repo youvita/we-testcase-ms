@@ -263,8 +263,8 @@ Project → **Requirements** (`/projects/:id/requirements`).
 Coverage (which requirements have tests, and their latest results) is on the
 requirements page; each test case lists the requirements it verifies.
 
-**No document? Explore the app.** *Explore the app* (Review drafts, or
-*Suggest with AI* on the test case list) suggests cases from the application
+**No document? Explore the app.** *Explore the app* (on the test case list,
+or in Review drafts) suggests cases from the application
 itself: the runner opens up to five pages — after signing in with an automated
 case's script, for pages behind login — and captures each page's outline and a
 screenshot; Claude suggests positive, negative, validation and boundary cases
