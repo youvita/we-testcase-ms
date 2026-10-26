@@ -18,6 +18,8 @@ import { Label } from "@/components/ui/label";
 import { api, errorMessage } from "@/utils/api-client";
 import type { SubModuleOption, TestCaseListItem } from "@/types";
 
+import { SubModuleSuggestions } from "./sub-module-suggestions";
+
 /** Put the selected cases in one sub-module, or take them out of any. */
 export function SubModuleDialog({
   projectId,
@@ -90,16 +92,11 @@ export function SubModuleDialog({
             id="bulk-sub-module"
             value={name}
             maxLength={120}
-            list="bulk-sub-module-suggestions"
             autoComplete="off"
             placeholder="Create"
             onChange={(event) => setName(event.target.value)}
           />
-          <datalist id="bulk-sub-module-suggestions">
-            {suggestions.map((option) => (
-              <option key={option} value={option} />
-            ))}
-          </datalist>
+          <SubModuleSuggestions names={suggestions} value={name} onPick={setName} />
         </form>
 
         <DialogFooter className="gap-2 sm:justify-between">

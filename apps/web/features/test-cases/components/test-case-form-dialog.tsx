@@ -39,6 +39,8 @@ import { testCaseSchema, type TestCaseInput } from "@/lib/validations";
 import { ApiError, api, errorMessage } from "@/utils/api-client";
 import type { Platform, SubModuleOption, TestCaseWithDetails } from "@/types";
 
+import { SubModuleSuggestions } from "./sub-module-suggestions";
+
 export type ModuleOption = { id: string; name: string };
 
 /** Sentinel select value that switches the Module field to "name a new one". */
@@ -392,18 +394,15 @@ export function TestCaseFormDialog({
                 <Input
                   id="subModule"
                   placeholder="e.g. Create, Delete"
-                  list="sub-module-suggestions"
                   autoComplete="off"
                   aria-invalid={Boolean(errors.subModule)}
                   {...register("subModule")}
                 />
-                <datalist id="sub-module-suggestions">
-                  {subModules
-                    .filter((sub) => sub.moduleId === moduleId)
-                    .map((sub) => (
-                      <option key={sub.name} value={sub.name} />
-                    ))}
-                </datalist>
+                <SubModuleSuggestions
+                  names={subModules.filter((sub) => sub.moduleId === moduleId).map((sub) => sub.name)}
+                  value={watch("subModule") ?? ""}
+                  onPick={(name) => setValue("subModule", name, { shouldDirty: true })}
+                />
                 {errors.subModule ? (
                   <p className="text-xs text-destructive">{errors.subModule.message}</p>
                 ) : (
