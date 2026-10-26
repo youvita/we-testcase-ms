@@ -4,8 +4,6 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   Bot,
-  ChevronsDownUp,
-  ChevronsUpDown,
   Code2,
   Loader2,
   PencilRuler,
@@ -20,6 +18,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
+import { CollapsibleCardHeader } from "@/components/shared/collapsible-card-header";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { ClaudeConnectionDialog } from "@/features/ai/components/claude-connection-dialog";
 import { isJobActive, useAiJob } from "@/features/ai/use-ai-job";
@@ -219,42 +218,33 @@ export function AutomationScriptCard({
 
   return (
     <Card id="automation" className="scroll-mt-20 transition-shadow duration-500">
-      <CardHeader className={cn("space-y-1", !expanded && "pb-6")}>
-        <button
-          type="button"
-          aria-expanded={expanded}
-          onClick={() => setExpanded(!expanded)}
-          className="-m-1 flex w-full items-start gap-2 rounded-md p-1 text-left hover:bg-muted/40"
-        >
-          <span className="min-w-0 flex-1 space-y-1">
-            <CardTitle className="flex items-center gap-2 text-base">
-              <Code2 className="size-4" />
-              Script &amp; Claude
-            </CardTitle>
-            <CardDescription className="flex flex-wrap items-center gap-x-2">
-              <span>
-                {script
-                  ? `Playwright script · saved by ${script.updatedBy.name} ${formatRelative(script.updatedAt)}`
-                  : "Write this case as a Playwright script and the runner can execute it."}
+      <CollapsibleCardHeader
+        expanded={expanded}
+        onToggle={() => setExpanded(!expanded)}
+        title={
+          <>
+            <Code2 className="size-4" />
+            Script &amp; Claude
+          </>
+        }
+        description={
+          <>
+            <span>
+              {script
+                ? `Playwright script · saved by ${script.updatedBy.name} ${formatRelative(script.updatedAt)}`
+                : "Write this case as a Playwright script and the runner can execute it."}
+            </span>
+            {/* What would otherwise be missed while it is closed. */}
+            {!expanded && isJobActive(writeJob) && (
+              <span className="inline-flex items-center gap-1 text-primary">
+                <Loader2 className="size-3.5 animate-spin" />
+                Claude is writing
               </span>
-              {/* What would otherwise be missed while it is closed. */}
-              {!expanded && isJobActive(writeJob) && (
-                <span className="inline-flex items-center gap-1 text-primary">
-                  <Loader2 className="size-3.5 animate-spin" />
-                  Claude is writing
-                </span>
-              )}
-              {!expanded && dirty && <span className="text-status-blocked">· unsaved changes</span>}
-            </CardDescription>
-          </span>
-          {/* Arrows apart to open, together to close. */}
-          {expanded ? (
-            <ChevronsDownUp className="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-hidden />
-          ) : (
-            <ChevronsUpDown className="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-hidden />
-          )}
-        </button>
-      </CardHeader>
+            )}
+            {!expanded && dirty && <span className="text-status-blocked">· unsaved changes</span>}
+          </>
+        }
+      />
       {expanded && (
         <CardContent className="space-y-3">
           {writeJob && (

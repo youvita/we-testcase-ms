@@ -1,16 +1,12 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { Bot, History, Pencil } from "lucide-react";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
+import { CollapsibleCardHeader } from "@/components/shared/collapsible-card-header";
 import { EmptyState } from "@/components/shared/empty-state";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { formatDateTime, initials } from "@/utils/format";
@@ -46,43 +42,54 @@ export function ExecutionHistory({
   // Null on pages with no Record result card (the developer's read-only view),
   // which is exactly when entries should not be clickable.
   const editor = useExecutionEditor();
+  // Open by default: it is the audit trail, and what most visits are for.
+  const [expanded, setExpanded] = useState(true);
 
   return (
     <Card>
-      <CardHeader>
-        <CardTitle className="text-base">Execution history</CardTitle>
-        <CardDescription>
-          {executions.length === 0
+      <CollapsibleCardHeader
+        expanded={expanded}
+        onToggle={() => setExpanded(!expanded)}
+        title={
+          <>
+            <History className="size-4" />
+            Execution history
+          </>
+        }
+        description={
+          executions.length === 0
             ? "No results recorded yet."
-            : `${executions.length} recorded result${executions.length === 1 ? "" : "s"}, newest first.`}
-        </CardDescription>
-      </CardHeader>
+            : `${executions.length} recorded result${executions.length === 1 ? "" : "s"}, newest first.`
+        }
+      />
 
-      <CardContent>
-        {executions.length === 0 ? (
-          <EmptyState
-            icon={History}
-            title="Not executed yet"
-            description="Once a result is recorded it appears here with the tester, timestamp and any screenshots or video."
-          />
-        ) : (
-          <ol className="space-y-4">
-            {executions.map((execution, index) => (
-              <ExecutionEntry
-                key={execution.id}
-                projectId={projectId}
-                execution={execution}
-                isLatest={index === 0}
-                editable={
-                  Boolean(editor) &&
-                  (canModerate || execution.tester.id === currentUserId)
-                }
-                onEdit={() => editor?.startEditing(execution)}
-              />
-            ))}
-          </ol>
-        )}
-      </CardContent>
+      {expanded && (
+        <CardContent>
+          {executions.length === 0 ? (
+            <EmptyState
+              icon={History}
+              title="Not executed yet"
+              description="Once a result is recorded it appears here with the tester, timestamp and any screenshots or video."
+            />
+          ) : (
+            <ol className="space-y-4">
+              {executions.map((execution, index) => (
+                <ExecutionEntry
+                  key={execution.id}
+                  projectId={projectId}
+                  execution={execution}
+                  isLatest={index === 0}
+                  editable={
+                    Boolean(editor) &&
+                    (canModerate || execution.tester.id === currentUserId)
+                  }
+                  onEdit={() => editor?.startEditing(execution)}
+                />
+              ))}
+            </ol>
+          )}
+        </CardContent>
+      )}
     </Card>
   );
 }
