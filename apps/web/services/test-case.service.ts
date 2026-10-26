@@ -117,8 +117,23 @@ export async function listTestCases(
     prisma.testCase.count({ where }),
   ]);
 
+  // Cases without a script that the AI has started one for — automation in
+  // progress. Jobs stopped before they ran do not count.
+  const unscripted = items.filter((item) => !item.script).map((item) => item.id);
+  const started = new Set<string>();
+  if (unscripted.length > 0) {
+    const jobs = await prisma.aiJob.findMany({
+      where: { projectId, kind: "WRITE_SCRIPT", NOT: { status: "FAILED", startedAt: null } },
+      select: { input: true },
+    });
+    for (const job of jobs) {
+      const testCaseId = (job.input as { testCaseId?: string } | null)?.testCaseId;
+      if (testCaseId && unscripted.includes(testCaseId)) started.add(testCaseId);
+    }
+  }
+
   return {
-    items,
+    items: items.map((item) => ({ ...item, aiScriptStarted: started.has(item.id) })),
     page: query.page,
     pageSize: query.pageSize,
     total,

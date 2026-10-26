@@ -423,10 +423,19 @@ export function TestCaseTable({
                     className="inline-flex items-center gap-1.5"
                   >
                     {testCase.tcId}
-                    {testCase.script && (
+                    {testCase.script ? (
                       <span title="Has an automation script" aria-label="Automated">
                         <Bot className="size-3.5 text-primary" aria-hidden />
                       </span>
+                    ) : (
+                      testCase.aiScriptStarted && (
+                        <span
+                          title="The AI has started a script — not saved yet"
+                          aria-label="Automation in progress"
+                        >
+                          <Bot className="size-3.5 text-muted-foreground/60" aria-hidden />
+                        </span>
+                      )
                     )}
                   </Link>
                 </TableCell>

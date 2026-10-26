@@ -109,6 +109,8 @@ export type TestCaseListItem = Pick<
   module: Pick<Module, "id" | "name">;
   /** Present when the case has an automation script. */
   script: { updatedAt: Date } | null;
+  /** No script saved yet, but the AI has started one. */
+  aiScriptStarted: boolean;
 };
 
 /**
