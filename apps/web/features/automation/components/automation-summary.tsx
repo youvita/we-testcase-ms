@@ -15,6 +15,7 @@ import { api, errorMessage } from "@/utils/api-client";
 import { formatRelative } from "@/utils/format";
 
 import {
+  OPEN_SCRIPT_CARD,
   ScriptStatusBadge,
   type LastAutomatedResult,
   type ScriptState,
@@ -67,6 +68,7 @@ export function AutomationSummary({
     const card = document.getElementById("automation");
     if (!card) return;
     event.preventDefault();
+    window.dispatchEvent(new Event(OPEN_SCRIPT_CARD));
     card.scrollIntoView({ behavior: "smooth", block: "start" });
     card.classList.add("ring-2", "ring-primary/40");
     window.setTimeout(() => card.classList.remove("ring-2", "ring-primary/40"), 1500);

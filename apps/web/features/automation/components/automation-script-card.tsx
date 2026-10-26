@@ -1,9 +1,11 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   Bot,
+  ChevronDown,
+  ChevronRight,
   Code2,
   Loader2,
   PencilRuler,
@@ -17,6 +19,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
+import { cn } from "@/lib/utils";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { ClaudeConnectionDialog } from "@/features/ai/components/claude-connection-dialog";
 import { isJobActive, useAiJob } from "@/features/ai/use-ai-job";
@@ -58,6 +61,9 @@ export function ScriptStatusBadge({ verified }: { verified: boolean }) {
     </span>
   );
 }
+
+/** Sent by the summary's Script & Claude link: open the card. */
+export const OPEN_SCRIPT_CARD = "wtc:open-script-card";
 
 export type ScriptState = {
   code: string;
@@ -115,6 +121,15 @@ export function AutomationScriptCard({
     if (job.status === "SUCCEEDED") toast.success(job.summary ?? "Claude finished the script");
     else toast.error(job.error ?? "Claude could not write the script");
   });
+  // Closed by default: the summary beside the case covers what most people
+  // need. Opened by its header, or by the summary's Script & Claude link.
+  const [expanded, setExpanded] = useState(false);
+  useEffect(() => {
+    if (window.location.hash === "#automation") setExpanded(true);
+    const open = () => setExpanded(true);
+    window.addEventListener(OPEN_SCRIPT_CARD, open);
+    return () => window.removeEventListener(OPEN_SCRIPT_CARD, open);
+  }, []);
 
   if (platform !== "WEB" && platform !== "API") {
     return (
@@ -204,110 +219,136 @@ export function AutomationScriptCard({
 
   return (
     <Card id="automation" className="scroll-mt-20 transition-shadow duration-500">
-      <CardHeader className="space-y-1">
-        <CardTitle className="flex items-center gap-2 text-base">
-          <Code2 className="size-4" />
-          Script &amp; Claude
-        </CardTitle>
-        <CardDescription>
-          {script
-            ? `Playwright script · saved by ${script.updatedBy.name} ${formatRelative(script.updatedAt)}`
-            : "Write this case as a Playwright script and the runner can execute it."}
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-3">
-        {writeJob && (
-          <ScriptWritingPanel
-            projectId={projectId}
-            job={writeJob}
-            savedCode={script?.code ?? null}
-            onUse={(next) => {
-              setCode(next);
-              setShowScript(true);
-              toast.message("Script placed in the editor — review it, then save.");
-            }}
-            onContinue={
-              canManage && (writeJob.status === "SUCCEEDED" || lastFinishedWriteJobId)
-                ? continueWithHint
-                : undefined
-            }
-          />
-        )}
-
-        {editorOpen ? (
-          <>
-            <Textarea
-              value={code}
-              onChange={(event) => setCode(event.target.value)}
-              onKeyDown={handleKeyDown}
-              readOnly={!canManage}
-              spellCheck={false}
-              rows={Math.min(24, Math.max(8, code.split("\n").length + 1))}
-              placeholder={EXAMPLES[platform]}
-              className="font-mono text-xs leading-relaxed"
-              aria-label="Playwright script"
-            />
-          </>
-        ) : (
-          script && (
-            <button
-              type="button"
-              onClick={() => setShowScript(true)}
-              className="flex w-full items-center gap-2 rounded-md border border-dashed px-3 py-2 text-left text-sm text-muted-foreground hover:bg-muted/40"
-            >
+      <CardHeader className={cn("space-y-1", !expanded && "pb-6")}>
+        <button
+          type="button"
+          aria-expanded={expanded}
+          onClick={() => setExpanded(!expanded)}
+          className="-m-1 flex w-full items-start gap-2 rounded-md p-1 text-left hover:bg-muted/40"
+        >
+          {expanded ? (
+            <ChevronDown className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+          ) : (
+            <ChevronRight className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+          )}
+          <span className="min-w-0 flex-1 space-y-1">
+            <CardTitle className="flex items-center gap-2 text-base">
               <Code2 className="size-4" />
-              Show script
-              <span className="text-xs">· {lineCount} line{lineCount === 1 ? "" : "s"}</span>
-            </button>
-          )
-        )}
-
-        {canManage && (
-          <div className="flex flex-wrap items-center gap-2">
-            {editorOpen && (
-              <Button size="sm" disabled={saving || !dirty || !code.trim()} onClick={() => void handleSave()}>
-                {saving ? <Loader2 className="mr-2 size-4 animate-spin" /> : <Save className="mr-2 size-4" />}
-                Save script
-              </Button>
-            )}
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={isJobActive(writeJob)}
-              onClick={() => setWriteOpen(true)}
-            >
-              {isJobActive(writeJob) ? (
-                <Loader2 className="mr-2 size-4 animate-spin" />
-              ) : (
-                <Sparkles className="mr-2 size-4" />
+              Script &amp; Claude
+            </CardTitle>
+            <CardDescription className="flex flex-wrap items-center gap-x-2">
+              <span>
+                {script
+                  ? `Playwright script · saved by ${script.updatedBy.name} ${formatRelative(script.updatedAt)}`
+                  : "Write this case as a Playwright script and the runner can execute it."}
+              </span>
+              {/* What would otherwise be missed while it is closed. */}
+              {!expanded && isJobActive(writeJob) && (
+                <span className="inline-flex items-center gap-1 text-primary">
+                  <Loader2 className="size-3.5 animate-spin" />
+                  Claude is writing
+                </span>
               )}
-              {script || code ? "Rewrite with Claude" : "Write with Claude"}
-            </Button>
-            {!script && !editorOpen && (
-              <Button size="sm" variant="ghost" onClick={() => setShowScript(true)}>
-                <Code2 className="mr-2 size-4" />
-                Write it myself
+              {!expanded && dirty && <span className="text-status-blocked">· unsaved changes</span>}
+            </CardDescription>
+          </span>
+        </button>
+      </CardHeader>
+      {expanded && (
+        <CardContent className="space-y-3">
+          {writeJob && (
+            <ScriptWritingPanel
+              projectId={projectId}
+              job={writeJob}
+              savedCode={script?.code ?? null}
+              onUse={(next) => {
+                setCode(next);
+                setShowScript(true);
+                toast.message("Script placed in the editor — review it, then save.");
+              }}
+              onContinue={
+                canManage && (writeJob.status === "SUCCEEDED" || lastFinishedWriteJobId)
+                  ? continueWithHint
+                  : undefined
+              }
+            />
+          )}
+
+          {editorOpen ? (
+            <>
+              <Textarea
+                value={code}
+                onChange={(event) => setCode(event.target.value)}
+                onKeyDown={handleKeyDown}
+                readOnly={!canManage}
+                spellCheck={false}
+                rows={Math.min(24, Math.max(8, code.split("\n").length + 1))}
+                placeholder={EXAMPLES[platform]}
+                className="font-mono text-xs leading-relaxed"
+                aria-label="Playwright script"
+              />
+            </>
+          ) : (
+            script && (
+              <button
+                type="button"
+                onClick={() => setShowScript(true)}
+                className="flex w-full items-center gap-2 rounded-md border border-dashed px-3 py-2 text-left text-sm text-muted-foreground hover:bg-muted/40"
+              >
+                <Code2 className="size-4" />
+                Show script
+                <span className="text-xs">· {lineCount} line{lineCount === 1 ? "" : "s"}</span>
+              </button>
+            )
+          )}
+
+          {canManage && (
+            <div className="flex flex-wrap items-center gap-2">
+              {editorOpen && (
+                <Button size="sm" disabled={saving || !dirty || !code.trim()} onClick={() => void handleSave()}>
+                  {saving ? <Loader2 className="mr-2 size-4 animate-spin" /> : <Save className="mr-2 size-4" />}
+                  Save script
+                </Button>
+              )}
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={isJobActive(writeJob)}
+                onClick={() => setWriteOpen(true)}
+              >
+                {isJobActive(writeJob) ? (
+                  <Loader2 className="mr-2 size-4 animate-spin" />
+                ) : (
+                  <Sparkles className="mr-2 size-4" />
+                )}
+                {script || code ? "Rewrite with Claude" : "Write with Claude"}
               </Button>
-            )}
-            {editorOpen && !code && (
-              <Button size="sm" variant="ghost" onClick={() => setCode(EXAMPLES[platform])}>
-                Insert example
-              </Button>
-            )}
-            {editorOpen && script && !dirty && (
-              <Button size="sm" variant="ghost" onClick={() => setShowScript(false)}>
-                Hide script
-              </Button>
-            )}
-            {script && (
-              <Button size="sm" variant="ghost" className="ml-auto" onClick={() => setDeleteOpen(true)}>
-                <Trash2 className="mr-2 size-4" />
-                Remove
-              </Button>
-            )}
-          </div>
-        )}
-      </CardContent>
+              {!script && !editorOpen && (
+                <Button size="sm" variant="ghost" onClick={() => setShowScript(true)}>
+                  <Code2 className="mr-2 size-4" />
+                  Write it myself
+                </Button>
+              )}
+              {editorOpen && !code && (
+                <Button size="sm" variant="ghost" onClick={() => setCode(EXAMPLES[platform])}>
+                  Insert example
+                </Button>
+              )}
+              {editorOpen && script && !dirty && (
+                <Button size="sm" variant="ghost" onClick={() => setShowScript(false)}>
+                  Hide script
+                </Button>
+              )}
+              {script && (
+                <Button size="sm" variant="ghost" className="ml-auto" onClick={() => setDeleteOpen(true)}>
+                  <Trash2 className="mr-2 size-4" />
+                  Remove
+                </Button>
+              )}
+            </div>
+          )}
+        </CardContent>
+      )}
 
       <WriteWithClaudeDialog
         testCaseId={testCaseId}
