@@ -199,7 +199,18 @@ export function AutomationScriptCard({
     }
   }
 
+  /** Take the card off a case without a script; any draft typed goes too. */
+  function removeCard() {
+    setCode("");
+    setShowScript(false);
+    setScriptCardShown(false);
+  }
+
   async function handleDelete() {
+    if (!script) {
+      removeCard();
+      return;
+    }
     try {
       await api.delete(`/api/test-cases/${testCaseId}/script`);
       setCode("");
@@ -449,8 +460,15 @@ export function AutomationScriptCard({
                   Hide script
                 </Button>
               )}
-              {script && (
-                <Button size="sm" variant="ghost" className="ml-auto" onClick={() => setDeleteOpen(true)}>
+              {(script || !isJobActive(writeJob)) && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="ml-auto"
+                  title={script ? "Delete the script; the case goes back to manual" : "Take this card away"}
+                  // Nothing to lose without a script or a draft: no question.
+                  onClick={() => (script || code.trim() ? setDeleteOpen(true) : removeCard())}
+                >
                   <Trash2 className="mr-2 size-4" />
                   Remove
                 </Button>
@@ -503,8 +521,12 @@ export function AutomationScriptCard({
       <ConfirmDialog
         open={deleteOpen}
         onOpenChange={setDeleteOpen}
-        title="Remove the script?"
-        description="The case goes back to manual. Past runs keep the script they ran."
+        title={script ? "Remove the script?" : "Discard this draft?"}
+        description={
+          script
+            ? "The case goes back to manual. Past runs keep the script they ran."
+            : "The script typed here has not been saved and will be lost."
+        }
         confirmLabel="Remove"
         onConfirm={handleDelete}
       />

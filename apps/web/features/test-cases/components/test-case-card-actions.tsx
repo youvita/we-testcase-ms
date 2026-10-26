@@ -1,6 +1,6 @@
 "use client";
 
-import { Bot, FileText } from "lucide-react";
+import { FileText, Plus } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -51,24 +51,23 @@ export function TestCaseCardActions({
         <FileText className="mr-2 size-4" />
         FRD
       </Button>
-      {showAutomation && (
+      {/* Adds the Automation card to write a first script; the card's own
+          Remove takes it away again, and this comes back. */}
+      {showAutomation && !automationShown && (
         <Button
           size="sm"
-          variant={automationShown ? "secondary" : "outline"}
-          aria-pressed={automationShown}
+          variant="outline"
           onClick={() => {
-            setScriptCardShown(!automationShown);
-            if (!automationShown) {
-              // Let it render, then bring it into view.
-              requestAnimationFrame(() =>
-                document
-                  .getElementById("automation")
-                  ?.scrollIntoView({ behavior: "smooth", block: "start" }),
-              );
-            }
+            setScriptCardShown(true);
+            // Let it render, then bring it into view.
+            requestAnimationFrame(() =>
+              document
+                .getElementById("automation")
+                ?.scrollIntoView({ behavior: "smooth", block: "start" }),
+            );
           }}
         >
-          <Bot className="mr-2 size-4" />
+          <Plus className="mr-2 size-4" />
           Automation
         </Button>
       )}
