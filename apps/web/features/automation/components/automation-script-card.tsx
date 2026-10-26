@@ -45,6 +45,24 @@ expect(response.status()).toBe(401);
 expect(await response.json()).toMatchObject({ error: expect.any(String) });`,
 };
 
+/** Verified (its failures count) or Draft (it has not passed yet). */
+export function ScriptStatusBadge({ verified }: { verified: boolean }) {
+  return verified ? (
+    <span className="inline-flex items-center gap-1 rounded-full border border-status-passed/30 bg-status-passed/10 px-2 py-0.5 text-xs font-medium text-status-passed">
+      <ShieldCheck className="size-3.5" />
+      Verified
+    </span>
+  ) : (
+    <span
+      className="inline-flex items-center gap-1 rounded-full border border-status-blocked/30 bg-status-blocked/10 px-2 py-0.5 text-xs font-medium text-status-blocked"
+      title="Its failures are not recorded on the case until it passes once"
+    >
+      <PencilRuler className="size-3.5" />
+      Draft
+    </span>
+  );
+}
+
 export type ScriptState = {
   code: string;
   updatedAt: string;
@@ -206,7 +224,7 @@ export function AutomationScriptCard({
   }
 
   return (
-    <Card>
+    <Card id="automation" className="scroll-mt-6">
       <CardHeader className="space-y-1">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <CardTitle className="flex items-center gap-2 text-base">
@@ -227,20 +245,7 @@ export function AutomationScriptCard({
         <CardDescription className="flex flex-wrap items-center gap-x-2 gap-y-1">
           {script ? (
             <>
-              {script.verifiedAt ? (
-                <span className="inline-flex items-center gap-1 rounded-full border border-status-passed/30 bg-status-passed/10 px-2 py-0.5 text-xs font-medium text-status-passed">
-                  <ShieldCheck className="size-3.5" />
-                  Verified
-                </span>
-              ) : (
-                <span
-                  className="inline-flex items-center gap-1 rounded-full border border-status-blocked/30 bg-status-blocked/10 px-2 py-0.5 text-xs font-medium text-status-blocked"
-                  title="Its failures are not recorded on the case until it passes once"
-                >
-                  <PencilRuler className="size-3.5" />
-                  Draft
-                </span>
-              )}
+              <ScriptStatusBadge verified={Boolean(script.verifiedAt)} />
               <span>
                 Playwright script · saved by {script.updatedBy.name} {formatRelative(script.updatedAt)}
               </span>

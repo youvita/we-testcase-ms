@@ -21,6 +21,7 @@ import { RecordResultButton } from "@/features/executions/components/record-resu
 import { RetestButton } from "@/features/executions/components/retest-button";
 import { ExecutionHistory } from "@/features/executions/components/execution-history";
 import { ExecutionPanel } from "@/features/executions/components/execution-panel";
+import { AutomationSummary } from "@/features/automation/components/automation-summary";
 import { AutomationScriptCard } from "@/features/automation/components/automation-script-card";
 import { TestCaseDetailShell } from "@/features/executions/components/test-case-detail-shell";
 import {
@@ -311,6 +312,32 @@ export default async function TestCaseDetailPage({
         }
         right={
           <>
+            <AutomationSummary
+              projectId={projectId}
+              testCaseId={testCase.id}
+              platform={testCase.platform}
+              canManage={canManageTestCases(user.role)}
+              environments={environments}
+              script={
+                script && {
+                  code: script.code,
+                  updatedAt: script.updatedAt.toISOString(),
+                  verifiedAt: script.verifiedAt?.toISOString() ?? null,
+                  updatedBy: script.updatedBy,
+                }
+              }
+              latestWriteJob={latestWriteJob}
+              signInCases={signInCases.filter((c) => c.id !== testCase.id)}
+              lastResult={
+                lastRunItem && {
+                  status: lastRunItem.status,
+                  runId: lastRunItem.run.id,
+                  runNumber: lastRunItem.run.number,
+                  finishedAt: lastRunItem.finishedAt?.toISOString() ?? null,
+                }
+              }
+            />
+
             {canExecute && (
               <ExecutionPanel
                 testCaseId={testCase.id}
