@@ -25,6 +25,7 @@ import {
   type RunTriageDto,
   type ScriptBatchResult,
   type ScriptJobRow,
+  type RunItemStatus,
   type ScriptWritingResult,
 } from "@wetestcase/dto";
 
@@ -140,7 +141,7 @@ Rules:
 - A confirmation can be a native browser popup (window.confirm/alert) instead of a dialog on the page. It never appears in the page outline or screenshot, and unless handled it is cancelled. The console output says when one appeared. Handle it with page.once("dialog", async (d) => { expect(d.message()).toContain("…"); await d.accept(); }) registered before the click that opens it.
 - Never weaken or remove an assertion to make a test pass. If the application does not do what the test case expects, that is a finding about the product, not a script problem.
 
-Answer with the complete script in one \`\`\`ts block, then a \`\`\`json block: {"verdict": "...", "notes": "..."}. Notes are for QA: one to three sentences, always in English — whatever language the application or its pages are in.`;
+Answer with the complete script in one \`\`\`ts block, then a \`\`\`json block: {"verdict": "...", "change": "...", "notes": "..."}. "change" is one short sentence, under 15 words, on what this version does differently from the one before — for a first version, how it goes about the test — e.g. "Picks Non-Taxable inside the dialog instead of the table cell". Notes are for QA: one to three sentences. Both always in English — whatever language the application or its pages are in.`;
 
 function firstDraftPrompt(options: {
   testCase: CaseForPrompt;
@@ -221,8 +222,25 @@ const verdictSchema = z
   .object({
     verdict: z.enum(["draft", "script_fixed", "product_bug", "needs_info"]).catch("draft"),
     notes: z.string().catch(""),
+    change: z.string().trim().max(200).catch(""),
   })
-  .catch({ verdict: "draft", notes: "" });
+  .catch({ verdict: "draft", notes: "", change: "" });
+
+/** One try for the panel: the script, how its run went, and what Claude changed. */
+function attemptOf(
+  draft: { code: string; change: string },
+  runId: string,
+  item: { status: RunItemStatus; error: string | null; durationMs: number | null },
+): ScriptWritingResult["attempts"][number] {
+  return {
+    code: draft.code,
+    runId,
+    status: item.status,
+    error: item.error,
+    durationMs: item.durationMs,
+    change: draft.change || undefined,
+  };
+}
 
 function readDraft(reply: string) {
   const code = parseCodeReply(reply);
@@ -370,21 +388,21 @@ export async function startScriptWriting(
           last && last.code === earlier.code
             ? await prisma.testRunItem.findFirst({
                 where: { runId: last.runId },
-                select: { id: true, status: true, error: true, log: true },
+                select: { id: true, status: true, error: true, log: true, durationMs: true },
               })
             : null;
         if (lastItem && last) {
           previous = { code: earlier.code, status: lastItem.status, error: lastItem.error, log: lastItem.log };
           evidence = await readItemEvidence(lastItem.id);
           // Listed first, so the round shows what it picked up from.
-          result.attempts.push({ code: earlier.code, runId: last.runId, status: lastItem.status, error: lastItem.error, earlier: true });
+          result.attempts.push({ code: earlier.code, runId: last.runId, status: lastItem.status, error: lastItem.error, durationMs: lastItem.durationMs, earlier: true });
         } else {
           // The earlier job ended on a script it never ran (it judged a
           // product bug or needed information): run it now to see.
           const check = await tryScript(earlier.code);
           previous = { code: earlier.code, status: check.item.status, error: check.item.error, log: check.item.log };
           evidence = await readItemEvidence(check.item.id);
-          result.attempts.push({ code: earlier.code, runId: check.runId, status: check.item.status, error: check.item.error, earlier: true });
+          result.attempts.push({ code: earlier.code, runId: check.runId, status: check.item.status, error: check.item.error, durationMs: check.item.durationMs, earlier: true });
         }
         await setResult(result);
         await progress(++step, total);
@@ -441,7 +459,7 @@ export async function startScriptWriting(
         // Claude was wrong and the script is good.
         if (draft.verdict === "product_bug" && draft.code !== previous?.code) {
           const { runId, item } = await tryScript(draft.code);
-          result.attempts.push({ code: draft.code, runId, status: item.status, error: item.error });
+          result.attempts.push(attemptOf(draft, runId, item));
           await progress(++step, total);
           if (item.status === "PASSED") {
             result.outcome = "passed";
@@ -457,7 +475,7 @@ export async function startScriptWriting(
         }
 
         const { runId, item } = await tryScript(draft.code);
-        result.attempts.push({ code: draft.code, runId, status: item.status, error: item.error });
+        result.attempts.push(attemptOf(draft, runId, item));
         await progress(++step, total);
 
         if (item.status === "PASSED") {

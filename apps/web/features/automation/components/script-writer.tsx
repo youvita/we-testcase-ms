@@ -4,6 +4,8 @@ import { useState } from "react";
 import Link from "next/link";
 import {
   CheckCircle2,
+  ChevronDown,
+  ChevronRight,
   CircleAlert,
   Loader2,
   MessageCircleQuestion,
@@ -42,7 +44,8 @@ import type {
 import { ApiError, api, errorMessage } from "@/utils/api-client";
 
 import { LiveView, WatchLiveFields, type LiveChoice } from "./live-view";
-import { RunStatusBadge } from "./run-status-badge";
+import { RunStatusBadge, formatDuration } from "./run-status-badge";
+import { diffLines } from "@/utils/line-diff";
 import { CodeView } from "@/components/shared/code-view";
 import { errorHeadline, findErrorLine } from "@/utils/error-line";
 
@@ -321,34 +324,12 @@ export function ScriptWritingPanel({
       )}
 
       {result && result.attempts.length > 0 && (
-        <ol className="space-y-1">
-          {result.attempts.map((attempt, index) => (
-            <li key={attempt.runId} className="flex items-center gap-2 text-xs">
-              <span className="text-muted-foreground">
-                {attempt.earlier ? "Earlier" : `Try ${result.attempts.slice(0, index + 1).filter((a) => !a.earlier).length}`}
-              </span>
-              <RunStatusBadge status={attempt.status} />
-              <Link
-                href={`/projects/${projectId}/automation/runs/${attempt.runId}`}
-                className="truncate text-muted-foreground hover:underline"
-                title={attempt.error ?? undefined}
-              >
-                {attempt.error ? (
-                  <>
-                    {findErrorLine(attempt.code, attempt.error) && (
-                      <span className="font-medium text-status-failed">
-                        line {findErrorLine(attempt.code, attempt.error)}:{" "}
-                      </span>
-                    )}
-                    {errorHeadline(attempt.error)}
-                  </>
-                ) : (
-                  "see screenshot and trace"
-                )}
-              </Link>
-            </li>
-          ))}
-        </ol>
+        <AttemptList
+          projectId={projectId}
+          attempts={result.attempts}
+          // Once it passes, the road there matters less: fold it away.
+          folded={!active && job.status === "SUCCEEDED" && result.outcome === "passed"}
+        />
       )}
 
       {job.status === "FAILED" && <p className="text-status-failed">{job.error}</p>}
@@ -390,6 +371,106 @@ export function ScriptWritingPanel({
           )}
         </>
       )}
+    </div>
+  );
+}
+
+type Attempt = ScriptWritingResult["attempts"][number];
+
+/**
+ * Claude's tries, one per row: how each run went, where it failed, and what
+ * Claude changed to get there. After a pass, folded to one line.
+ */
+function AttemptList({
+  projectId,
+  attempts,
+  folded,
+}: {
+  projectId: string;
+  attempts: Attempt[];
+  folded: boolean;
+}) {
+  const [open, setOpen] = useState(!folded);
+  const own = attempts.filter((a) => !a.earlier);
+  const failedBefore = own.length - 1;
+
+  if (folded && !open) {
+    return (
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="flex items-center gap-2 text-xs text-muted-foreground hover:text-foreground"
+      >
+        <ChevronRight className="size-3.5" />
+        <span className="font-medium text-status-passed">
+          Passed on try {own.length}
+        </span>
+        {failedBefore > 0 && `after ${failedBefore} failed ${failedBefore === 1 ? "try" : "tries"}`}
+        <span className="underline">show the tries</span>
+      </button>
+    );
+  }
+
+  return (
+    <div className="space-y-1">
+      {folded && (
+        <button
+          type="button"
+          onClick={() => setOpen(false)}
+          className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+        >
+          <ChevronDown className="size-3.5" />
+          Hide the tries
+        </button>
+      )}
+      <ol className="space-y-2">
+        {attempts.map((attempt, index) => {
+          const label = attempt.earlier
+            ? "Starting script"
+            : `Try ${attempts.slice(0, index + 1).filter((a) => !a.earlier).length}`;
+          const before = index > 0 ? attempts[index - 1] : undefined;
+          const changes = before && !attempt.earlier ? diffLines(before.code, attempt.code) : [];
+          const changed = Math.max(
+            changes.filter((line) => line.kind === "added").length,
+            changes.filter((line) => line.kind === "removed").length,
+          );
+          const line = attempt.error ? findErrorLine(attempt.code, attempt.error) : null;
+          const timedOut = attempt.error?.startsWith("Timed out");
+          return (
+            <li key={attempt.runId} className="text-xs">
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                <span className="w-24 shrink-0 text-muted-foreground">{label}</span>
+                <RunStatusBadge status={attempt.status} />
+                <span className="min-w-0 truncate text-muted-foreground" title={attempt.error ?? undefined}>
+                  {attempt.status === "PASSED" ? (
+                    `in ${formatDuration(attempt.durationMs)}`
+                  ) : (
+                    <>
+                      {line && <span className="font-medium text-status-failed">line {line}: </span>}
+                      {timedOut
+                        ? `timed out after ${formatDuration(attempt.durationMs ?? 60_000)}`
+                        : errorHeadline(attempt.error)}
+                    </>
+                  )}
+                </span>
+                <Link
+                  href={`/projects/${projectId}/automation/runs/${attempt.runId}`}
+                  className="shrink-0 text-primary hover:underline"
+                >
+                  Open run ›
+                </Link>
+              </div>
+              {(attempt.change || changed > 0) && (
+                <p className="mt-0.5 pl-[6.5rem] text-muted-foreground">
+                  {attempt.change}
+                  {attempt.change && changed > 0 && " · "}
+                  {changed > 0 && `${changed} line${changed === 1 ? "" : "s"} changed`}
+                </p>
+              )}
+            </li>
+          );
+        })}
+      </ol>
     </div>
   );
 }

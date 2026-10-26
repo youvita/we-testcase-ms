@@ -354,6 +354,10 @@ export type ScriptWritingResult = {
     runId: string;
     status: RunItemStatus;
     error: string | null;
+    /** How long its run took. */
+    durationMs?: number | null;
+    /** Claude's one line on what this version changed; absent on older tries. */
+    change?: string;
     /** The earlier try a continued round picked up from, not one of its own. */
     earlier?: boolean;
   }[];

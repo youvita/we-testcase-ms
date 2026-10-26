@@ -341,6 +341,18 @@ const ANSI = /\u001b\[[0-9;]*m/g;
 const SPEC_PATH = /\S*\/run-[^/\s]+\/\d{4}-[a-z0-9]+\.spec\.ts/g;
 const clean = (text: string) => text.replace(ANSI, "").replace(SPEC_PATH, "script").trim();
 
+/**
+ * Drop Playwright's "Browser logs" block from an error: the browser's launch
+ * command and process chatter, thousands of characters that push the code
+ * frame — which line was running — past what is stored.
+ */
+const withoutBrowserLogs = (text: string) =>
+  text
+    .split("\n")
+    .filter((line) => !/^\s*(Browser logs:|<launching>|<launched>|\[pid=\d+\])/.test(line))
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n");
+
 function outputText(chunks: ReportResult["stdout"] = []): string {
   return chunks
     .map((chunk) =>
@@ -362,7 +374,7 @@ const SCRIPT_BUG = /^(TypeError|ReferenceError|SyntaxError)\b/;
 
 function itemResult(result: ReportResult): RunnerItemResult {
   const messages = (result.errors?.length ? result.errors : result.error ? [result.error] : [])
-    .map((e) => clean(e.message ?? ""))
+    .map((e) => withoutBrowserLogs(clean(e.message ?? "")))
     .filter(Boolean);
   const error = messages.join("\n\n") || undefined;
   const logText = clean(outputText(result.stdout) + outputText(result.stderr));
@@ -636,7 +648,7 @@ async function executeRun(job: RunnerJob) {
         // reports at the top level with the file it failed on.
         const own = topErrors.filter((e) => (e.location?.file ?? e.message ?? "").includes(file));
         const message = (own.length ? own : topErrors)
-          .map((e) => clean(e.message ?? ""))
+          .map((e) => withoutBrowserLogs(clean(e.message ?? "")))
           .filter(Boolean)
           .join("\n\n");
         await reportItem(item.id, {
