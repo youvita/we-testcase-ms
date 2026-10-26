@@ -662,7 +662,13 @@ export async function getLastFinishedScriptJob(testCaseId: string) {
 
 export async function getLatestScriptJob(testCaseId: string) {
   return prisma.aiJob.findFirst({
-    where: { kind: "WRITE_SCRIPT", input: { path: ["testCaseId"], equals: testCaseId } },
+    where: {
+      kind: "WRITE_SCRIPT",
+      input: { path: ["testCaseId"], equals: testCaseId },
+      // A job stopped (or lost to a restart) while it waited never ran: it
+      // has nothing to show, and is no failure of this case.
+      NOT: { status: "FAILED", startedAt: null },
+    },
     orderBy: { createdAt: "desc" },
     select: { id: true },
   });
