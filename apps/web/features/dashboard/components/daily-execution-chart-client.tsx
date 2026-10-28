@@ -126,7 +126,7 @@ export function DailyExecutionChartClient({
     <Card className={cn("flex flex-col", className)}>
       <CardHeader>
         <CardTitle>Daily Executions</CardTitle>
-        <CardDescription>Executions recorded per day</CardDescription>
+        <CardDescription>Every result recorded each day, re-runs included — a case that failed, then passed, counts once in each</CardDescription>
       </CardHeader>
       <CardContent className="flex flex-1 flex-col">
         <div className="min-h-[240px] w-full flex-1">

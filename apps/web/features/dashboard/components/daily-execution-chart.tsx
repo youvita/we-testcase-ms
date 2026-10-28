@@ -31,7 +31,7 @@ export function DailyExecutionChart({
       <Card className={cn("flex flex-col", className)}>
         <CardHeader>
           <CardTitle>Daily Executions</CardTitle>
-          <CardDescription>Executions recorded per day</CardDescription>
+          <CardDescription>Every result recorded each day, re-runs included — a case that failed, then passed, counts once in each</CardDescription>
         </CardHeader>
         <CardContent className="flex flex-1 flex-col">
           <div className="flex min-h-[240px] flex-1 items-center justify-center text-sm text-muted-foreground">

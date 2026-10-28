@@ -6,10 +6,15 @@ import { useRouter } from "next/navigation";
 import {
   ArrowDown,
   ArrowUp,
+  Bot,
   ChevronsUpDown,
+  FolderTree,
   ClipboardList,
+  Download,
   MoreHorizontal,
   Pencil,
+  Play,
+  Sparkles,
   Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -45,12 +50,20 @@ import { cn } from "@/lib/utils";
 import { useQueryParams } from "@/hooks/use-query-params";
 import { api, errorMessage } from "@/utils/api-client";
 import { formatRelative } from "@/utils/format";
-import type { Paginated, TestCaseListItem } from "@/types";
+import type { Paginated, Platform, SubModuleOption, TestCaseListItem } from "@/types";
+import { BulkWriteDialog } from "@/features/automation/components/bulk-write-dialog";
+import { NewRunDialog } from "@/features/automation/components/new-run-dialog";
+import {
+  downloadCaseScript,
+  downloadProjectScripts,
+} from "@/features/automation/download-scripts";
+import type { RunEnvironmentDto } from "@wetestcase/dto";
 
 import {
   TestCaseFormDialog,
   type ModuleOption,
 } from "./test-case-form-dialog";
+import { SubModuleDialog } from "./sub-module-dialog";
 
 type SortKey = "tcId" | "testType" | "priority" | "module" | "updatedAt";
 
@@ -85,19 +98,31 @@ export function TestCaseTable({
   projectId,
   page,
   modules,
+  subModules = [],
+  platforms,
+  environments = [],
+  signInCases = [],
   canManage,
 }: {
   projectId: string;
   page: Paginated<TestCaseListItem>;
   modules: ModuleOption[];
+  subModules?: SubModuleOption[];
+  platforms: Platform[];
+  /** For "Write scripts with Claude" on the selected cases. */
+  environments?: RunEnvironmentDto[];
+  signInCases?: { id: string; tcId: string; title: string }[];
   canManage: boolean;
 }) {
   const router = useRouter();
+  const [bulkWriteOpen, setBulkWriteOpen] = useState(false);
+  const [bulkRunOpen, setBulkRunOpen] = useState(false);
   const { get, setParams, isPending } = useQueryParams();
   const [editing, setEditing] = useState<TestCaseListItem | null>(null);
   const [formOpen, setFormOpen] = useState(false);
   const [deleting, setDeleting] = useState<TestCaseListItem | null>(null);
   const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
+  const [subModuleOpen, setSubModuleOpen] = useState(false);
 
   const sort = (get("sort", "tcId") || "tcId") as SortKey;
   const order = get("order", "asc") === "desc" ? "desc" : "asc";
@@ -224,9 +249,58 @@ export function TestCaseTable({
             Clear
           </Button>
           <Button
-            variant="destructive"
+            variant="outline"
             size="sm"
             className="ml-auto"
+            disabled={!selectedCases.some((item) => item.script)}
+            title={
+              selectedCases.some((item) => item.script)
+                ? undefined
+                : "None of the selected cases has a script yet"
+            }
+            onClick={() => setBulkRunOpen(true)}
+          >
+            <Play className="mr-2 size-4" />
+            Run selected
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={!selectedCases.some((item) => item.script)}
+            title={
+              selectedCases.some((item) => item.script)
+                ? "The selected cases' scripts as a Playwright project (.zip)"
+                : "None of the selected cases has a script yet"
+            }
+            onClick={() =>
+              void downloadProjectScripts(
+                projectId,
+                selectedCases.filter((item) => item.script).map((item) => item.id),
+              )
+            }
+          >
+            <Download className="mr-2 size-4" />
+            Download scripts
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setSubModuleOpen(true)}
+          >
+            <FolderTree className="mr-2 size-4" />
+            Set sub-module
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setBulkWriteOpen(true)}
+          >
+            <Sparkles className="mr-2 size-4" />
+            Write scripts with AI
+          </Button>
+          <Button
+            variant="destructive"
+            size="sm"
             onClick={() => setBulkDeleteOpen(true)}
           >
             <Trash2 className="mr-2 size-4" />
@@ -346,13 +420,31 @@ export function TestCaseTable({
                 <TableCell className="font-mono text-xs">
                   <Link
                     href={`/projects/${projectId}/test-cases/${testCase.id}`}
+                    className="inline-flex items-center gap-1.5"
                   >
                     {testCase.tcId}
+                    {testCase.script ? (
+                      <span title="Has an automation script" aria-label="Automated">
+                        <Bot className="size-3.5 text-primary" aria-hidden />
+                      </span>
+                    ) : (
+                      testCase.aiScriptStarted && (
+                        <span
+                          title="The AI has started a script — not saved yet"
+                          aria-label="Automation in progress"
+                        >
+                          <Bot className="size-3.5 text-muted-foreground/60" aria-hidden />
+                        </span>
+                      )
+                    )}
                   </Link>
                 </TableCell>
 
                 <TableCell className="text-sm text-muted-foreground">
                   {testCase.module.name}
+                  {testCase.subModule && (
+                    <span className="block text-xs text-foreground/80">› {testCase.subModule}</span>
+                  )}
                 </TableCell>
 
                 <TableCell>
@@ -427,6 +519,12 @@ export function TestCaseTable({
                           <Pencil className="mr-2 size-4" />
                           Edit
                         </DropdownMenuItem>
+                        {testCase.script && (
+                          <DropdownMenuItem onSelect={() => void downloadCaseScript(testCase.id)}>
+                            <Download className="mr-2 size-4" />
+                            Download script
+                          </DropdownMenuItem>
+                        )}
                         <DropdownMenuItem
                           className="text-destructive focus:text-destructive"
                           onSelect={() => setDeleting(testCase)}
@@ -458,6 +556,8 @@ export function TestCaseTable({
         <TestCaseFormDialog
           projectId={projectId}
           modules={modules}
+          subModules={subModules}
+          platforms={platforms}
           testCaseId={editing?.id}
           open={formOpen}
           onOpenChange={(next) => {
@@ -475,6 +575,61 @@ export function TestCaseTable({
         confirmLabel="Delete test case"
         onConfirm={handleDelete}
       />
+
+      {canManage && (
+        <NewRunDialog
+          projectId={projectId}
+          environments={environments}
+          signInCases={signInCases}
+          testCaseIds={selectedCases.filter((item) => item.script).map((item) => item.id)}
+          open={bulkRunOpen}
+          onOpenChange={setBulkRunOpen}
+        />
+      )}
+
+      {canManage && (
+        <BulkWriteDialog
+          projectId={projectId}
+          cases={selectedCases.map((item) => ({
+            id: item.id,
+            tcId: item.tcId,
+            platform: item.platform,
+            hasScript: Boolean(item.script),
+          }))}
+          environments={environments}
+          open={bulkWriteOpen}
+          onOpenChange={setBulkWriteOpen}
+          onStarted={(result) => {
+            toast.success(
+              `The AI is writing ${result.queued.length} script${result.queued.length === 1 ? "" : "s"}`,
+              {
+                description: result.skipped.length
+                  ? `Skipped: ${result.skipped
+                      .slice(0, 4)
+                      .map((s) => `${s.tcId} (${s.reason})`)
+                      .join(", ")}${result.skipped.length > 4 ? "…" : ""}`
+                  : undefined,
+              },
+            );
+            setSelected(new Set());
+            router.refresh();
+          }}
+        />
+      )}
+
+      {canManage && (
+        <SubModuleDialog
+          projectId={projectId}
+          cases={selectedCases}
+          subModules={subModules}
+          open={subModuleOpen}
+          onOpenChange={setSubModuleOpen}
+          onSaved={() => {
+            setSelected(new Set());
+            router.refresh();
+          }}
+        />
+      )}
 
       <ConfirmDialog
         open={bulkDeleteOpen}

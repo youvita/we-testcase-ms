@@ -24,7 +24,7 @@ function uploadRoot() {
 }
 
 /** Resolve a stored relative path, refusing anything that escapes the root. */
-function resolveStoredPath(relativePath: string) {
+export function resolveStoredPath(relativePath: string) {
   const root = uploadRoot();
   const absolute = path.resolve(root, relativePath);
 

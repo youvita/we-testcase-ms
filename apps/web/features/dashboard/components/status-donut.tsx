@@ -90,7 +90,7 @@ export function StatusDonut({
         <CardTitle>Execution Status</CardTitle>
         <CardDescription>
           {stats.total > 0
-            ? `${stats.executed} of ${stats.total} test cases executed`
+            ? `${stats.executed} of ${stats.total} test cases executed · latest result of each`
             : "No test cases yet"}
         </CardDescription>
       </CardHeader>

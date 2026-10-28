@@ -5,6 +5,8 @@ import { prisma } from "@/lib/prisma";
 import {
   EXECUTION_STATUSES,
   EXECUTION_STATUS_LABELS,
+  PLATFORMS,
+  PLATFORM_LABELS,
   PRIORITIES,
   PRIORITY_LABELS,
   TEST_TYPES,
@@ -36,7 +38,11 @@ async function loadReportData(projectId: string) {
   const [testCases, moduleProgress] = await Promise.all([
     prisma.testCase.findMany({
       where: { projectId },
-      orderBy: [{ module: { position: "asc" } }, { tcId: "asc" }],
+      orderBy: [
+        { module: { position: "asc" } },
+        { subModule: { sort: "asc", nulls: "first" } },
+        { tcId: "asc" },
+      ],
       include: {
         module: { select: { name: true } },
         executions: {
@@ -201,24 +207,28 @@ export async function buildExcelReport(
     const caseHeader = [
       "TC ID",
       "Module",
+      "Sub-module",
       "Test Case",
       "Preconditions",
       "Steps",
       "Expected Result",
       "Test Type",
       "Priority",
+      "Platform",
       "Status",
     ];
 
     const caseRows = rows.map((tc) => [
       tc.tcId,
       tc.module.name,
+      tc.subModule ?? "",
       tc.title,
       tc.preconditions ?? "",
       tc.steps ?? "",
       tc.expectedResult ?? "",
       TEST_TYPE_LABELS[tc.testType],
       PRIORITY_LABELS[tc.priority],
+      PLATFORM_LABELS[tc.platform],
       EXECUTION_STATUS_LABELS[tc.status],
     ]);
 
@@ -226,11 +236,13 @@ export async function buildExcelReport(
     caseSheet["!cols"] = [
       { wch: 16 },
       { wch: 16 },
+      { wch: 14 },
       { wch: 44 },
       { wch: 30 },
       { wch: 44 },
       { wch: 36 },
       { wch: 12 },
+      { wch: 10 },
       { wch: 10 },
       { wch: 10 },
     ];
@@ -253,10 +265,12 @@ export async function buildExcelReport(
       [
         "TC ID",
         "Module",
+        "Sub-module",
         "Test Case",
         "Status",
         "Test Type",
         "Priority",
+        "Platform",
         "Expected Result",
         "Actual Result",
         "Tester",
@@ -267,10 +281,12 @@ export async function buildExcelReport(
         return [
           tc.tcId,
           tc.module.name,
+          tc.subModule ?? "",
           tc.title,
           EXECUTION_STATUS_LABELS[tc.status],
           TEST_TYPE_LABELS[tc.testType],
           PRIORITY_LABELS[tc.priority],
+          PLATFORM_LABELS[tc.platform],
           tc.expectedResult ?? "",
           latest?.actualResult ?? "",
           latest?.tester.name ?? "",
@@ -281,9 +297,11 @@ export async function buildExcelReport(
     problemSheet["!cols"] = [
       { wch: 16 },
       { wch: 16 },
+      { wch: 14 },
       { wch: 44 },
       { wch: 10 },
       { wch: 12 },
+      { wch: 10 },
       { wch: 10 },
       { wch: 36 },
       { wch: 40 },
@@ -337,12 +355,14 @@ export async function buildExcelReport(
   const header = [
     "TC ID",
     "Module",
+    "Sub-module",
     "Test Case",
     "Preconditions",
     "Steps",
     "Expected Result",
     "Test Type",
     "Priority",
+    "Platform",
     "Status",
   ];
 
@@ -373,6 +393,13 @@ export async function buildExcelReport(
         errorTitle: "Unknown priority",
         error:
           "Pick a value from the list, or keep yours — the import maps common spellings and falls back to Medium.",
+      },
+      {
+        column: XLSX.utils.encode_col(header.indexOf("Platform")),
+        values: PLATFORMS.map((platform) => PLATFORM_LABELS[platform]),
+        errorTitle: "Unknown platform",
+        error:
+          "Pick a value from the list. A platform the project does not have yet is added on import.",
       },
       {
         column: XLSX.utils.encode_col(header.indexOf("Status")),
@@ -1100,7 +1127,7 @@ export async function buildPdfReport(projectId: string): Promise<Buffer> {
         color: accent,
       });
       w.text(
-        `Module: ${tc.module.name}    Type: ${TEST_TYPE_LABELS[tc.testType]}    Priority: ${PRIORITY_LABELS[tc.priority]}    Tester: ${latest?.tester.name ?? "—"}    Executed: ${latest ? formatDateTime(latest.executedAt) : "—"}`,
+        `Module: ${tc.module.name}${tc.subModule ? ` › ${tc.subModule}` : ""}    Platform: ${PLATFORM_LABELS[tc.platform]}    Type: ${TEST_TYPE_LABELS[tc.testType]}    Priority: ${PRIORITY_LABELS[tc.priority]}    Tester: ${latest?.tester.name ?? "—"}    Executed: ${latest ? formatDateTime(latest.executedAt) : "—"}`,
         { size: 8, color: COLORS.muted },
       );
 

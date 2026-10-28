@@ -37,7 +37,9 @@ import {
 } from "@/lib/constants";
 import { testCaseSchema, type TestCaseInput } from "@/lib/validations";
 import { ApiError, api, errorMessage } from "@/utils/api-client";
-import type { TestCaseWithDetails } from "@/types";
+import type { Platform, SubModuleOption, TestCaseWithDetails } from "@/types";
+
+import { SubModuleField } from "./sub-module-field";
 
 export type ModuleOption = { id: string; name: string };
 
@@ -57,12 +59,18 @@ const NEW_MODULE = "__new-module__";
 export function TestCaseFormDialog({
   projectId,
   modules,
+  subModules = [],
+  platforms,
   testCaseId,
   open,
   onOpenChange,
 }: {
   projectId: string;
   modules: ModuleOption[];
+  /** Offered as suggestions for the Sub-module field. */
+  subModules?: SubModuleOption[];
+  /** The project's platforms — the only ones offered. */
+  platforms: Platform[];
   /** Omitted for create. */
   testCaseId?: string;
   open: boolean;
@@ -87,6 +95,8 @@ export function TestCaseFormDialog({
   // reorders modules must not re-run the reset and wipe what has been typed.
   const moduleOptionsRef = useRef(moduleOptions);
   moduleOptionsRef.current = moduleOptions;
+  const platformsRef = useRef(platforms);
+  platformsRef.current = platforms;
 
   const {
     register,
@@ -100,6 +110,7 @@ export function TestCaseFormDialog({
     resolver: zodResolver(testCaseSchema),
     defaultValues: {
       moduleId: modules[0]?.id ?? "",
+      subModule: "",
       tcId: "",
       title: "",
       preconditions: "",
@@ -107,7 +118,7 @@ export function TestCaseFormDialog({
       expectedResult: "",
       testType: "FUNCTIONAL",
       priority: "MEDIUM",
-      platform: "WEB",
+      platform: platforms[0] ?? "WEB",
     },
   });
 
@@ -120,6 +131,7 @@ export function TestCaseFormDialog({
       const options = moduleOptionsRef.current;
       reset({
         moduleId: options[0]?.id ?? "",
+        subModule: "",
         tcId: "",
         title: "",
         preconditions: "",
@@ -127,7 +139,7 @@ export function TestCaseFormDialog({
         expectedResult: "",
         testType: "FUNCTIONAL",
         priority: "MEDIUM",
-        platform: "WEB",
+        platform: platformsRef.current[0] ?? "WEB",
       });
       // Nothing to pick from yet — go straight to naming the first module.
       setCreatingModule(options.length === 0);
@@ -145,6 +157,7 @@ export function TestCaseFormDialog({
         if (cancelled) return;
         reset({
           moduleId: testCase.moduleId,
+          subModule: testCase.subModule ?? "",
           tcId: testCase.tcId,
           title: testCase.title,
           preconditions: testCase.preconditions ?? "",
@@ -234,6 +247,11 @@ export function TestCaseFormDialog({
   const testType = watch("testType");
   const priority = watch("priority");
   const platform = watch("platform");
+  // A case being edited keeps its own platform as an option even if the
+  // project no longer lists it, so opening the form cannot silently change it.
+  const platformOptions = PLATFORMS.filter(
+    (option) => platforms.includes(option) || option === platform,
+  );
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
@@ -372,6 +390,27 @@ export function TestCaseFormDialog({
               </div>
 
               <div className="space-y-2">
+                <Label htmlFor="subModule">Sub-module</Label>
+                <SubModuleField
+                  // Remounts per module, so a new module starts from its own list.
+                  key={moduleId}
+                  id="subModule"
+                  names={subModules.filter((sub) => sub.moduleId === moduleId).map((sub) => sub.name)}
+                  value={watch("subModule") ?? ""}
+                  onChange={(name) => setValue("subModule", name, { shouldDirty: true })}
+                  allowNone
+                  invalid={Boolean(errors.subModule)}
+                />
+                {errors.subModule ? (
+                  <p className="text-xs text-destructive">{errors.subModule.message}</p>
+                ) : (
+                  <p className="text-xs text-muted-foreground">
+                    Optional — groups cases inside the module.
+                  </p>
+                )}
+              </div>
+
+              <div className="space-y-2">
                 <Label htmlFor="testType">Test type</Label>
                 <Select
                   value={testType ?? "FUNCTIONAL"}
@@ -420,7 +459,7 @@ export function TestCaseFormDialog({
               <div className="space-y-2">
                 <Label htmlFor="platform">Platform</Label>
                 <Select
-                  value={platform ?? "WEB"}
+                  value={platform ?? platforms[0] ?? "WEB"}
                   onValueChange={(value) =>
                     setValue("platform", value as TestCaseInput["platform"], {
                       shouldDirty: true,
@@ -431,7 +470,7 @@ export function TestCaseFormDialog({
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {PLATFORMS.map((option) => (
+                    {platformOptions.map((option) => (
                       <SelectItem key={option} value={option}>
                         {PLATFORM_LABELS[option]}
                       </SelectItem>

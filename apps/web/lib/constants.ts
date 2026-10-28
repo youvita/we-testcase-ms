@@ -103,7 +103,6 @@ export const FIX_STATUS_HINTS: Record<FixStatus, string> = {
 export const TEST_TYPE_LABELS: Record<TestType, string> = {
   FUNCTIONAL: "Functional",
   UI: "UI",
-  API: "API",
   NEGATIVE: "Negative",
   INTEGRATION: "Integration",
   REGRESSION: "Regression",
@@ -122,6 +121,7 @@ export const PRIORITY_LABELS: Record<Priority, string> = {
 
 export const PLATFORM_LABELS: Record<Platform, string> = {
   WEB: "Web",
+  API: "API",
   IOS: "iOS",
   ANDROID: "Android",
 };

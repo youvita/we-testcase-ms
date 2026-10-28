@@ -11,9 +11,14 @@ import type {
   TestCaseWithDetails,
 } from "@/types";
 
+import { resolveProjectPlatform } from "./project.service";
+
 const testerSelect = {
   select: { id: true, name: true, email: true, image: true },
 } as const;
+
+/** The sub-module filter's value for cases that have none. */
+export const NO_SUB_MODULE = "-";
 
 function buildWhere(
   projectId: string,
@@ -24,15 +29,22 @@ function buildWhere(
   return {
     projectId,
     ...(query.moduleId ? { moduleId: query.moduleId } : {}),
+    ...(query.subModule
+      ? { subModule: query.subModule === NO_SUB_MODULE ? null : query.subModule }
+      : {}),
     ...(query.testType ? { testType: query.testType } : {}),
     ...(query.priority ? { priority: query.priority } : {}),
     ...(query.status ? { status: query.status } : {}),
     ...(query.fixStatus ? { fixStatus: query.fixStatus } : {}),
+    ...(query.platform ? { platform: query.platform } : {}),
+    ...(query.automated === "yes" ? { script: { isNot: null } } : {}),
+    ...(query.automated === "no" ? { script: { is: null } } : {}),
     ...(search
       ? {
           OR: [
             { tcId: { contains: search, mode: "insensitive" } },
             { title: { contains: search, mode: "insensitive" } },
+            { subModule: { contains: search, mode: "insensitive" } },
             { steps: { contains: search, mode: "insensitive" } },
           ],
         }
@@ -55,7 +67,12 @@ function buildOrderBy(
       // Critical ahead of Low.
       return [{ priority: order }, { tcId: "asc" }];
     case "module":
-      return [{ module: { name: order } }, { tcId: "asc" }];
+      // Cases without a sub-module first within each module.
+      return [
+        { module: { name: order } },
+        { subModule: { sort: order, nulls: "first" } },
+        { tcId: "asc" },
+      ];
     case "updatedAt":
       return [{ updatedAt: order }];
     case "tcId":
@@ -92,14 +109,31 @@ export async function listTestCases(
         lastExecutedAt: true,
         updatedAt: true,
         moduleId: true,
+        subModule: true,
         module: { select: { id: true, name: true } },
+        script: { select: { updatedAt: true } },
       },
     }),
     prisma.testCase.count({ where }),
   ]);
 
+  // Cases without a script that the AI has started one for — automation in
+  // progress. Jobs stopped before they ran do not count.
+  const unscripted = items.filter((item) => !item.script).map((item) => item.id);
+  const started = new Set<string>();
+  if (unscripted.length > 0) {
+    const jobs = await prisma.aiJob.findMany({
+      where: { projectId, kind: "WRITE_SCRIPT", NOT: { status: "FAILED", startedAt: null } },
+      select: { input: true },
+    });
+    for (const job of jobs) {
+      const testCaseId = (job.input as { testCaseId?: string } | null)?.testCaseId;
+      if (testCaseId && unscripted.includes(testCaseId)) started.add(testCaseId);
+    }
+  }
+
   return {
-    items,
+    items: items.map((item) => ({ ...item, aiScriptStarted: started.has(item.id) })),
     page: query.page,
     pageSize: query.pageSize,
     total,
@@ -119,12 +153,24 @@ export async function getTestCase(
       },
       executions: {
         orderBy: { executedAt: "desc" },
-        include: { tester: testerSelect, attachments: true },
+        include: {
+          tester: testerSelect,
+          attachments: true,
+          runItem: {
+            select: { id: true, run: { select: { id: true, number: true } } },
+          },
+        },
       },
       fixStatusBy: { select: { id: true, name: true } },
       fixStatusEvents: {
         orderBy: { createdAt: "desc" },
         include: { actor: { select: { id: true, name: true } } },
+      },
+      requirements: {
+        select: {
+          requirement: { select: { id: true, code: true, title: true } },
+        },
+        orderBy: { requirement: { code: "asc" } },
       },
     },
   });
@@ -235,6 +281,8 @@ export async function createTestCase(projectId: string, input: TestCaseInput) {
   });
   if (!mod) throw notFound("Module");
 
+  const platform = await resolveProjectPlatform(projectId, input.platform);
+
   const tcId = input.tcId.trim();
   const duplicate = await prisma.testCase.findUnique({
     where: { projectId_tcId: { projectId, tcId } },
@@ -248,6 +296,7 @@ export async function createTestCase(projectId: string, input: TestCaseInput) {
     data: {
       projectId,
       moduleId: mod.id,
+      subModule: input.subModule ?? null,
       tcId,
       title: input.title.trim(),
       preconditions: input.preconditions ?? null,
@@ -255,7 +304,7 @@ export async function createTestCase(projectId: string, input: TestCaseInput) {
       expectedResult: input.expectedResult ?? null,
       testType: input.testType ?? "FUNCTIONAL",
       priority: input.priority ?? "MEDIUM",
-      platform: input.platform ?? "WEB",
+      platform,
     },
   });
 }
@@ -276,6 +325,11 @@ export async function updateTestCase(
   });
   if (!mod) throw notFound("Module");
 
+  const platform = await resolveProjectPlatform(
+    existing.projectId,
+    input.platform,
+  );
+
   const tcId = input.tcId.trim();
   const duplicate = await prisma.testCase.findFirst({
     where: {
@@ -293,6 +347,7 @@ export async function updateTestCase(
     where: { id: testCaseId },
     data: {
       moduleId: mod.id,
+      subModule: input.subModule ?? null,
       tcId,
       title: input.title.trim(),
       preconditions: input.preconditions ?? null,
@@ -300,7 +355,7 @@ export async function updateTestCase(
       expectedResult: input.expectedResult ?? null,
       testType: input.testType ?? "FUNCTIONAL",
       priority: input.priority ?? "MEDIUM",
-      platform: input.platform ?? "WEB",
+      platform,
     },
   });
 }
@@ -335,6 +390,40 @@ export async function deleteTestCases(
   if (count === 0) throw notFound("Test cases");
 
   return { deleted: count, missing: unique.length - count };
+}
+
+/** Put several test cases in one sub-module, or take them out of any. */
+export async function setSubModule(
+  projectId: string,
+  ids: string[],
+  subModule: string | undefined,
+): Promise<{ updated: number }> {
+  const { count } = await prisma.testCase.updateMany({
+    where: { projectId, id: { in: [...new Set(ids)] } },
+    data: { subModule: subModule ?? null },
+  });
+  if (count === 0) throw notFound("Test cases");
+  return { updated: count };
+}
+
+/**
+ * Each module's sub-modules, as its cases name them — for filters, the form's
+ * suggestions and picking part of a module for a run.
+ */
+export async function listSubModules(
+  projectId: string,
+): Promise<{ moduleId: string; name: string; count: number }[]> {
+  const groups = await prisma.testCase.groupBy({
+    by: ["moduleId", "subModule"],
+    where: { projectId, subModule: { not: null } },
+    _count: { _all: true },
+    orderBy: [{ moduleId: "asc" }, { subModule: "asc" }],
+  });
+  return groups.map((group) => ({
+    moduleId: group.moduleId,
+    name: group.subModule!,
+    count: group._count._all,
+  }));
 }
 
 /**

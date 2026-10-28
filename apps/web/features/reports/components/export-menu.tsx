@@ -41,10 +41,13 @@ export function ExportMenu({
   projectId,
   format = "excel",
   excelScope = "summary",
+  platforms = [...PLATFORMS],
 }: {
   projectId: string;
   format?: ExportFormat;
   excelScope?: ExcelReportScope;
+  /** The project's platforms — the only ones worth filtering by. */
+  platforms?: Platform[];
 }) {
   const [pending, setPending] = useState(false);
   const [selectedPlatforms, setSelectedPlatforms] = useState<Platform[]>([]);
@@ -56,8 +59,11 @@ export function ExportMenu({
 
   // Only the sheets that list test-case rows have anything to filter by
   // platform — the summary sheet has no rows, so it keeps a plain button.
+  // With a single platform there is nothing to choose between.
   const canFilterByPlatform =
-    format === "excel" && (excelScope === "cases" || excelScope === "failed");
+    format === "excel" &&
+    (excelScope === "cases" || excelScope === "failed") &&
+    platforms.length > 1;
 
   async function handleExport() {
     setPending(true);
@@ -104,7 +110,7 @@ export function ExportMenu({
       <DropdownMenuTrigger asChild>{button}</DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-56">
         <DropdownMenuLabel>Filter by platform</DropdownMenuLabel>
-        {PLATFORMS.map((platform) => (
+        {platforms.map((platform) => (
           <DropdownMenuCheckboxItem
             key={platform}
             checked={selectedPlatforms.includes(platform)}

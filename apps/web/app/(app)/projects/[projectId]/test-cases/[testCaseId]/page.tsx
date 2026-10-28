@@ -21,20 +21,28 @@ import { RecordResultButton } from "@/features/executions/components/record-resu
 import { RetestButton } from "@/features/executions/components/retest-button";
 import { ExecutionHistory } from "@/features/executions/components/execution-history";
 import { ExecutionPanel } from "@/features/executions/components/execution-panel";
+import { TestCaseCardActions } from "@/features/test-cases/components/test-case-card-actions";
+import { AutomationScriptCard } from "@/features/automation/components/automation-script-card";
 import { TestCaseDetailShell } from "@/features/executions/components/test-case-detail-shell";
 import {
   canComment,
   canExecuteTests,
+  canManageTestCases,
   canMarkRetesting,
   canSetFixStatus,
   isAdmin,
 } from "@/lib/permissions";
+import { prisma } from "@/lib/prisma";
 import {
   hasTestCaseAccess,
   requireProjectAccess,
 } from "@/lib/project-access";
 import { getSessionUser, requireUser } from "@/lib/session";
+import { getJob } from "@/services/ai-job.service";
+import { getLastFinishedScriptJob, getLatestScriptJob } from "@/services/ai-scripts.service";
+import { getAutomationScript, listSignInCases } from "@/services/automation-script.service";
 import { listComments } from "@/services/comment.service";
+import { listRunEnvironments } from "@/services/run-environment.service";
 import {
   getTestCase,
   getTestCaseNeighbours,
@@ -79,10 +87,26 @@ export default async function TestCaseDetailPage({
   // project's URL.
   if (testCase.projectId !== projectId) notFound();
 
-  const [neighbours, comments] = await Promise.all([
+  const [neighbours, comments, script, environments, lastRunItem, latestWrite, lastFinishedWrite, signInCases] = await Promise.all([
     getTestCaseNeighbours(projectId, testCase.tcId),
     listComments(testCaseId),
+    getAutomationScript(testCaseId),
+    listRunEnvironments(projectId),
+    prisma.testRunItem.findFirst({
+      // Only results that ran — a skip from a cancelled run is not a result.
+      where: {
+        testCaseId,
+        status: { in: ["PASSED", "FAILED", "ERROR"] },
+        run: { purpose: "RUN" },
+      },
+      orderBy: { finishedAt: "desc" },
+      select: { status: true, finishedAt: true, run: { select: { id: true, number: true } } },
+    }),
+    getLatestScriptJob(testCaseId),
+    getLastFinishedScriptJob(testCaseId),
+    listSignInCases(projectId),
   ]);
+  const latestWriteJob = latestWrite ? await getJob(latestWrite.id) : null;
 
   const canExecute = canExecuteTests(user.role);
 
@@ -140,7 +164,7 @@ export default async function TestCaseDetailPage({
 
             <PageHeader
               title={testCase.title}
-              description={`${testCase.tcId} · ${testCase.module.name}`}
+              description={`${testCase.tcId} · ${testCase.module.name}${testCase.subModule ? ` › ${testCase.subModule}` : ""}`}
               actions={
                 <div className="flex items-center gap-2">
                   {canExecute && <RecordResultButton />}
@@ -204,8 +228,21 @@ export default async function TestCaseDetailPage({
         left={
           <>
             <Card>
-              <CardHeader>
+              <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2 space-y-0">
                 <CardTitle className="text-base">Test case</CardTitle>
+                <TestCaseCardActions
+                  testCaseId={testCase.id}
+                  hasFrd={testCase.requirements.length > 0}
+                  canManage={canManageTestCases(user.role)}
+                  // Marks a case still to automate: gone once it has a script or
+                  // the AI's work on one, whose card is then always on the page.
+                  showAutomation={
+                    canManageTestCases(user.role) &&
+                    !script &&
+                    !latestWriteJob &&
+                    (testCase.platform === "WEB" || testCase.platform === "API")
+                  }
+                />
               </CardHeader>
               <CardContent className="space-y-5">
                 {details.every((detail) => !detail.value) ? (
@@ -226,10 +263,60 @@ export default async function TestCaseDetailPage({
                     ) : null,
                   )
                 )}
+                {testCase.requirements.length > 0 && (
+                  <div className="space-y-1.5">
+                    <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                      Verifies requirements
+                    </h3>
+                    <ul className="space-y-1 text-sm">
+                      {testCase.requirements.map(({ requirement }) => (
+                        <li key={requirement.id}>
+                          <Link
+                            href={`/projects/${projectId}/requirements`}
+                            className="hover:underline"
+                          >
+                            <span className="font-mono text-xs">
+                              {requirement.code}
+                            </span>{" "}
+                            {requirement.title}
+                          </Link>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
               </CardContent>
             </Card>
 
+            <AutomationScriptCard
+              projectId={projectId}
+              testCaseId={testCase.id}
+              platform={testCase.platform}
+              canManage={canManageTestCases(user.role)}
+              environments={environments}
+              script={
+                script && {
+                  code: script.code,
+                  updatedAt: script.updatedAt.toISOString(),
+                  verifiedAt: script.verifiedAt?.toISOString() ?? null,
+                  updatedBy: script.updatedBy,
+                }
+              }
+              latestWriteJob={latestWriteJob}
+              lastFinishedWriteJobId={lastFinishedWrite?.id ?? null}
+              signInCases={signInCases.filter((c) => c.id !== testCase.id)}
+              lastResult={
+                lastRunItem && {
+                  status: lastRunItem.status,
+                  runId: lastRunItem.run.id,
+                  runNumber: lastRunItem.run.number,
+                  finishedAt: lastRunItem.finishedAt?.toISOString() ?? null,
+                }
+              }
+            />
+
             <ExecutionHistory
+              projectId={projectId}
               executions={testCase.executions}
               currentUserId={user.id}
               canModerate={isAdmin(user.role)}

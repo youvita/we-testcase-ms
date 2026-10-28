@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 
 import { Breadcrumbs } from "@/components/layout/breadcrumbs";
 import { PageHeader } from "@/components/shared/page-header";
+import { ScriptJobsPanel } from "@/features/automation/components/script-jobs-panel";
 import { ExportMenu } from "@/features/reports/components/export-menu";
 import { TestCaseFilters } from "@/features/test-cases/components/test-case-filters";
 import { TestCaseTable } from "@/features/test-cases/components/test-case-table";
@@ -12,7 +13,10 @@ import { requireUser } from "@/lib/session";
 import { testCaseQuerySchema } from "@/lib/validations";
 import { listModules } from "@/services/module.service";
 import { getProject } from "@/services/project.service";
-import { listTestCases } from "@/services/test-case.service";
+import { listSubModules, listTestCases } from "@/services/test-case.service";
+import { listScriptJobs } from "@/services/ai-scripts.service";
+import { listSignInCases } from "@/services/automation-script.service";
+import { listRunEnvironments } from "@/services/run-environment.service";
 
 export const metadata: Metadata = { title: "Test Cases" };
 
@@ -37,13 +41,16 @@ export default async function TestCasesPage({
 
   const query = testCaseQuerySchema.parse(normalized);
 
-  const [project, modules, page] = await Promise.all([
+  const canManage = canManageTestCases(user.role);
+  const [project, modules, subModules, page, environments, scriptJobs, signInCases] = await Promise.all([
     getProject(projectId),
     listModules(projectId),
+    listSubModules(projectId),
     listTestCases(projectId, query),
+    canManage ? listRunEnvironments(projectId) : Promise.resolve([]),
+    canManage ? listScriptJobs(projectId) : Promise.resolve([]),
+    canManage ? listSignInCases(projectId) : Promise.resolve([]),
   ]);
-
-  const canManage = canManageTestCases(user.role);
 
   return (
     <div className="space-y-6">
@@ -60,11 +67,19 @@ export default async function TestCasesPage({
         description={`${page.total} test case${page.total === 1 ? "" : "s"} in ${project.name}`}
         actions={
           <>
-            <ExportMenu projectId={projectId} excelScope="cases" />
+            <ExportMenu
+              projectId={projectId}
+              excelScope="cases"
+              platforms={project.platforms}
+            />
             {canManage && (
               <TestCaseToolbar
                 projectId={projectId}
                 modules={modules.map((m) => ({ id: m.id, name: m.name }))}
+                subModules={subModules}
+                platforms={project.platforms}
+                environments={environments}
+                signInCases={signInCases}
               />
             )}
           </>
@@ -73,12 +88,20 @@ export default async function TestCasesPage({
 
       <TestCaseFilters
         modules={modules.map((m) => ({ id: m.id, name: m.name }))}
+        subModules={subModules}
+        platforms={project.platforms}
       />
+
+      {canManage && <ScriptJobsPanel projectId={projectId} initialRows={scriptJobs} />}
 
       <TestCaseTable
         projectId={projectId}
+        environments={environments}
+        signInCases={signInCases}
         page={page}
         modules={modules.map((m) => ({ id: m.id, name: m.name }))}
+        subModules={subModules}
+        platforms={project.platforms}
         canManage={canManage}
       />
     </div>

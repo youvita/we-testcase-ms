@@ -1,17 +1,21 @@
-// Test Case Management System — Phase 1
+// Test Case Management System
 //
-// Two groups of models live here:
+// Three groups of models live here:
 //   1. Better Auth tables (User, Session, Account, Verification). Their shape is
 //      dictated by the Better Auth Prisma adapter — ids are strings without a
 //      database default because Better Auth generates them itself.
 //   2. Domain tables (Project, Module, TestCase, TestExecution, Attachment).
+//   3. Requirements and AI (ClaudeConnection, RequirementDoc, Requirement,
+//      AiJob, TestCaseDraft) — PRD/FRD in, reviewed test cases out.
+//   4. Automation (RunEnvironment, AutomationScript, TestRun, TestRunItem) —
+//      Playwright scripts run by the separate runner service (apps/runner).
 
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "postgresql"
+  provider  = "postgresql"
   // Pooled connection for the app: serverless opens one per invocation and a
   // direct connection limit is reached almost immediately.
   url       = env("DATABASE_URL")
@@ -38,7 +42,6 @@ enum ProjectStatus {
 enum TestType {
   FUNCTIONAL
   UI
-  API
   NEGATIVE
   INTEGRATION
   REGRESSION
@@ -57,9 +60,15 @@ enum Priority {
   LOW
 }
 
-/// Which platform a case targets.
+/// Where a case is tested — what the tester (or, later, the runner) talks to.
+///
+/// Separate from TestType, which says what *kind* of test it is: "login API
+/// rejects a wrong password" is platform API and type NEGATIVE. iOS and Android
+/// stay apart because the same feature often behaves differently on each and
+/// they are automated with different tooling.
 enum Platform {
   WEB
+  API
   IOS
   ANDROID
 }
@@ -87,6 +96,70 @@ enum FixStatus {
   RETESTING
   WONT_FIX
   NOT_A_BUG
+}
+
+/// What a requirements document is. Only a label — extraction treats every
+/// kind the same way.
+enum RequirementDocKind {
+  PRD
+  FRD
+  OTHER
+}
+
+enum AiJobKind {
+  EXTRACT_REQUIREMENTS
+  GENERATE_TEST_CASES
+  /// Write a test case's Playwright script: draft, run, repair.
+  WRITE_SCRIPT
+  /// Explain why an automated result failed.
+  TRIAGE_FAILURE
+  /// Open pages of the app under test and suggest test cases from them.
+  EXPLORE_APP
+  /// Write an FRD from a test case that has none.
+  GENERATE_FRD
+}
+
+enum AiJobStatus {
+  QUEUED
+  RUNNING
+  SUCCEEDED
+  FAILED
+}
+
+/// Where an AI-written test case stands in review. Nothing the AI writes
+/// becomes a TestCase until QA accepts it.
+enum DraftStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+}
+
+enum TestRunStatus {
+  QUEUED
+  RUNNING
+  PASSED
+  FAILED
+  /// The run could not complete — the runner crashed or stopped responding.
+  /// Says nothing about the product.
+  ERROR
+  CANCELLED
+}
+
+/// Why a run exists. Script checks are Claude trying a draft while writing a
+/// script: they never record results and stay out of the runs list.
+enum TestRunPurpose {
+  RUN
+  SCRIPT_CHECK
+}
+
+enum RunItemStatus {
+  QUEUED
+  PASSED
+  FAILED
+  /// The script itself could not run, e.g. it does not compile.
+  ERROR
+  /// Not run — the run was cancelled or ended first.
+  SKIPPED
 }
 
 // ---------------------------------------------------------------------------
@@ -122,6 +195,13 @@ model User {
   deletedComments  Comment[]        @relation("CommentDeletedBy")
   fixStatusSet     TestCase[]       @relation("TestCaseFixStatusBy")
   fixStatusEvents  FixStatusEvent[] @relation("FixStatusEventActor")
+
+  claudeConnection ClaudeConnection?
+  requirementDocs  RequirementDoc[]
+  aiJobs           AiJob[]
+  reviewedDrafts   TestCaseDraft[]    @relation("TestCaseDraftReviewedBy")
+  testRuns         TestRun[]
+  scriptsEdited    AutomationScript[]
 
   @@index([role])
 }
@@ -183,6 +263,9 @@ model Project {
   version     String?
   environment String?
   status      ProjectStatus @default(PLANNING)
+  /// The platforms this project is tested on. Forms, filters and AI drafting
+  /// offer only these; never empty. Ordered as declared in the enum.
+  platforms   Platform[]    @default([WEB])
   startDate   DateTime?
   endDate     DateTime?
   createdAt   DateTime      @default(now())
@@ -194,9 +277,15 @@ model Project {
   createdById String
   createdBy   User   @relation("ProjectCreatedBy", fields: [createdById], references: [id])
 
-  modules   Module[]
-  testCases TestCase[]
-  members   ProjectMember[]
+  modules         Module[]
+  testCases       TestCase[]
+  members         ProjectMember[]
+  requirementDocs RequirementDoc[]
+  requirements    Requirement[]
+  aiJobs          AiJob[]
+  testCaseDrafts  TestCaseDraft[]
+  runEnvironments RunEnvironment[]
+  testRuns        TestRun[]
 
   @@index([status])
   @@index([qaOwnerId])
@@ -268,6 +357,9 @@ model TestCase {
 
   moduleId String
   module   Module @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+  /// A group inside the module, e.g. "Create" under Customers. Free text:
+  /// the module's sub-modules are whatever its cases use.
+  subModule String?
 
   /// Denormalized from module.projectId. TC IDs are unique per *project*, not
   /// per module, and every list/report query is project-scoped — carrying the
@@ -278,9 +370,13 @@ model TestCase {
   executions      TestExecution[]
   comments        Comment[]
   fixStatusEvents FixStatusEvent[]
+  requirements    TestCaseRequirement[]
+  drafts          TestCaseDraft[]
+  script          AutomationScript?
+  runItems        TestRunItem[]
 
   @@unique([projectId, tcId])
-  @@index([moduleId])
+  @@index([moduleId, subModule])
   @@index([projectId, status])
   @@index([projectId, testType])
   @@index([projectId, priority])
@@ -362,6 +458,9 @@ model TestExecution {
 
   attachments Attachment[]
 
+  /// Set when an automated run recorded this result.
+  runItem TestRunItem?
+
   @@index([testCaseId, executedAt])
   @@index([testerId])
   @@index([executedAt])
@@ -381,4 +480,330 @@ model Attachment {
   execution   TestExecution @relation(fields: [executionId], references: [id], onDelete: Cascade)
 
   @@index([executionId])
+}
+
+// ---------------------------------------------------------------------------
+// Requirements & AI
+// ---------------------------------------------------------------------------
+
+/// A person's own Claude subscription, connected for AI features.
+///
+/// Every AI call runs on the subscription of whoever asked for it — there is
+/// no shared credential. The token is a `claude setup-token` token
+/// (`sk-ant-oat…`), stored encrypted (lib/secret-box.ts) and never sent back
+/// to the browser; `tokenHint` is all the UI ever shows.
+model ClaudeConnection {
+  userId         String   @id
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenEncrypted String
+  /// Last four characters, so a person can tell which token is connected.
+  tokenHint      String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+
+/// A PRD, FRD or other spec uploaded to a project. The source of truth for
+/// black-box testing: requirements are extracted from `content`, and test
+/// cases trace back to those requirements.
+model RequirementDoc {
+  id        String             @id @default(cuid())
+  title     String
+  kind      RequirementDocKind @default(PRD)
+  /// Original upload name; null when the text was pasted.
+  fileName  String?
+  /// Plain text extracted at upload. The file itself is not kept — the text
+  /// is all extraction reads, and it is what a re-extraction runs on.
+  content   String
+  charCount Int
+  createdAt DateTime           @default(now())
+  updatedAt DateTime           @updatedAt
+
+  projectId String
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  createdById String
+  createdBy   User   @relation(fields: [createdById], references: [id])
+
+  requirements Requirement[]
+  jobs         AiJob[]
+
+  @@index([projectId, createdAt])
+}
+
+/// One testable requirement from a document.
+model Requirement {
+  id                 String   @id @default(cuid())
+  /// The document's own identifier ("FR-012", "3.2.1") when it has one.
+  /// Unique per document, not per project — a PRD and an FRD may both have a
+  /// "1.2". Re-extracting a document updates rows by this code, so links to
+  /// test cases survive.
+  code               String
+  title              String
+  description        String?
+  acceptanceCriteria String?
+  /// Things the document leaves unclear, as the AI read it. Worth asking the
+  /// product owner before testing.
+  openQuestions      String?
+  section            String?
+  /// Order within the document.
+  position           Int      @default(0)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  docId String
+  doc   RequirementDoc @relation(fields: [docId], references: [id], onDelete: Cascade)
+
+  /// Denormalized from doc.projectId — every list is project-scoped.
+  projectId String
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  testCases TestCaseRequirement[]
+
+  @@unique([docId, code])
+  @@index([projectId, position])
+}
+
+/// Traceability: which requirements a test case verifies.
+model TestCaseRequirement {
+  testCaseId    String
+  requirementId String
+  createdAt     DateTime @default(now())
+
+  testCase    TestCase    @relation(fields: [testCaseId], references: [id], onDelete: Cascade)
+  requirement Requirement @relation(fields: [requirementId], references: [id], onDelete: Cascade)
+
+  @@id([testCaseId, requirementId])
+  @@index([requirementId])
+}
+
+/// A unit of AI work, run in the app process on its creator's subscription.
+///
+/// AI calls take minutes and the Cloudflare tunnel cuts a request at 100
+/// seconds, so they never run inside a request: the route records a job and
+/// returns, and the page polls it. See services/ai-job.service.ts.
+model AiJob {
+  id            String      @id @default(cuid())
+  kind          AiJobKind
+  status        AiJobStatus @default(QUEUED)
+  /// What the job was asked to do — e.g. requirement ids and options.
+  input         Json?
+  progressDone  Int         @default(0)
+  progressTotal Int         @default(0)
+  /// One line on what it achieved, shown when it succeeds.
+  summary       String?
+  error         String?
+  /// What a job produced beyond its summary, e.g. the written script.
+  result        Json?
+  createdAt     DateTime    @default(now())
+  startedAt     DateTime?
+  finishedAt    DateTime?
+
+  projectId String
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  /// Set for extraction jobs.
+  docId String?
+  doc   RequirementDoc? @relation(fields: [docId], references: [id], onDelete: Cascade)
+
+  createdById String
+  createdBy   User   @relation(fields: [createdById], references: [id])
+
+  drafts TestCaseDraft[]
+
+  @@index([projectId, createdAt])
+  @@index([status])
+}
+
+/// A test case the AI proposed, waiting for QA to accept, edit or reject it.
+model TestCaseDraft {
+  id             String      @id @default(cuid())
+  status         DraftStatus @default(PENDING)
+  /// Module by name: accepting creates it if the project does not have it.
+  moduleName     String
+  subModule      String?
+  title          String
+  preconditions  String?
+  steps          String?
+  expectedResult String?
+  testType       TestType    @default(FUNCTIONAL)
+  priority       Priority    @default(MEDIUM)
+  platform       Platform    @default(WEB)
+  /// Requirements this case verifies. Ids rather than a relation: a draft is
+  /// short-lived, and a requirement deleted meanwhile is simply skipped on
+  /// accept.
+  requirementIds String[]
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+
+  reviewedAt   DateTime?
+  reviewedById String?
+  reviewedBy   User?     @relation("TestCaseDraftReviewedBy", fields: [reviewedById], references: [id])
+
+  /// The case created on accept.
+  testCaseId String?
+  testCase   TestCase? @relation(fields: [testCaseId], references: [id], onDelete: SetNull)
+
+  projectId String
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  jobId String?
+  job   AiJob?  @relation(fields: [jobId], references: [id], onDelete: SetNull)
+
+  @@index([projectId, status])
+}
+
+// ---------------------------------------------------------------------------
+// Automation
+// ---------------------------------------------------------------------------
+
+/// Where automated runs point — SIT, UAT and so on, per project.
+model RunEnvironment {
+  id              String   @id @default(cuid())
+  name            String
+  /// Base URL for Web scripts: `page.goto("/login")` resolves against it.
+  webBaseUrl      String?
+  /// Base URL for API scripts: `request.get("/users")` resolves against it.
+  apiBaseUrl      String?
+  /// Where Web work starts, after the base URL — e.g. "/kh/login". Claude's
+  /// script writing and exploring open it first; dialogs prefill it.
+  startPath       String?
+  /// `{ key, value, secret }[]` as JSON, sealed with lib/secret-box.ts.
+  /// Scripts read them as `vars.KEY`. Secret values never go back to the
+  /// browser; only the runner receives them, at run time.
+  variablesSealed String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  projectId String
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  runs TestRun[]
+
+  @@unique([projectId, name])
+}
+
+/// The Playwright script that automates a test case: the body of one
+/// `test(...)`, with `page`, `request`, `expect`, `env` and `vars` in scope.
+model AutomationScript {
+  testCaseId String    @id
+  testCase   TestCase  @relation(fields: [testCaseId], references: [id], onDelete: Cascade)
+  code       String
+  /// Set the first time the script passes, or when QA vouches for it; cleared
+  /// when its code changes. Until then it is a draft, and its failures are
+  /// not recorded on the case — an unproven script cannot fail a test.
+  verifiedAt DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  updatedById String
+  updatedBy   User   @relation(fields: [updatedById], references: [id])
+}
+
+/// One press of "Run": a set of automated cases against one environment.
+///
+/// Queued here, then claimed and executed by the runner service, which
+/// reports each item back. See services/test-run.service.ts.
+model TestRun {
+  id      String         @id @default(cuid())
+  /// "Run #12" — counted per project. Null for script checks, which are
+  /// not runs anyone started and should not use up numbers.
+  number  Int?
+  purpose TestRunPurpose @default(RUN)
+  status  TestRunStatus  @default(QUEUED)
+
+  /// Write results to the test cases as executions, as a manual run would.
+  recordResults Boolean @default(true)
+
+  /// One case at a time, in list order — for cases that depend on each
+  /// other's data. Otherwise they run side by side.
+  inOrder         Boolean @default(false)
+  /// The case whose script signs in before each Web case of the run.
+  setupTestCaseId String?
+  setupTcId       String?
+
+  /// Stream what the browser shows to the run page while it runs.
+  liveView  Boolean @default(false)
+  /// Pause between browser actions, so a person watching can follow.
+  slowMoMs  Int     @default(0)
+  /// Issued at claim time: the only credential the test processes get, and
+  /// good only for posting this run's live frames.
+  liveToken String?
+
+  /// Copied at start, so renaming or deleting the environment later does not
+  /// change what a past run says it ran against.
+  environmentName String
+
+  total   Int @default(0)
+  passed  Int @default(0)
+  failed  Int @default(0)
+  errored Int @default(0)
+  skipped Int @default(0)
+
+  /// Run-level failure, e.g. "the runner stopped responding".
+  error String?
+
+  cancelRequested Boolean   @default(false)
+  runnerName      String?
+  createdAt       DateTime  @default(now())
+  startedAt       DateTime?
+  /// Bumped by the runner while it works; a stale one means it died.
+  heartbeatAt     DateTime?
+  finishedAt      DateTime?
+
+  projectId String
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  environmentId String?
+  environment   RunEnvironment? @relation(fields: [environmentId], references: [id], onDelete: SetNull)
+
+  /// Also the tester on the executions the run records.
+  createdById String
+  createdBy   User   @relation(fields: [createdById], references: [id])
+
+  items TestRunItem[]
+
+  @@unique([projectId, number])
+  @@index([status, createdAt])
+}
+
+/// One test case within a run.
+model TestRunItem {
+  id         String        @id @default(cuid())
+  status     RunItemStatus @default(QUEUED)
+  position   Int
+  durationMs Int?
+  /// The failure message, without terminal colour codes.
+  error      String?
+  /// Tail of the test's console output.
+  log        String?
+  /// Evidence files, relative to UPLOAD_DIR:
+  /// `{ kind: "screenshot" | "video" | "trace", path, fileName, mimeType, size }[]`.
+  /// A trace zip opens at trace.playwright.dev. Kept on the item rather than
+  /// the execution so a run that records no results still has its evidence.
+  artifacts  Json?
+  /// The script as it ran; the case's script may have changed since.
+  code       String
+  /// The case's script was still a draft when the run was queued.
+  draft      Boolean       @default(false)
+  finishedAt DateTime?
+
+  runId String
+  run   TestRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  /// Null only for an exploration, which looks at pages before any test
+  /// case exists for them.
+  testCaseId String?
+  testCase   TestCase? @relation(fields: [testCaseId], references: [id], onDelete: Cascade)
+
+  /// Claude's reading of a failure: `{ category, summary, explanation,
+  /// fixedCode?, bugReport? }`. Set by a TRIAGE_FAILURE job.
+  triage    Json?
+  triagedAt DateTime?
+
+  /// The execution recorded from this result, when the run records results.
+  executionId String?        @unique
+  execution   TestExecution? @relation(fields: [executionId], references: [id], onDelete: SetNull)
+
+  @@index([runId, position])
+  @@index([testCaseId])
 }

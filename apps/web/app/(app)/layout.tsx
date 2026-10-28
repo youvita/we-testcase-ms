@@ -17,7 +17,7 @@ export default async function AppLayout({
       </aside>
 
       <div className="lg:pl-64">
-        <header className="sticky top-0 z-20 flex h-14 items-center gap-2 border-b bg-background/95 px-4 backdrop-blur supports-[backdrop-filter]:bg-background/80 sm:px-6">
+        <header className="sticky top-0 z-20 flex h-14 items-center gap-2 border-b bg-background px-4 sm:px-6">
           <MobileNav role={user.role} />
           <div className="flex-1" />
           <UserMenu user={user} />

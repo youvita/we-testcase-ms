@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { KeyRound, Loader2, LogOut, UserRound } from "lucide-react";
+import { KeyRound, Loader2, LogOut, Sparkles, UserRound } from "lucide-react";
 import { toast } from "sonner";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -16,6 +16,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { RoleBadge } from "@/components/shared/priority-badge";
+import { ClaudeConnectionDialog } from "@/features/ai/components/claude-connection-dialog";
 import { ChangePasswordDialog } from "@/features/profile/components/change-password-dialog";
 import { ProfileDialog } from "@/features/profile/components/profile-dialog";
 import { signOut } from "@/lib/auth-client";
@@ -27,6 +28,7 @@ export function UserMenu({ user }: { user: SessionUser }) {
   const [signingOut, setSigningOut] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [passwordOpen, setPasswordOpen] = useState(false);
+  const [claudeOpen, setClaudeOpen] = useState(false);
 
   async function handleSignOut() {
     setSigningOut(true);
@@ -77,6 +79,10 @@ export function UserMenu({ user }: { user: SessionUser }) {
             <KeyRound className="mr-2 size-4" />
             Change password
           </DropdownMenuItem>
+          <DropdownMenuItem onSelect={() => setClaudeOpen(true)}>
+            <Sparkles className="mr-2 size-4" />
+            Claude subscription
+          </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem
             onSelect={(event) => {
@@ -105,6 +111,7 @@ export function UserMenu({ user }: { user: SessionUser }) {
         open={passwordOpen}
         onOpenChange={setPasswordOpen}
       />
+      <ClaudeConnectionDialog open={claudeOpen} onOpenChange={setClaudeOpen} />
     </>
   );
 }

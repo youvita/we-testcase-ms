@@ -33,7 +33,9 @@ export const GET = route<Ctx>({}, async (request, { params, user }) => {
   if (platformParam) {
     const tokens = platformParam.split(",").map((token) => token.trim());
     if (!tokens.every((token) => (PLATFORMS as readonly string[]).includes(token))) {
-      throw badRequest('platform must be a comma-separated list of "WEB", "IOS", "ANDROID"');
+      throw badRequest(
+        `platform must be a comma-separated list of ${PLATFORMS.map((p) => `"${p}"`).join(", ")}`,
+      );
     }
     platforms = tokens as Platform[];
   }

@@ -22,5 +22,43 @@ services:
       timeout: 5s
       retries: 10
 
+  # Claude without an API key: the `claude` CLI behind the Messages API, run per request
+  # on the subscription token of whoever asked (see scripts/claude-bridge.mjs). `npm run
+  # dev` runs on the host, so in dev the port is published — on loopback only, because the
+  # bridge itself authenticates nobody. apps/web/.env points CLAUDE_BRIDGE_URL here.
+  claude-bridge:
+    container_name: wetestcase-claude-bridge-dev
+    build:
+      context: .
+      dockerfile: deploy/bridge.Dockerfile
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8788:8788"
+
+  # The automation runner (apps/runner): claims queued runs from the app and
+  # executes them with Playwright. Behind a profile because its image carries
+  # browsers and is large:
+  #
+  #   docker compose --profile automation up -d runner
+  #
+  # It reaches `npm run dev` on the host through host.docker.internal. A
+  # script that targets a site on this Mac must use that name too, not
+  # localhost — inside the container, localhost is the container.
+  runner:
+    container_name: wetestcase-runner-dev
+    profiles: ["automation"]
+    build:
+      context: .
+      dockerfile: apps/runner/Dockerfile
+    restart: unless-stopped
+    environment:
+      APP_URL: ${RUNNER_APP_URL:-http://host.docker.internal:3001}
+      RUNNER_TOKEN: ${RUNNER_TOKEN:-dev-runner-token}
+      RUNNER_NAME: dev-runner
+    # Chromium needs more shared memory than Docker's 64 MB default.
+    shm_size: "1gb"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
 volumes:
   wetestcase-pgdata:

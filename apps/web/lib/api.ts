@@ -81,6 +81,21 @@ export function toErrorResponse(error: unknown) {
     }
   }
 
+  // In development, a dev server started before the last migration still
+  // holds the old database client, which rejects the new fields. Say so,
+  // rather than "something went wrong" — the fix is a restart.
+  if (
+    process.env.NODE_ENV !== "production" &&
+    error instanceof Prisma.PrismaClientValidationError &&
+    /Unknown (argument|field)|Invalid value for argument/.test(error.message)
+  ) {
+    console.error("[api] database client is older than the schema:", error.message.split("\n").slice(-3).join(" "));
+    return fail(
+      "This dev server is older than the database. Restart it: Ctrl+C in its terminal, then npm run dev.",
+      503,
+    );
+  }
+
   if (
     error instanceof Prisma.PrismaClientInitializationError ||
     (error instanceof Error && error.message.includes("Can't reach database"))

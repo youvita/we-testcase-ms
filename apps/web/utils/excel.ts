@@ -10,6 +10,7 @@ import type { Platform, Priority, TestType } from "@prisma/client";
 export const CANONICAL_FIELDS = [
   "tcId",
   "module",
+  "subModule",
   "title",
   "preconditions",
   "steps",
@@ -37,6 +38,7 @@ const HEADER_ALIASES: Record<CanonicalField, string[]> = {
     "serialno",
   ],
   module: ["module", "modulename", "feature", "functionality", "component", "screen", "epic"],
+  subModule: ["submodule", "submodulename", "subfeature", "subfunction", "function", "section", "group"],
   title: [
     "testcase",
     "testcasename",
@@ -165,10 +167,6 @@ const TEST_TYPE_ALIASES: Record<string, TestType> = {
   ux: "UI",
   visual: "UI",
   layout: "UI",
-  api: "API",
-  service: "API",
-  backend: "API",
-  contract: "API",
   negative: "NEGATIVE",
   invalid: "NEGATIVE",
   errorhandling: "NEGATIVE",
@@ -248,6 +246,12 @@ const PLATFORM_ALIASES: Record<string, Platform> = {
   website: "WEB",
   browser: "WEB",
   desktop: "WEB",
+  api: "API",
+  restapi: "API",
+  rest: "API",
+  service: "API",
+  backend: "API",
+  contract: "API",
   ios: "IOS",
   iphone: "IOS",
   ipad: "IOS",
@@ -259,14 +263,26 @@ const PLATFORM_ALIASES: Record<string, Platform> = {
 /**
  * Coerce a spreadsheet platform cell into the Platform enum.
  *
- * Blank or unrecognised values fall back to WEB — same default as a newly
- * created case in the UI.
+ * Null when the cell is blank or unrecognised: the importer then uses the
+ * project's own default platform rather than assuming Web.
  */
-export function parsePlatform(value: unknown): Platform {
-  if (value === null || value === undefined) return "WEB";
+export function parsePlatform(value: unknown): Platform | null {
+  if (value === null || value === undefined) return null;
   const key = normalizeHeader(value.toString());
-  if (!key) return "WEB";
-  return PLATFORM_ALIASES[key] ?? "WEB";
+  if (!key) return null;
+  return PLATFORM_ALIASES[key] ?? null;
+}
+
+/**
+ * Whether a test-type cell says "API".
+ *
+ * API used to be a test type. Sheets exported before it became a platform
+ * still say so in the Test Type column, and the importer reads that as the
+ * platform when the Platform cell does not say otherwise.
+ */
+export function isApiTestTypeLabel(value: unknown): boolean {
+  if (value === null || value === undefined) return false;
+  return PLATFORM_ALIASES[normalizeHeader(value.toString())] === "API";
 }
 
 /**

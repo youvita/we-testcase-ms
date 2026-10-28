@@ -2,11 +2,13 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import {
+  Bot,
   BugPlay,
   CheckCircle2,
   CircleDashed,
   CircleSlash,
   ClipboardList,
+  FileText,
   ListChecks,
   XCircle,
 } from "lucide-react";
@@ -21,7 +23,10 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { PageHeader } from "@/components/shared/page-header";
-import { ProjectStatusBadge } from "@/components/shared/priority-badge";
+import {
+  PlatformBadge,
+  ProjectStatusBadge,
+} from "@/components/shared/priority-badge";
 import { StatCard } from "@/components/shared/stat-card";
 import { DailyExecutionChart } from "@/features/dashboard/components/daily-execution-chart";
 import { ModuleProgressList } from "@/features/dashboard/components/module-progress-list";
@@ -107,6 +112,18 @@ export default async function ProjectOverviewPage({
                 )}
               </Link>
             </Button>
+            <Button variant="outline" asChild>
+              <Link href={`/projects/${projectId}/automation`}>
+                <Bot className="mr-2 size-4" />
+                Automation
+              </Link>
+            </Button>
+            <Button variant="outline" asChild>
+              <Link href={`/projects/${projectId}/requirements`}>
+                <FileText className="mr-2 size-4" />
+                Requirements
+              </Link>
+            </Button>
             <Button asChild>
               <Link href={`/projects/${projectId}/test-cases`}>
                 <ListChecks className="mr-2 size-4" />
@@ -118,6 +135,11 @@ export default async function ProjectOverviewPage({
       >
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-muted-foreground">
           <ProjectStatusBadge status={project.status} />
+          <span className="flex flex-wrap gap-1">
+            {project.platforms.map((platform) => (
+              <PlatformBadge key={platform} platform={platform} />
+            ))}
+          </span>
           {project.version && <span>Version {project.version}</span>}
           {project.environment && <span>{project.environment}</span>}
           <span>QA owner: {project.qaOwner?.name ?? "Unassigned"}</span>
