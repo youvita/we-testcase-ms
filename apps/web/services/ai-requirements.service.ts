@@ -11,13 +11,14 @@ import {
   type GenerateTestCasesInput,
   type GenerationDepth,
   type Platform,
+  type RequirementSnapshot,
 } from "@wetestcase/dto";
 import { splitDocument } from "@/utils/document-text";
 
 import { enqueueJob } from "./ai-job.service";
 import { resolveProjectPlatform } from "./project.service";
 import {
-  upsertExtractedRequirements,
+  startRequirementReading,
   type ExtractedRequirement,
 } from "./requirement.service";
 
@@ -138,19 +139,55 @@ const EXTRACT_SYSTEM = `You are a senior QA analyst preparing black-box tests. Y
 You never invent behaviour the document does not state. Where the document is vague, incomplete or contradicts itself, you record that as an open question instead of guessing.
 You answer with JSON only.`;
 
+/** Past this, the earlier requirements are listed by code and title only. */
+const PREVIOUS_FULL_CHARS = 60_000;
+
+/**
+ * The requirements an earlier reading found, so the AI gives the same
+ * requirement the same code — without it, a document with no identifiers of
+ * its own gets new made-up codes every time — and copies text the document
+ * has not changed, so wording alone does not show up as a change.
+ */
+function previousRequirementsBlock(previous: RequirementSnapshot[]): string {
+  if (!previous.length) return "";
+  const full = previous.map((req) =>
+    [
+      `${req.code}: ${req.title}`,
+      req.description ? `  description: ${req.description}` : null,
+      req.acceptanceCriteria ? `  acceptanceCriteria: ${req.acceptanceCriteria}` : null,
+    ]
+      .filter(Boolean)
+      .join("\n"),
+  );
+  const listing =
+    full.join("\n").length <= PREVIOUS_FULL_CHARS
+      ? full.join("\n")
+      : previous.map((req) => `${req.code}: ${req.title}`).join("\n");
+  return `
+This document was read before. These are the requirements found then:
+<previous-requirements>
+${listing}
+</previous-requirements>
+- A requirement that is still in the text keeps its code above, even if its wording, numbering or section changed. Only a behaviour that is new gets a new code, and never one listed above.
+- Where the document still says the same thing, repeat that requirement's title, description and acceptance criteria exactly as listed. Change them only where the document's text changed.
+- Do not list a requirement above that this part of the text does not contain.
+`;
+}
+
 function extractPrompt(options: {
   title: string;
   kind: string;
   part: number;
   parts: number;
   takenCodes: string[];
+  previous: RequirementSnapshot[];
   text: string;
 }) {
   const taken = options.takenCodes.length
     ? `Codes already used by earlier parts (do not reuse them): ${options.takenCodes.slice(-300).join(", ")}\n`
     : "";
   return `Document: "${options.title}" (${options.kind}), part ${options.part} of ${options.parts}.
-${taken}
+${taken}${previousRequirementsBlock(options.previous)}
 Extract every testable requirement from the text inside <document>.
 
 Rules:
@@ -199,16 +236,12 @@ export async function startExtraction(
       const parts = splitDocument(doc.content, EXTRACT_PART_CHARS);
       await progress(0, parts.length);
 
-      const existing = await prisma.requirement.findMany({
-        where: { docId },
-        select: { code: true },
-      });
+      const reading = await startRequirementReading(docId);
       // Codes from earlier parts of *this* run. The document's existing codes
-      // are not listed: re-extraction is meant to land on them again.
+      // are listed apart: re-extraction is meant to land on them again.
       const taken: string[] = [];
       let position = 0;
-      let created = 0;
-      let updated = 0;
+      let found = 0;
 
       for (const [index, text] of parts.entries()) {
         const reply = await askClaude({
@@ -220,6 +253,7 @@ export async function startExtraction(
             part: index + 1,
             parts: parts.length,
             takenCodes: taken,
+            previous: reading.previous,
             text,
           }),
         });
@@ -236,30 +270,28 @@ export async function startExtraction(
           return true;
         });
 
-        const result = await upsertExtractedRequirements(
-          docId,
-          doc.projectId,
-          items,
-          position,
-        );
-        created += result.created;
-        updated += result.updated;
-        position += items.length;
+        for (const item of items) await reading.save(item, position++);
+        found += items.length;
         taken.push(...items.map((item) => item.code));
         await progress(index + 1, parts.length);
       }
 
-      if (created + updated === 0) {
+      if (found === 0) {
+        // Nothing to compare: marking every earlier requirement missing
+        // would only bury them.
         throw new AiError(
           "The AI found no testable requirements in this document.",
         );
       }
-      const kept = existing.length - updated;
+      const tally = await reading.finish();
+      if (!reading.previous.length) return `Found ${found} requirements`;
       return [
-        `Found ${created + updated} requirements`,
-        created ? `${created} new` : null,
-        updated ? `${updated} updated` : null,
-        kept > 0 ? `${kept} earlier ones kept` : null,
+        `Version ${reading.version}: ${found} requirements`,
+        tally.added ? `${tally.added} new` : null,
+        tally.changed ? `${tally.changed} changed` : null,
+        tally.missing ? `${tally.missing} not found — review them` : null,
+        tally.toConfirm ? `${tally.toConfirm} may be renamed — confirm` : null,
+        !tally.added && !tally.changed && !tally.missing ? "no changes" : null,
       ]
         .filter(Boolean)
         .join(", ");

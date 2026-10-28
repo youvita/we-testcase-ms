@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   Eye,
+  FilePlus2,
   FileText,
   Loader2,
   MoreHorizontal,
@@ -49,6 +50,7 @@ import {
   type RequirementDocDto,
   type RequirementDocKind,
 } from "@wetestcase/dto";
+import { cn } from "@/lib/utils";
 import { api, errorMessage } from "@/utils/api-client";
 import { formatRelative } from "@/utils/format";
 
@@ -71,6 +73,7 @@ export function DocumentsPanel({
 }) {
   const router = useRouter();
   const [uploadOpen, setUploadOpen] = useState(false);
+  const [newVersionOf, setNewVersionOf] = useState<RequirementDocDto | null>(null);
   const [viewing, setViewing] = useState<RequirementDocDto | null>(null);
   const [deleting, setDeleting] = useState<RequirementDocDto | null>(null);
 
@@ -133,6 +136,7 @@ export function DocumentsPanel({
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="truncate font-medium">{doc.title}</span>
                       <Badge variant="outline">{doc.kind}</Badge>
+                      {doc.version > 1 && <Badge variant="secondary">v{doc.version}</Badge>}
                     </div>
                     <p className="truncate text-xs text-muted-foreground">
                       {doc.fileName ?? "Pasted text"} ·{" "}
@@ -174,6 +178,12 @@ export function DocumentsPanel({
                         View text
                       </DropdownMenuItem>
                       {canManage && (
+                        <DropdownMenuItem disabled={reading} onSelect={() => setNewVersionOf(doc)}>
+                          <FilePlus2 className="mr-2 size-4" />
+                          Upload new version
+                        </DropdownMenuItem>
+                      )}
+                      {canManage && (
                         <DropdownMenuItem
                           className="text-destructive focus:text-destructive"
                           onSelect={() => setDeleting(doc)}
@@ -201,6 +211,17 @@ export function DocumentsPanel({
         }}
       />
 
+      <UploadDialog
+        projectId={projectId}
+        newVersionOf={newVersionOf}
+        open={newVersionOf !== null}
+        onOpenChange={(open) => !open && setNewVersionOf(null)}
+        onUploaded={(docId) => {
+          router.refresh();
+          void extract(docId);
+        }}
+      />
+
       <DocumentTextDialog doc={viewing} onClose={() => setViewing(null)} />
 
       <ConfirmDialog
@@ -218,13 +239,19 @@ export function DocumentsPanel({
   );
 }
 
+/**
+ * Add a document, or — with `newVersionOf` — replace an existing one's text
+ * with a newer version, whose reading is then compared with the one before.
+ */
 function UploadDialog({
   projectId,
+  newVersionOf,
   open,
   onOpenChange,
   onUploaded,
 }: {
   projectId: string;
+  newVersionOf?: RequirementDocDto | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onUploaded: (docId: string) => void;
@@ -248,6 +275,9 @@ function UploadDialog({
   async function handleSave() {
     setSaving(true);
     try {
+      const url = newVersionOf
+        ? `/api/requirement-docs/${newVersionOf.id}/versions`
+        : `/api/projects/${projectId}/requirement-docs`;
       let created: { id: string };
       if (mode === "file") {
         if (!file) throw new Error("Choose a file to upload");
@@ -255,15 +285,11 @@ function UploadDialog({
         form.append("file", file);
         form.append("title", title);
         form.append("kind", kind);
-        created = await api.post(`/api/projects/${projectId}/requirement-docs`, form);
+        created = await api.post(url, form);
       } else {
-        created = await api.post(`/api/projects/${projectId}/requirement-docs`, {
-          title,
-          kind,
-          content,
-        });
+        created = await api.post(url, newVersionOf ? { content } : { title, kind, content });
       }
-      toast.success("Document added");
+      toast.success(newVersionOf ? "New version uploaded" : "Document added");
       reset();
       onOpenChange(false);
       onUploaded(created.id);
@@ -275,7 +301,9 @@ function UploadDialog({
   }
 
   const ready =
-    mode === "file" ? file !== null : title.trim().length >= 2 && content.trim().length >= 50;
+    mode === "file"
+      ? file !== null
+      : (newVersionOf || title.trim().length >= 2) && content.trim().length >= 50;
 
   return (
     <Dialog
@@ -286,10 +314,15 @@ function UploadDialog({
     >
       <DialogContent className="sm:max-w-xl">
         <DialogHeader>
-          <DialogTitle>Add a requirements document</DialogTitle>
+          <DialogTitle>
+            {newVersionOf
+              ? `New version of "${newVersionOf.title}"`
+              : "Add a requirements document"}
+          </DialogTitle>
           <DialogDescription>
-            The AI starts reading it as soon as it is added, on your Claude
-            subscription.
+            {newVersionOf
+              ? `Replaces version ${newVersionOf.version}, which is kept. The AI reads the new text on your Claude subscription and marks each requirement new, changed or not found, so you can review the test cases linked to them.`
+              : "The AI starts reading it as soon as it is added, on your Claude subscription."}
           </DialogDescription>
         </DialogHeader>
 
@@ -299,7 +332,7 @@ function UploadDialog({
             <TabsTrigger value="paste">Paste text</TabsTrigger>
           </TabsList>
 
-          <div className="mt-4 grid gap-4 sm:grid-cols-[1fr_140px]">
+          <div className={cn("mt-4 grid gap-4 sm:grid-cols-[1fr_140px]", newVersionOf && "hidden")}>
             <div className="space-y-2">
               <Label htmlFor="doc-title">Title</Label>
               <Input
@@ -367,7 +400,7 @@ function UploadDialog({
           </Button>
           <Button disabled={!ready || saving} onClick={() => void handleSave()}>
             {saving && <Loader2 className="mr-2 size-4 animate-spin" />}
-            Add and read
+            {newVersionOf ? "Upload and compare" : "Add and read"}
           </Button>
         </DialogFooter>
       </DialogContent>

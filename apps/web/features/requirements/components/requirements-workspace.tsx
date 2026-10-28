@@ -169,7 +169,7 @@ export function RequirementsWorkspace({
       <Tabs value={tab} onValueChange={setTab}>
         <TabsList>
           <TabsTrigger value="requirements">
-            Requirements ({requirements.length})
+            Requirements ({requirements.filter((req) => req.status === "ACTIVE").length})
           </TabsTrigger>
           <TabsTrigger value="drafts">
             Review drafts
