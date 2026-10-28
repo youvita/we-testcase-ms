@@ -14,6 +14,7 @@ import {
 import { PLATFORM_LABELS } from "@/lib/constants";
 import { isAutomationConfigured } from "@/lib/runner-auth";
 import type { SessionUser } from "@/lib/session";
+import { errorHeadline } from "@/utils/error-line";
 import {
   AUTOMATABLE_PLATFORMS,
   RUN_SPEEDS,
@@ -25,6 +26,7 @@ import {
   type Platform,
   type RunTriageDto,
   type ScriptBatchResult,
+  type ScriptReference,
   type ScriptJobRow,
   type RunItemStatus,
   type ScriptWritingResult,
@@ -245,6 +247,72 @@ ${body}
 `;
 }
 
+/** How many other cases' scripts go into a prompt, and how much of each. */
+const MAX_REFERENCES = 3;
+const REFERENCE_CHARS = 8_000;
+
+type ReferenceScript = ScriptReference & { code: string };
+
+const asReference = ({ testCaseId, tcId, title }: ReferenceScript): ScriptReference => ({ testCaseId, tcId, title });
+
+/**
+ * Scripts from other cases in the project that have passed — the same module
+ * first, then the most recently changed. They already know how to log in, find
+ * the menus and fill the forms, which Claude would otherwise rediscover try by
+ * try.
+ */
+async function findReferenceScripts(testCase: {
+  id: string;
+  projectId: string;
+  moduleId: string;
+  platform: Platform;
+}): Promise<ReferenceScript[]> {
+  const scripts = await prisma.automationScript.findMany({
+    where: {
+      verifiedAt: { not: null },
+      testCaseId: { not: testCase.id },
+      testCase: { projectId: testCase.projectId, platform: testCase.platform },
+    },
+    orderBy: { updatedAt: "desc" },
+    take: 20,
+    select: {
+      code: true,
+      testCase: { select: { id: true, tcId: true, title: true, moduleId: true } },
+    },
+  });
+  const sameModule = (s: (typeof scripts)[number]) => (s.testCase.moduleId === testCase.moduleId ? 0 : 1);
+  // A stable sort keeps the newest first within each group.
+  return scripts
+    .sort((a, b) => sameModule(a) - sameModule(b))
+    .slice(0, MAX_REFERENCES)
+    .map((s) => ({ testCaseId: s.testCase.id, tcId: s.testCase.tcId, title: s.testCase.title, code: s.code }));
+}
+
+function withReferences(references: ReferenceScript[]): string {
+  if (!references.length) return "";
+  const blocks = references.map((r) => {
+    const code = r.code.length > REFERENCE_CHARS ? `${r.code.slice(0, REFERENCE_CHARS)}\n// … (cut)` : r.code;
+    return `${r.tcId}: ${r.title}
+\`\`\`ts
+${code}
+\`\`\``;
+  });
+  return `Scripts from other test cases in this project that pass against this application. Reuse their login, navigation, locators and ways of creating records wherever this case does the same thing — they are proven, so prefer them over guessing from the page outline. This case's own steps still decide what to test.
+
+${blocks.join("\n\n")}
+
+`;
+}
+
+/**
+ * Whether a failed run got as far as a check and the check said no — the only
+ * failure that says something about the product. A timeout or a crash stopped
+ * the script before it could tell.
+ */
+function failedAtAssertion(item: { status: RunItemStatus; error: string | null }) {
+  return item.status === "FAILED" && /^Error: expect\(/.test(errorHeadline(item.error));
+}
+
 /** One try for the panel: the script, how its run went, and what Claude changed. */
 function attemptOf(
   draft: { code: string; change: string },
@@ -305,6 +373,7 @@ export async function startScriptWriting(
       steps: true,
       expectedResult: true,
       platform: true,
+      moduleId: true,
       module: { select: { name: true } },
     },
   });
@@ -366,11 +435,13 @@ export async function startScriptWriting(
       let step = 0;
       await progress(step, total);
 
+      const references = await findReferenceScripts(testCase);
       const result: ScriptWritingResult = {
         testCaseId,
         outcome: "failing",
         code: "",
         notes: "",
+        references: references.map(asReference),
         attempts: [],
       };
 
@@ -450,7 +521,7 @@ export async function startScriptWriting(
           model: input.model,
           system: WRITE_SYSTEM,
           images: evidence.screenshot ? [evidence.screenshot] : undefined,
-          prompt: withFrd(input.frdText, input.frdName) + (previous
+          prompt: withFrd(input.frdText, input.frdName) + withReferences(references) + (previous
             ? repairPrompt({
                 testCase,
                 env,
@@ -482,8 +553,10 @@ export async function startScriptWriting(
         //
         // A product-bug verdict on a script Claude has just changed is a
         // claim about code that never ran, though. Run it once first: a
-        // failure confirms it, with the failing line to show; a pass means
-        // Claude was wrong and the script is good.
+        // failed assertion confirms it, with the failing line to show; a pass
+        // means Claude was wrong and the script is good. Anything else — a
+        // timeout, a crash — never reached a check, so it proves nothing
+        // about the product: it is one more failed try to repair.
         if (draft.verdict === "product_bug" && draft.code !== previous?.code) {
           const { runId, item } = await tryScript(draft.code);
           result.attempts.push(attemptOf(draft, runId, item));
@@ -493,6 +566,13 @@ export async function startScriptWriting(
             result.notes = `The AI expected the product to fail this check, but the script passed when it ran. ${draft.notes}`.trim();
             await setResult(result);
             break;
+          }
+          if (!failedAtAssertion(item)) {
+            result.notes = `The AI judged this a product bug, but its script never reached the check: ${errorHeadline(item.error)}. ${draft.notes}`.trim();
+            await setResult(result);
+            previous = { code: draft.code, status: item.status, error: item.error, log: item.log };
+            evidence = await readItemEvidence(item.id);
+            continue;
           }
         }
         if (draft.verdict === "product_bug" || draft.verdict === "needs_info") {
@@ -701,7 +781,7 @@ Categories:
 - "environment": the environment is at fault — down, slow, wrong data, an expired account, a certificate.
 - "unclear": the evidence does not settle it; say what would.
 
-Be concrete and brief; QA and developers read this. Always write in English, whatever language the application or its pages are in. Never call something a product bug just because an assertion failed — check the screenshot, the page outline and any failed requests for what actually happened. A failed request is strong evidence: 401/403 points at the account, 423/429 at a lockout or rate limit, 5xx at the environment or a server bug.
+Be concrete and brief; QA and developers read this. Always write in English, whatever language the application or its pages are in. Never call something a product bug just because an assertion failed — check the screenshot, the page outline and any failed requests for what actually happened. A failed request is strong evidence: 401/403 points at the account, 423/429 at a lockout or rate limit, 5xx at the environment or a server bug. When passing scripts from other cases are given, a step this script does differently from them — logging in, opening a form, creating a record — is a likely script_issue, and a corrected script should do it their way.
 
 Answer with a \`\`\`json block:
 {"category": "...", "summary": "one sentence", "explanation": "two to five sentences", "bugReport": {"title": "...", "steps": "...", "expected": "...", "actual": "..."} or null}
@@ -734,6 +814,9 @@ export async function startTriage(itemId: string, user: SessionUser): Promise<Ai
       run: { select: { projectId: true, environmentName: true } },
       testCase: {
         select: {
+          id: true,
+          projectId: true,
+          moduleId: true,
           tcId: true,
           title: true,
           preconditions: true,
@@ -762,11 +845,12 @@ export async function startTriage(itemId: string, user: SessionUser): Promise<Ai
     async ({ token, progress }) => {
       await progress(0, 1);
       const evidence = await readItemEvidence(item.id);
+      const references = await findReferenceScripts(testCase);
       const reply = await askClaude({
         token,
         system: TRIAGE_SYSTEM,
         images: evidence.screenshot ? [evidence.screenshot] : undefined,
-        prompt: `${describeCase(testCase)}
+        prompt: `${withReferences(references)}${describeCase(testCase)}
 
 Environment: ${item.run.environmentName}
 
@@ -791,6 +875,7 @@ ${describePage(evidence.snapshot, "at the end of the test")}`,
         ...parsed.data,
         fixedCode,
         bugReport: parsed.data.category === "product_bug" ? parsed.data.bugReport : null,
+        references: references.map(asReference),
       };
       await prisma.testRunItem.update({
         where: { id: item.id },

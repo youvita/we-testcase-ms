@@ -696,7 +696,7 @@ async function main() {
     } catch (error) {
       failures += 1;
       // Say it once, then quietly keep trying — the app may just be deploying.
-      if (failures === 1) log(`cannot reach the app: ${(error as Error).message}`);
+      if (failures === 1) log(`cannot reach the app at ${APP_URL}: ${(error as Error).message}`);
       await sleep(Math.min(POLL_MS * failures, 30_000));
       continue;
     }
