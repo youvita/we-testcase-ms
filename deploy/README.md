@@ -205,9 +205,42 @@ containers stay the same (`name: we-testcase-ms` in `docker-compose.prod.yml`).
 | Free public URL via edge (once, leave running) | `npm run tunnel:edge` |
 | Free public URL — this app only | `npm run tunnel:free` |
 | Logs | `docker compose -f docker-compose.prod.yml logs -f app` |
+| Bring crashed containers back now | `./deploy/scripts/autostart.sh` |
 | DB backup | `./deploy/scripts/backup-db.sh` |
 | DB restore | `./deploy/scripts/restore-db.sh deploy/backups/….sql.gz` |
 | Stop app | `docker compose -f docker-compose.prod.yml --env-file .env.production down` |
+
+---
+
+## After a reboot or a Docker crash
+
+When Docker Desktop dies under the containers they stop with exit code 255,
+and the restart policy does not always bring them back. That took the app,
+the edge and the tunnel down unnoticed for three weeks in October 2026.
+
+One-time, on the Mac mini, as the Docker Desktop user:
+
+```bash
+./deploy/scripts/install-autostart.sh
+```
+
+The LaunchAgent runs `deploy/scripts/autostart.sh` at login and every 5 minutes.
+It opens Docker Desktop if it is closed, then starts `wetestcase-*`,
+`macmini-edge` and `macmini-tunnel` if they are stopped with exit code 255.
+It never builds or recreates anything, and it leaves containers stopped on
+purpose alone. Log: `~/Library/Logs/wetestcase-autostart.log` (it also prints
+the new tunnel URL when it restarts the tunnel).
+
+A LaunchAgent only runs once someone is logged in, so also set:
+
+1. **System Settings → Users & Groups → Automatically log in as** this user
+   (not available while FileVault is on).
+2. **Docker Desktop → Settings → General → Start Docker Desktop when you sign in.**
+3. **System Settings → Energy → Start up automatically after a power failure.**
+
+Remove it with `./deploy/scripts/install-autostart.sh --uninstall`.
+
+---
 
 Suggested nightly backup (crontab on the Mac mini):
 

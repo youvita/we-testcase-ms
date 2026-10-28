@@ -24,6 +24,7 @@ export {
   fixStatusSchema,
   userCreateSchema,
   userUpdateSchema,
+  userPasswordResetSchema,
   testCaseQuerySchema,
   claudeConnectSchema,
   requirementDocKindSchema,
@@ -55,5 +56,6 @@ export {
   type FixStatusInput,
   type UserCreateInput,
   type UserUpdateInput,
+  type UserPasswordResetInput,
   type TestCaseQuery,
 } from "@wetestcase/dto";

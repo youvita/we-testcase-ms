@@ -353,7 +353,8 @@ export type UserFormDialogProps = UserFormDialogBaseProps &
  * Controlled create/edit dialog for a user.
  *
  * Create posts to `/api/users`; edit patches `/api/users/{id}` and never offers
- * a password field — there is no endpoint for changing another user's password.
+ * a password field — another user's password is set from "Reset password" in
+ * the user table instead.
  */
 export function UserFormDialog(props: UserFormDialogProps) {
   const { open, onOpenChange } = props;

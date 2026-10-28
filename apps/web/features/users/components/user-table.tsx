@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
+  KeyRound,
   MoreHorizontal,
   Pencil,
   Trash2,
@@ -40,6 +41,7 @@ import type { PublicUser } from "@/types";
 import { api, errorMessage } from "@/utils/api-client";
 import { formatDate, initials } from "@/utils/format";
 
+import { ResetPasswordDialog } from "./reset-password-dialog";
 import { UserFormDialog } from "./user-form-dialog";
 
 
@@ -76,6 +78,7 @@ export function UserTable({
   const [search, setSearch] = useState("");
   const [editing, setEditing] = useState<PublicUser | null>(null);
   const [deleting, setDeleting] = useState<PublicUser | null>(null);
+  const [resetting, setResetting] = useState<PublicUser | null>(null);
   const [pendingId, setPendingId] = useState<string | null>(null);
 
   // The whole list is already loaded server-side, so filtering here avoids a
@@ -223,6 +226,21 @@ export function UserTable({
                           {isSelf ? (
                             <DropdownMenuItem
                               disabled
+                              onSelect={(event) => event.preventDefault()}
+                            >
+                              <KeyRound className="size-4" aria-hidden />
+                              Reset password — use your account menu
+                            </DropdownMenuItem>
+                          ) : (
+                            <DropdownMenuItem onSelect={() => setResetting(user)}>
+                              <KeyRound className="size-4" aria-hidden />
+                              Reset password
+                            </DropdownMenuItem>
+                          )}
+
+                          {isSelf ? (
+                            <DropdownMenuItem
+                              disabled
                               // Radix keeps disabled items in the tree, so the
                               // reason is visible rather than the action simply
                               // missing.
@@ -282,6 +300,16 @@ export function UserTable({
           open
           onOpenChange={(next) => {
             if (!next) setEditing(null);
+          }}
+        />
+      )}
+
+      {resetting && (
+        <ResetPasswordDialog
+          user={resetting}
+          open
+          onOpenChange={(next) => {
+            if (!next) setResetting(null);
           }}
         />
       )}
