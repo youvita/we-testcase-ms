@@ -12,6 +12,7 @@ import {
   MoreHorizontal,
   Pencil,
   Plus,
+  RotateCcw,
   Sparkles,
   Trash2,
 } from "lucide-react";
@@ -66,9 +67,16 @@ import type {
 } from "@wetestcase/dto";
 import { api, errorMessage } from "@/utils/api-client";
 
+import {
+  ChangeBadge,
+  ChangeDetail,
+  ChangeReview,
+  ChangesBanner,
+  needsAttention,
+} from "./requirement-changes";
 import type { StartAi } from "./requirements-workspace";
 
-type Coverage = "all" | "uncovered" | "covered" | "questions";
+type Coverage = "all" | "uncovered" | "covered" | "questions" | "changes" | "removed";
 
 export function RequirementsPanel({
   projectId,
@@ -102,6 +110,9 @@ export function RequirementsPanel({
   const visible = useMemo(() => {
     const term = search.trim().toLowerCase();
     return requirements.filter((req) => {
+      // Removed requirements only show when asked for.
+      if ((coverage === "removed") !== (req.status === "REMOVED")) return false;
+      if (coverage === "changes" && !needsAttention(req)) return false;
       if (docFilter !== "all" && req.docId !== docFilter) return false;
       if (coverage === "uncovered" && req.testCases.length > 0) return false;
       if (coverage === "covered" && req.testCases.length === 0) return false;
@@ -125,6 +136,16 @@ export function RequirementsPanel({
     if (on) next.add(id);
     else next.delete(id);
     return next;
+  }
+
+  async function restore(req: RequirementDto) {
+    try {
+      await api.post(`/api/requirements/${req.id}/review`, { action: "restore" });
+      toast.success(`${req.code} restored`);
+      router.refresh();
+    } catch (error) {
+      toast.error(errorMessage(error));
+    }
   }
 
   async function handleDelete() {
@@ -186,7 +207,7 @@ export function RequirementsPanel({
             </Select>
           )}
           <Select value={coverage} onValueChange={(value) => setCoverage(value as Coverage)}>
-            <SelectTrigger className="w-44">
+            <SelectTrigger className="w-56">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -194,6 +215,8 @@ export function RequirementsPanel({
               <SelectItem value="uncovered">Not covered</SelectItem>
               <SelectItem value="covered">Covered</SelectItem>
               <SelectItem value="questions">With open questions</SelectItem>
+              <SelectItem value="changes">Changed in new version</SelectItem>
+              <SelectItem value="removed">Removed</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -219,6 +242,10 @@ export function RequirementsPanel({
           </div>
         )}
       </div>
+
+      {coverage !== "changes" && (
+        <ChangesBanner requirements={requirements} onReview={() => setCoverage("changes")} />
+      )}
 
       <Card className="overflow-hidden">
         <Table>
@@ -285,7 +312,15 @@ export function RequirementsPanel({
                     <TableCell className="font-mono text-xs">{req.code}</TableCell>
                     <TableCell>
                       <div className="flex items-start gap-2">
-                        <span className="font-medium">{req.title}</span>
+                        <span
+                          className={cn(
+                            "font-medium",
+                            req.status === "REMOVED" && "text-muted-foreground line-through",
+                          )}
+                        >
+                          {req.title}
+                        </span>
+                        <ChangeBadge requirement={req} />
                         {req.openQuestions && (
                           <CircleHelp
                             className="mt-0.5 size-4 shrink-0 text-status-blocked"
@@ -298,6 +333,7 @@ export function RequirementsPanel({
                           .filter(Boolean)
                           .join(" · ")}
                       </p>
+                      {canManage && <ChangeReview requirement={req} />}
                     </TableCell>
                     <TableCell>
                       <CoverageCell projectId={projectId} requirement={req} />
@@ -315,6 +351,12 @@ export function RequirementsPanel({
                               <Pencil className="mr-2 size-4" />
                               Edit
                             </DropdownMenuItem>
+                            {req.status === "REMOVED" && (
+                              <DropdownMenuItem onSelect={() => void restore(req)}>
+                                <RotateCcw className="mr-2 size-4" />
+                                Restore
+                              </DropdownMenuItem>
+                            )}
                             <DropdownMenuItem
                               className="text-destructive focus:text-destructive"
                               onSelect={() => setDeleting(req)}
@@ -330,6 +372,7 @@ export function RequirementsPanel({
                   {open && (
                     <TableRow className="bg-muted/30 hover:bg-muted/30">
                       <TableCell colSpan={canManage ? 6 : 4} className="space-y-3 py-4 pl-14 text-sm">
+                        <ChangeDetail requirement={req} />
                         <Detail label="Description" text={req.description} />
                         <Detail label="Acceptance criteria" text={req.acceptanceCriteria} />
                         <Detail
@@ -619,8 +662,8 @@ function RequirementFormDialog({
         <DialogHeader>
           <DialogTitle>{requirement === "new" ? "Add requirement" : "Edit requirement"}</DialogTitle>
           <DialogDescription>
-            Reading the document again updates requirements by code, so edits
-            to a code&apos;s text may be replaced then.
+            Reading the document again updates requirements from its text, so
+            edits made here may be replaced then.
           </DialogDescription>
         </DialogHeader>
 

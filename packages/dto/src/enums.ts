@@ -149,6 +149,12 @@ export type ExcelReportScope = (typeof EXCEL_REPORT_SCOPES)[number];
 export const REQUIREMENT_DOC_KINDS = ["PRD", "FRD", "OTHER"] as const;
 export type RequirementDocKind = (typeof REQUIREMENT_DOC_KINDS)[number];
 
+export const REQUIREMENT_CHANGES = ["ADDED", "CHANGED", "UNCHANGED", "MISSING"] as const;
+export type RequirementChange = (typeof REQUIREMENT_CHANGES)[number];
+
+export const REQUIREMENT_STATUSES = ["ACTIVE", "REMOVED"] as const;
+export type RequirementStatus = (typeof REQUIREMENT_STATUSES)[number];
+
 export const AI_JOB_KINDS = [
   "EXTRACT_REQUIREMENTS",
   "GENERATE_TEST_CASES",

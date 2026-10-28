@@ -6,7 +6,9 @@ import type {
   Platform,
   Priority,
   ProjectStatus,
+  RequirementChange,
   RequirementDocKind,
+  RequirementStatus,
   Role,
   RunItemStatus,
   TestRunPurpose,
@@ -157,8 +159,19 @@ export type RequirementDocDto = {
   fileName: string | null;
   charCount: number;
   requirementCount: number;
+  /** 1 until a new version is uploaded. */
+  version: number;
   createdAt: string;
   createdBy: { id: string; name: string };
+};
+
+/** A requirement's text as an earlier version of its document had it. */
+export type RequirementSnapshot = {
+  code: string;
+  title: string;
+  section: string | null;
+  description: string | null;
+  acceptanceCriteria: string | null;
 };
 
 export type RequirementDto = {
@@ -171,6 +184,16 @@ export type RequirementDto = {
   section: string | null;
   docId: string;
   docTitle: string;
+  status: RequirementStatus;
+  /**
+   * What the document's current version did to it, once that version has been
+   * read and compared with the one before; null otherwise.
+   */
+  change: RequirementChange | null;
+  /** Its text before the current version changed it, when `change` is CHANGED. */
+  previous: RequirementSnapshot | null;
+  /** An earlier requirement this one may replace under a new code; QA decides. */
+  possibleMatch: { id: string; code: string; title: string } | null;
   testCases: { id: string; tcId: string; status: ExecutionStatus }[];
   /** Pending AI drafts that would cover this requirement. */
   pendingDraftCount: number;

@@ -106,6 +106,24 @@ enum RequirementDocKind {
   OTHER
 }
 
+/// How a requirement came out of the latest reading of its document's current
+/// version, compared with the version before.
+enum RequirementChange {
+  ADDED
+  CHANGED
+  UNCHANGED
+  /// Not found in this version. Still in force until QA confirms it removed:
+  /// the AI missing an item is likelier than the document dropping it.
+  MISSING
+}
+
+enum RequirementStatus {
+  ACTIVE
+  /// Confirmed gone from the document. Kept, with its links to test cases,
+  /// so the cases that verified it can be reviewed.
+  REMOVED
+}
+
 enum AiJobKind {
   EXTRACT_REQUIREMENTS
   GENERATE_TEST_CASES
@@ -196,12 +214,13 @@ model User {
   fixStatusSet     TestCase[]       @relation("TestCaseFixStatusBy")
   fixStatusEvents  FixStatusEvent[] @relation("FixStatusEventActor")
 
-  claudeConnection ClaudeConnection?
-  requirementDocs  RequirementDoc[]
-  aiJobs           AiJob[]
-  reviewedDrafts   TestCaseDraft[]    @relation("TestCaseDraftReviewedBy")
-  testRuns         TestRun[]
-  scriptsEdited    AutomationScript[]
+  claudeConnection       ClaudeConnection?
+  requirementDocs        RequirementDoc[]
+  requirementDocVersions RequirementDocVersion[]
+  aiJobs                 AiJob[]
+  reviewedDrafts         TestCaseDraft[]         @relation("TestCaseDraftReviewedBy")
+  testRuns               TestRun[]
+  scriptsEdited          AutomationScript[]
 
   @@index([role])
 }
@@ -355,8 +374,8 @@ model TestCase {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  moduleId String
-  module   Module @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+  moduleId  String
+  module    Module  @relation(fields: [moduleId], references: [id], onDelete: Cascade)
   /// A group inside the module, e.g. "Create" under Customers. Free text:
   /// the module's sub-modules are whatever its cases use.
   subModule String?
@@ -515,6 +534,9 @@ model RequirementDoc {
   /// is all extraction reads, and it is what a re-extraction runs on.
   content   String
   charCount Int
+  /// Goes up by one with each "Upload new version"; earlier text is kept in
+  /// `versions`.
+  version   Int                @default(1)
   createdAt DateTime           @default(now())
   updatedAt DateTime           @updatedAt
 
@@ -526,13 +548,35 @@ model RequirementDoc {
 
   requirements Requirement[]
   jobs         AiJob[]
+  versions     RequirementDocVersion[]
 
   @@index([projectId, createdAt])
 }
 
+/// The text of a document's earlier version, archived when a newer one was
+/// uploaded. The current version's text stays on RequirementDoc.
+model RequirementDocVersion {
+  id         String   @id @default(cuid())
+  version    Int
+  fileName   String?
+  content    String
+  charCount  Int
+  /// When the next version replaced it.
+  replacedAt DateTime @default(now())
+
+  docId String
+  doc   RequirementDoc @relation(fields: [docId], references: [id], onDelete: Cascade)
+
+  /// Who uploaded the version that replaced it.
+  replacedById String
+  replacedBy   User   @relation(fields: [replacedById], references: [id])
+
+  @@unique([docId, version])
+}
+
 /// One testable requirement from a document.
 model Requirement {
-  id                 String   @id @default(cuid())
+  id                 String             @id @default(cuid())
   /// The document's own identifier ("FR-012", "3.2.1") when it has one.
   /// Unique per document, not per project — a PRD and an FRD may both have a
   /// "1.2". Re-extracting a document updates rows by this code, so links to
@@ -546,9 +590,18 @@ model Requirement {
   openQuestions      String?
   section            String?
   /// Order within the document.
-  position           Int      @default(0)
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
+  position           Int                @default(0)
+  status             RequirementStatus  @default(ACTIVE)
+  /// How the latest reading of `changedInVersion` found it. Only current when
+  /// that is the document's version; null for a first reading or a hand-made
+  /// requirement.
+  change             RequirementChange?
+  changedInVersion   Int?
+  /// Its code, title, section, description and acceptance criteria before
+  /// `changedInVersion` changed them, for showing the difference.
+  previous           Json?
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
 
   docId String
   doc   RequirementDoc @relation(fields: [docId], references: [id], onDelete: Cascade)
@@ -556,6 +609,12 @@ model Requirement {
   /// Denormalized from doc.projectId — every list is project-scoped.
   projectId String
   project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  /// An earlier requirement this new one may replace under a different code —
+  /// close enough to ask, not close enough to assume. QA merges or dismisses.
+  possibleMatchId String?
+  possibleMatch   Requirement?  @relation("RequirementPossibleMatch", fields: [possibleMatchId], references: [id], onDelete: SetNull)
+  possibleMatchOf Requirement[] @relation("RequirementPossibleMatch")
 
   testCases TestCaseRequirement[]
 

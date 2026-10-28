@@ -53,10 +53,12 @@ export default async function RequirementsPage({
     searchParams,
   ]);
 
-  const covered = requirements.filter((req) => req.testCases.length > 0).length;
-  const withQuestions = requirements.filter((req) => req.openQuestions).length;
-  const coverage = requirements.length
-    ? Math.round((covered / requirements.length) * 100)
+  // Requirements confirmed gone from their document no longer count.
+  const inForce = requirements.filter((req) => req.status === "ACTIVE");
+  const covered = inForce.filter((req) => req.testCases.length > 0).length;
+  const withQuestions = inForce.filter((req) => req.openQuestions).length;
+  const coverage = inForce.length
+    ? Math.round((covered / inForce.length) * 100)
     : 0;
 
   return (
@@ -77,7 +79,7 @@ export default async function RequirementsPage({
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard
           label="Requirements"
-          value={requirements.length}
+          value={inForce.length}
           icon={FileText}
           hint={`${docs.length} document${docs.length === 1 ? "" : "s"}`}
         />
@@ -86,12 +88,12 @@ export default async function RequirementsPage({
           value={`${coverage}%`}
           tone="passed"
           icon={FileCheck2}
-          hint={`${covered} of ${requirements.length}`}
+          hint={`${covered} of ${inForce.length}`}
         />
         <StatCard
           label="Not covered"
-          value={requirements.length - covered}
-          tone={requirements.length - covered > 0 ? "failed" : undefined}
+          value={inForce.length - covered}
+          tone={inForce.length - covered > 0 ? "failed" : undefined}
           icon={FileWarning}
         />
         <StatCard

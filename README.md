@@ -250,8 +250,14 @@ Project → **Requirements** (`/projects/:id/requirements`).
    OCR first.
 2. **Requirements** — Claude reads the document into requirements: code, title,
    description, acceptance criteria and the *open questions* a tester would need
-   answered. Long documents are read in parts. Reading a document again updates
-   requirements by code, so links to test cases survive a PRD revision.
+   answered. Long documents are read in parts.
+   **Upload new version** (document menu) replaces the text, keeps the old one,
+   and reads it against the requirements found before: Claude is shown them so
+   the same requirement keeps its code, and one that still gets a new code is
+   matched by its text. Each requirement is marked **New**, **Changed** (with a
+   before/after diff) or **Not found**; a likely rename asks QA to confirm.
+   Nothing is deleted — QA confirms a requirement *removed* or keeps it, and
+   links to test cases stay on the requirement throughout.
 3. **Draft test cases** — select requirements, pick platform and depth, and
    Claude writes black-box cases (preconditions, steps with test data, expected
    result, type, priority, module).

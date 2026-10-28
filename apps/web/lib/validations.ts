@@ -29,6 +29,8 @@ export {
   claudeConnectSchema,
   requirementDocKindSchema,
   requirementDocTextSchema,
+  requirementDocVersionTextSchema,
+  requirementReviewSchema,
   requirementSchema,
   requirementCreateSchema,
   generateTestCasesSchema,

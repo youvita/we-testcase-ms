@@ -315,6 +315,20 @@ export const requirementDocTextSchema = z.object({
 
 export type RequirementDocTextInput = z.input<typeof requirementDocTextSchema>;
 
+/** A new version of an existing document, pasted as text. */
+export const requirementDocVersionTextSchema = requirementDocTextSchema.pick({ content: true });
+
+/**
+ * QA settling what a new version did to a requirement: keep one the reading
+ * did not find, confirm it removed, or say whether a possible match is the
+ * same requirement under a new code.
+ */
+export const requirementReviewSchema = z.object({
+  action: z.enum(["keep", "remove", "restore", "merge", "notSame"]),
+});
+
+export type RequirementReviewInput = z.infer<typeof requirementReviewSchema>;
+
 export const requirementSchema = z.object({
   code: trimmed(60).min(1, "Code is required"),
   title: trimmed(500).min(3, "Title must be at least 3 characters"),

@@ -1,5 +1,6 @@
 import { ROLES } from "@/lib/constants";
-import { badRequest, ok, readJson, route } from "@/lib/api";
+import { ok, readJson, route } from "@/lib/api";
+import { isMultipart, readDocumentUpload } from "@/lib/document-upload";
 import { assertProjectAccess } from "@/lib/project-access";
 import {
   requirementDocKindSchema,
@@ -9,14 +10,12 @@ import {
   createRequirementDoc,
   listRequirementDocs,
 } from "@/services/requirement.service";
-import { extractDocumentText, normalizeText } from "@/utils/document-text";
+import { normalizeText } from "@/utils/document-text";
 
 type Ctx = { params: Promise<{ projectId: string }> };
 
 /** PDF and Word parsing need Node, not the edge runtime. */
 export const runtime = "nodejs";
-
-const MAX_DOC_BYTES = 20 * 1024 * 1024;
 
 export const GET = route<Ctx>({}, async (_request, { params, user }) => {
   const { projectId } = await params;
@@ -36,11 +35,7 @@ export const POST = route<Ctx>(
     const { projectId } = await params;
     await assertProjectAccess(projectId, user);
 
-    const isForm = (request.headers.get("content-type") ?? "").includes(
-      "multipart/form-data",
-    );
-
-    if (!isForm) {
+    if (!isMultipart(request)) {
       const body = requirementDocTextSchema.parse(await readJson(request));
       const doc = await createRequirementDoc(projectId, user.id, {
         title: body.title,
@@ -51,30 +46,16 @@ export const POST = route<Ctx>(
       return ok(doc, 201);
     }
 
-    const form = await request.formData().catch(() => {
-      throw badRequest("Expected a multipart form upload");
-    });
-    const file = form.get("file");
-    if (!(file instanceof File)) {
-      throw badRequest('No file was provided under the "file" field');
-    }
-    if (file.size > MAX_DOC_BYTES) {
-      throw badRequest("The file is larger than 20 MB");
-    }
-
-    const content = await extractDocumentText({
-      buffer: Buffer.from(await file.arrayBuffer()),
-      fileName: file.name,
-    });
+    const { form, fileName, content } = await readDocumentUpload(request);
     const title =
       String(form.get("title") ?? "").trim() ||
-      file.name.replace(/\.[^.]+$/, "");
+      fileName.replace(/\.[^.]+$/, "");
     const kind = requirementDocKindSchema.catch("PRD").parse(form.get("kind"));
 
     const doc = await createRequirementDoc(projectId, user.id, {
       title,
       kind,
-      fileName: file.name,
+      fileName,
       content,
     });
     return ok(doc, 201);
