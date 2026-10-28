@@ -283,8 +283,14 @@ export const userUpdateSchema = z.object({
   isActive: z.boolean().optional(),
 });
 
+/** An Admin setting a new password for someone who has forgotten theirs. */
+export const userPasswordResetSchema = z.object({
+  password: z.string().min(8, "Password must be at least 8 characters"),
+});
+
 export type UserCreateInput = z.infer<typeof userCreateSchema>;
 export type UserUpdateInput = z.infer<typeof userUpdateSchema>;
+export type UserPasswordResetInput = z.infer<typeof userPasswordResetSchema>;
 
 // ---------------------------------------------------------------------------
 // Requirements & AI

@@ -164,6 +164,43 @@ export async function updateUser(
 }
 
 /**
+ * Set a new password for another user, as an Admin.
+ *
+ * There is no email transport, so this is how a forgotten password is
+ * recovered. It repeats what Better Auth's admin plugin does — hash with the
+ * configured hasher, update the `credential` account or link one if the user
+ * has none — and then ends every session the user has, so whoever held the
+ * old password is signed out too. Admins change their own password from the
+ * account menu, which asks for the current one.
+ */
+export async function resetUserPassword(
+  userId: string,
+  newPassword: string,
+  actingUserId: string,
+): Promise<void> {
+  if (userId === actingUserId) {
+    throw badRequest("Change your own password from your account menu");
+  }
+
+  const ctx = await auth.$context;
+  if (!(await ctx.internalAdapter.findUserById(userId))) throw notFound("User");
+
+  const password = await ctx.password.hash(newPassword);
+  const accounts = await ctx.internalAdapter.findAccounts(userId);
+  if (accounts.some((account) => account.providerId === "credential")) {
+    await ctx.internalAdapter.updatePassword(userId, password);
+  } else {
+    await ctx.internalAdapter.linkAccount({
+      userId,
+      accountId: userId,
+      providerId: "credential",
+      password,
+    });
+  }
+  await ctx.internalAdapter.deleteUserSessions(userId);
+}
+
+/**
  * Delete a user.
  *
  * Refused when the user owns execution history, because those rows are the
