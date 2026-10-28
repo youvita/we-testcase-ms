@@ -49,6 +49,7 @@ import { ApiError, api, errorMessage } from "@/utils/api-client";
 
 import { LiveView, WatchLiveFields, type LiveChoice } from "./live-view";
 import { RunStatusBadge, formatDuration } from "./run-status-badge";
+import { ScriptReferences } from "./script-references";
 import { diffLines } from "@/utils/line-diff";
 import { CodeView } from "@/components/shared/code-view";
 import { errorHeadline, findErrorLine } from "@/utils/error-line";
@@ -425,6 +426,8 @@ export function ScriptWritingPanel({
       {active && result?.currentRunId && (
         <LiveView runId={result.currentRunId} quietWhenEmpty />
       )}
+
+      <ScriptReferences projectId={projectId} references={result?.references} />
 
       {result && result.attempts.length > 0 && (
         <AttemptList

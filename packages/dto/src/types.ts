@@ -288,6 +288,9 @@ export type FailedRequest = {
   statusText: string;
 };
 
+/** Another case whose passing script Claude was shown as an example. */
+export type ScriptReference = { testCaseId: string; tcId: string; title: string };
+
 export type RunTriageDto = {
   category: TriageCategory;
   summary: string;
@@ -301,6 +304,8 @@ export type RunTriageDto = {
     expected: string;
     actual: string;
   } | null;
+  /** Other cases' passing scripts Claude compared this one with; absent on older triages. */
+  references?: ScriptReference[];
   triagedAt: string;
 };
 
@@ -349,6 +354,8 @@ export type ScriptWritingResult = {
   currentRunId?: string | null;
   /** Saved on the case without review — only ever for a script that passed. */
   saved?: boolean;
+  /** Other cases' passing scripts given to Claude as examples; absent on older jobs. */
+  references?: ScriptReference[];
   attempts: {
     code: string;
     runId: string;

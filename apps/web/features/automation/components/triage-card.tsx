@@ -24,6 +24,8 @@ import { diffLines } from "@/utils/line-diff";
 import { api, errorMessage } from "@/utils/api-client";
 import { formatRelative } from "@/utils/format";
 
+import { ScriptReferences } from "./script-references";
+
 const CATEGORIES: Record<TriageCategory, { label: string; icon: typeof Bug; tone: string }> = {
   product_bug: {
     label: "Product bug",
@@ -131,6 +133,7 @@ export function TriageCard({
         <span className="ml-auto text-xs text-muted-foreground">AI · {formatRelative(triage.triagedAt)}</span>
       </div>
       {triage.explanation && <p className="whitespace-pre-wrap text-muted-foreground">{triage.explanation}</p>}
+      <ScriptReferences projectId={projectId} references={triage.references} />
 
       {triage.bugReport && (
         <div className="space-y-1 rounded-md border bg-background p-3 text-xs">
