@@ -284,8 +284,10 @@ export async function createTestCase(projectId: string, input: TestCaseInput) {
   const platform = await resolveProjectPlatform(projectId, input.platform);
 
   const tcId = input.tcId.trim();
-  const duplicate = await prisma.testCase.findUnique({
-    where: { projectId_tcId: { projectId, tcId } },
+  // Unique regardless of case, as the importer treats them: "tc-1" and
+  // "TC-1" would read as the same case to everyone looking at the list.
+  const duplicate = await prisma.testCase.findFirst({
+    where: { projectId, tcId: { equals: tcId, mode: "insensitive" } },
     select: { id: true },
   });
   if (duplicate) {
@@ -334,7 +336,7 @@ export async function updateTestCase(
   const duplicate = await prisma.testCase.findFirst({
     where: {
       projectId: existing.projectId,
-      tcId,
+      tcId: { equals: tcId, mode: "insensitive" },
       NOT: { id: testCaseId },
     },
     select: { id: true },

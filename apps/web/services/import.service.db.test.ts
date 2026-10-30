@@ -5,7 +5,7 @@ import { createProject, createTestCase, createUser, resetDatabase } from "@/test
 import { workbook } from "@/test/workbook";
 
 import { recordExecution } from "./execution.service";
-import { importTestCases } from "./import.service";
+import { importTestCases, previewImport } from "./import.service";
 
 const HEADER = ["TC ID", "Module", "Test Case", "Platform"];
 
@@ -89,6 +89,37 @@ describe("importTestCases", () => {
     expect(after.status).toBe("FAILED");
     expect(after.lastExecutedAt).not.toBeNull();
     expect(after.executions).toHaveLength(1);
+  });
+
+  it("matches existing TC IDs whatever their capitalisation", async () => {
+    const { project, module } = await createProject();
+    const tc = await createTestCase(project.id, module.id, "TC-1", "Original");
+
+    const skipped = await importTestCases(project.id, file([["tc-1", "Login", "Changed", ""]]), "skip");
+    expect(skipped).toMatchObject({ created: 0, updated: 0 });
+
+    const updated = await importTestCases(project.id, file([["tc-1", "Login", "Changed", ""]]), "update");
+    expect(updated).toMatchObject({ created: 0, updated: 1 });
+
+    const cases = await prisma.testCase.findMany({ where: { projectId: project.id } });
+    // Updated in place, keeping the ID as it was first written.
+    expect(cases).toHaveLength(1);
+    expect(cases[0]).toMatchObject({ id: tc.id, tcId: "TC-1", title: "Changed" });
+  });
+
+  it("counts a differently-capitalised TC ID as existing in the preview", async () => {
+    const { project, module } = await createProject();
+    await createTestCase(project.id, module.id, "TC-1");
+
+    const preview = await previewImport(
+      project.id,
+      file([
+        ["tc-1", "Login", "Same case", ""],
+        ["TC-2", "Login", "New case", ""],
+      ]),
+    );
+
+    expect(preview).toMatchObject({ duplicates: 1, newCases: 1 });
   });
 
   it("adds a platform the sheet uses that the project lacked", async () => {
