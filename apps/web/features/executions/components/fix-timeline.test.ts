@@ -15,6 +15,12 @@ describe("visibleStages", () => {
     ]);
   });
 
+  it("shows just Passed when the case passed on its first run", () => {
+    expect(labels(visibleStages("PASSED", { ...none, failed: null, passed: someone }))).toEqual([
+      "Passed",
+    ]);
+  });
+
   it("keeps the steps someone actually took before it passed", () => {
     const stages = visibleStages("PASSED", {
       ...none,

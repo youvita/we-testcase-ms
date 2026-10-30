@@ -70,8 +70,8 @@ function resolveStages(
   const investigated = fixReady || fixStatus === "INVESTIGATING";
 
   return {
-    // A case only shows this timeline once it has failed, so step one is
-    // always behind us.
+    // Behind us whenever it is drawn: a case that passed without failing
+    // leaves it out (see visibleStages).
     failed: "done",
     investigating: passed
       ? "done"
@@ -166,17 +166,15 @@ function resolveAttribution(
 /**
  * The stages to draw. Until the case passes, all five: the steps ahead are
  * the point. Once it has passed, only what happened — a retest that passed
- * with nobody investigating or fixing reads "QA failed → Passed", not three
- * ticked steps nobody took.
+ * with nobody investigating or fixing reads "QA failed → Passed", and a case
+ * that passed on its first run reads just "Passed".
  */
 export function visibleStages(
   status: ExecutionStatus,
   attribution: Record<StageKey, Attribution>,
 ) {
   if (status !== "PASSED") return [...STAGES];
-  return STAGES.filter(
-    (stage) => stage.key === "failed" || stage.key === "passed" || attribution[stage.key],
-  );
+  return STAGES.filter((stage) => stage.key === "passed" || attribution[stage.key]);
 }
 
 export function FixTimeline({
@@ -285,7 +283,9 @@ export function FixTimeline({
         <CardTitle className="text-base">Progress</CardTitle>
         <CardDescription>
           {status === "PASSED"
-            ? "Resolved — the retest passed."
+            ? attribution.failed
+              ? "Resolved — the retest passed."
+              : "Passed on its first run."
             : current
               ? `Waiting on: ${current.label}.`
               : "In progress."}
