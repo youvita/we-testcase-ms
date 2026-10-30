@@ -488,6 +488,11 @@ reliably. It is validated by `roleSchema` in
 `Account` row — that is the only way the password hash matches what login
 verifies. This applies to the admin "Add user" flow and the seed script alike.
 
+**TC IDs sort naturally.** `TestCase.tcId` carries an ICU collation with
+numeric ordering (`natural_sort`), so `TC-2` comes before `TC-10` in every
+`ORDER BY` — lists, Previous/Next, reports — without zero-padding. The
+collation needs a Postgres built with ICU (`postgres:16-alpine` is).
+
 **List state lives in the URL.** Filters, sort and pagination are query params, so
 the server component refetches, and a filtered view is shareable and survives a
 reload.
@@ -503,6 +508,8 @@ npm run start        # serve the production build
 npm run start:prod   # migrate then serve (bare-metal host)
 npm run typecheck    # tsc --noEmit
 npm run lint         # next lint
+npm test             # unit tests (no database)
+npm run test:db      # service tests against TEST_DATABASE_URL
 npm run db:migrate   # create/apply a migration
 npm run db:push      # push the schema without a migration
 npm run db:seed      # demo data
@@ -511,22 +518,37 @@ npm run docker:stack:up   # manual rebuild/restart app only (does not touch tunn
 npm run tunnel:free       # free Cloudflare URL — leave this terminal running
 ```
 
+### Tests
+
+Vitest, in two layers, both run by CI before a deploy:
+
+- **Unit** — `*.test.ts` next to the code: header matching, priority and type
+  parsing, the import parser, requirement matching, stats, permissions.
+- **Database** — `*.db.test.ts`: services against a real Postgres, because what
+  they guarantee lives there — re-importing never overwrites results, execution
+  history and the denormalized status agree, TC IDs sort naturally.
+
+The database tests empty every table before each test, so they use their own
+database, `TEST_DATABASE_URL` in `apps/web/.env`, and refuse one whose name
+does not end in `_test`:
+
+```bash
+docker compose exec postgres createdb -U postgres wetestcase_test   # once
+npm run test:db      # applies migrations to it, then runs
+```
+
 Mac mini: push to `main` deploys via GitHub Actions. Manual helpers remain
 `npm run docker:stack:up`, `npm run tunnel:free`, `./deploy/scripts/backup-db.sh`
 — see [deploy/README.md](deploy/README.md).
 
 ---
 
-## Known limitations (Phase 1)
+## Known limitations
 
-- **TC IDs sort lexicographically**, so `TC-10` precedes `TC-2`. Zero-pad
-  (`TC-002`) for correct ordering — the usual convention anyway.
 - **Attachments are stored on the local filesystem.** Fine for a single server;
   on an ephemeral or multi-instance host, point `UPLOAD_DIR` at a mounted volume
   or swap `services/attachment.service.ts` for object storage. The attachment
   row is the source of truth, so a missing file returns 404 rather than crashing.
 - **No email transport.** Email verification and password reset are disabled;
   an Admin creates accounts and sets passwords.
-- **No automated tests yet.** The type layer and validation are strict, but there
-  is no test suite in Phase 1.
 - **Import is capped** at 5,000 data rows and 10 MB per file.

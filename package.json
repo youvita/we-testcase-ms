@@ -14,6 +14,8 @@
     "start:prod": "npm run start:prod -w @wetestcase/web",
     "lint": "npm run lint -w @wetestcase/web",
     "typecheck": "npm run typecheck -w @wetestcase/dto && npm run typecheck -w @wetestcase/web && npm run typecheck -w @wetestcase/runner",
+    "test": "npm run test -w @wetestcase/web",
+    "test:db": "npm run test:db -w @wetestcase/web",
     "db:generate": "npm run db:generate -w @wetestcase/web",
     "db:migrate": "npm run db:migrate -w @wetestcase/web",
     "db:deploy": "npm run db:deploy -w @wetestcase/web",
