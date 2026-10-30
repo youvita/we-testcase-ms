@@ -19,7 +19,6 @@ import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Textarea } from "@/components/ui/textarea";
 import { CollapsibleCardHeader } from "@/components/shared/collapsible-card-header";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { ClaudeConnectionDialog } from "@/features/ai/components/claude-connection-dialog";
@@ -35,6 +34,7 @@ import { formatRelative } from "@/utils/format";
 
 import { NewRunDialog } from "./new-run-dialog";
 import { RunStatusBadge } from "./run-status-badge";
+import { ScriptEditor } from "./script-editor";
 import { ScriptWritingPanel, WriteWithClaudeDialog } from "./script-writer";
 
 const EXAMPLES: Record<"WEB" | "API", string> = {
@@ -292,18 +292,6 @@ export function AutomationScriptCard({
   }
 
   /** Tab indents instead of leaving the editor. */
-  function handleKeyDown(event: React.KeyboardEvent<HTMLTextAreaElement>) {
-    if (event.key !== "Tab" || event.shiftKey) return;
-    event.preventDefault();
-    const target = event.currentTarget;
-    const { selectionStart, selectionEnd } = target;
-    const next = `${code.slice(0, selectionStart)}  ${code.slice(selectionEnd)}`;
-    setCode(next);
-    requestAnimationFrame(() => {
-      target.selectionStart = target.selectionEnd = selectionStart + 2;
-    });
-  }
-
   return (
     <Card id="automation" className="scroll-mt-20">
       {header(
@@ -380,16 +368,20 @@ export function AutomationScriptCard({
           )}
 
           {editorOpen ? (
-            <Textarea
+            <ScriptEditor
               value={code}
-              onChange={(event) => setCode(event.target.value)}
-              onKeyDown={handleKeyDown}
+              onChange={setCode}
+              platform={platform}
+              variables={environments.flatMap((env) => env.variables)}
               readOnly={!canManage}
-              spellCheck={false}
-              rows={Math.min(24, Math.max(8, code.split("\n").length + 1))}
               placeholder={EXAMPLES[platform]}
-              className="font-mono text-xs leading-relaxed"
-              aria-label="Playwright script"
+              onSave={
+                canManage
+                  ? () => {
+                      if (!saving && dirty && code.trim()) void handleSave();
+                    }
+                  : undefined
+              }
             />
           ) : (
             script && (
