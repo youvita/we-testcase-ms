@@ -32,7 +32,7 @@ import {
   type ScriptWritingResult,
 } from "@wetestcase/dto";
 
-import { enqueueJob, stopQueuedJobs, sweepInterrupted } from "./ai-job.service";
+import { defineJob, enqueueJob, stopQueuedJobs, sweepInterrupted } from "./ai-job.service";
 import { saveAutomationScript } from "./automation-script.service";
 import { getEnvironmentOutline } from "./run-environment.service";
 import { queueRun, readItemEvidence, waitForRun } from "./test-run.service";
@@ -335,33 +335,36 @@ function readDraft(reply: string) {
   return { code, ...verdictSchema.parse(parseJsonBlock(reply)) };
 }
 
-export async function startScriptWriting(
-  testCaseId: string,
-  user: SessionUser,
-  input: {
-    environmentId: string;
-    /** Blank means the environment's start page. */
-    startPath?: string;
-    instructions?: string;
-    /** The AI model to use; the server's default when absent. */
-    model?: AiModel;
-    /** An FRD's text, for context on the expected behaviour — this job only. */
-    frdText?: string;
-    frdName?: string;
-    liveView?: boolean;
-    speed?: keyof typeof RUN_SPEEDS;
-    /** Save the script on the case if, and only if, it passed. */
-    autoSave?: boolean;
-    /** Groups the jobs of one "write scripts for these cases". */
-    batchId?: string;
-    /**
-     * Pick up from an earlier script-writing job for this case — its last
-     * script and where it stopped — with a hint from QA, instead of starting
-     * over.
-     */
-    continueFrom?: { jobId: string; hint: string };
-  },
-): Promise<AiJobDto> {
+type ScriptWritingInput = {
+  environmentId: string;
+  /** Blank means the environment's start page. */
+  startPath?: string;
+  instructions?: string;
+  /** The AI model to use; the server's default when absent. */
+  model?: AiModel;
+  /** An FRD's text, for context on the expected behaviour — this job only. */
+  frdText?: string;
+  frdName?: string;
+  liveView?: boolean;
+  speed?: keyof typeof RUN_SPEEDS;
+  /** Save the script on the case if, and only if, it passed. */
+  autoSave?: boolean;
+  /** Groups the jobs of one "write scripts for these cases". */
+  batchId?: string;
+  /**
+   * Pick up from an earlier script-writing job for this case — its last
+   * script and where it stopped — with a hint from QA, instead of starting
+   * over.
+   */
+  continueFrom?: { jobId: string; hint: string };
+};
+
+/**
+ * What a script-writing job works from — the case, the environment, an
+ * earlier job to continue — checked. Once when it is asked for, and again
+ * when the job is built, in case any of it changed while it waited.
+ */
+async function loadScriptWriting(testCaseId: string, input: ScriptWritingInput) {
   const testCase = await prisma.testCase.findUnique({
     where: { id: testCaseId },
     select: {
@@ -392,16 +395,6 @@ export async function startScriptWriting(
     throw badRequest(`${env.name} has no ${PLATFORM_LABELS[testCase.platform]} base URL. Add it in Environments.`);
   }
 
-  const busy = await prisma.aiJob.findFirst({
-    where: {
-      kind: "WRITE_SCRIPT",
-      status: { in: ["QUEUED", "RUNNING"] },
-      input: { path: ["testCaseId"], equals: testCaseId },
-    },
-    select: { id: true },
-  });
-  if (busy) throw badRequest("The AI is already writing a script for this case.");
-
   let earlier: ScriptWritingResult | null = null;
   if (input.continueFrom) {
     const job = await prisma.aiJob.findUnique({
@@ -419,200 +412,223 @@ export async function startScriptWriting(
       throw badRequest("There is no finished script from the AI on this case to continue from.");
     }
   }
+  return { testCase, env, startPath, earlier };
+}
 
-  return enqueueJob(
-    {
-      projectId: testCase.projectId,
+export async function startScriptWriting(
+  testCaseId: string,
+  user: SessionUser,
+  input: ScriptWritingInput,
+): Promise<AiJobDto> {
+  const { testCase, startPath } = await loadScriptWriting(testCaseId, input);
+
+  const busy = await prisma.aiJob.findFirst({
+    where: {
       kind: "WRITE_SCRIPT",
-      userId: user.id,
-      input: { testCaseId, ...input, startPath },
+      status: { in: ["QUEUED", "RUNNING"] },
+      input: { path: ["testCaseId"], equals: testCaseId },
     },
-    async ({ token, progress, setResult, throwIfCancelled }) => {
-      const isWeb = testCase.platform === "WEB";
-      // One step before the tries: the start-page look, or picking up the
-      // earlier script.
-      const total = MAX_ATTEMPTS + (isWeb || earlier ? 1 : 0);
-      let step = 0;
-      await progress(step, total);
+    select: { id: true },
+  });
+  if (busy) throw badRequest("The AI is already writing a script for this case.");
 
-      const references = await findReferenceScripts(testCase);
-      const result: ScriptWritingResult = {
-        testCaseId,
-        outcome: "failing",
-        code: "",
-        notes: "",
-        references: references.map(asReference),
-        attempts: [],
-      };
+  return enqueueJob({
+    projectId: testCase.projectId,
+    kind: "WRITE_SCRIPT",
+    userId: user.id,
+    input: { testCaseId, ...input, startPath },
+  });
+}
 
-      const tryScript = async (code: string) => {
-        throwIfCancelled();
-        const queued = await queueRun({
-          projectId: testCase.projectId,
-          userId: user.id,
-          environment: env,
-          purpose: "SCRIPT_CHECK",
-          recordResults: false,
-          liveView: input.liveView ?? false,
-          slowMoMs: RUN_SPEEDS[input.speed ?? "normal"],
-          items: [{ testCaseId, code }],
-        });
-        // Published before waiting, so the page can show this check live.
-        result.currentRunId = queued.id;
-        await setResult(result);
-        const run = await waitForRun(queued.id);
-        result.currentRunId = null;
-        const item = run.items[0];
-        if (!item) throw new AiError("The script check came back empty.");
-        return { runId: run.id, item, runError: run.error };
-      };
+defineJob("WRITE_SCRIPT", async (job) => {
+  const { testCaseId, ...input } = job.input as ScriptWritingInput & { testCaseId: string };
+  const { testCase, env, startPath, earlier } = await loadScriptWriting(testCaseId, input);
+  const userId = job.createdById;
+  return async ({ token, progress, setResult, throwIfCancelled }) => {
+    const isWeb = testCase.platform === "WEB";
+    // One step before the tries: the start-page look, or picking up the
+    // earlier script.
+    const total = MAX_ATTEMPTS + (isWeb || earlier ? 1 : 0);
+    let step = 0;
+    await progress(step, total);
 
-      // 1. Look at the start page before writing anything — or, continuing,
-      //    at where the earlier script stopped.
-      let evidence: {
-        snapshot: string | null;
-        screenshot: ClaudeImage | null;
-        failedRequests?: FailedRequest[];
-      } = {
-        snapshot: null,
-        screenshot: null,
-      };
-      let previous: { code: string; status: string; error: string | null; log: string | null } | null = null;
-      if (earlier) {
-        const last = earlier.attempts.at(-1);
-        const lastItem =
-          last && last.code === earlier.code
-            ? await prisma.testRunItem.findFirst({
-                where: { runId: last.runId },
-                select: { id: true, status: true, error: true, log: true, durationMs: true },
-              })
-            : null;
-        if (lastItem && last) {
-          previous = { code: earlier.code, status: lastItem.status, error: lastItem.error, log: lastItem.log };
-          evidence = await readItemEvidence(lastItem.id);
-          // Listed first, so the round shows what it picked up from.
-          result.attempts.push({ code: earlier.code, runId: last.runId, status: lastItem.status, error: lastItem.error, durationMs: lastItem.durationMs, earlier: true });
-        } else {
-          // The earlier job ended on a script it never ran (it judged a
-          // product bug or needed information): run it now to see.
-          const check = await tryScript(earlier.code);
-          previous = { code: earlier.code, status: check.item.status, error: check.item.error, log: check.item.log };
-          evidence = await readItemEvidence(check.item.id);
-          result.attempts.push({ code: earlier.code, runId: check.runId, status: check.item.status, error: check.item.error, durationMs: check.item.durationMs, earlier: true });
-        }
-        await setResult(result);
-        await progress(++step, total);
-      } else if (isWeb) {
-        const probe = await tryScript(`await page.goto(${JSON.stringify(startPath)});`);
-        if (probe.item.status !== "PASSED") {
-          throw new AiError(
-            `Could not open ${startPath} on ${env.name}: ${probe.item.error ?? probe.runError ?? "the page did not load"}`,
-          );
-        }
-        evidence = await readItemEvidence(probe.item.id);
-        await progress(++step, total);
+    const references = await findReferenceScripts(testCase);
+    const result: ScriptWritingResult = {
+      testCaseId,
+      outcome: "failing",
+      code: "",
+      notes: "",
+      references: references.map(asReference),
+      attempts: [],
+    };
+
+    const tryScript = async (code: string) => {
+      throwIfCancelled();
+      const queued = await queueRun({
+        projectId: testCase.projectId,
+        userId,
+        environment: env,
+        purpose: "SCRIPT_CHECK",
+        recordResults: false,
+        liveView: input.liveView ?? false,
+        slowMoMs: RUN_SPEEDS[input.speed ?? "normal"],
+        items: [{ testCaseId, code }],
+      });
+      // Published before waiting, so the page can show this check live.
+      result.currentRunId = queued.id;
+      await setResult(result);
+      const run = await waitForRun(queued.id);
+      result.currentRunId = null;
+      const item = run.items[0];
+      if (!item) throw new AiError("The script check came back empty.");
+      return { runId: run.id, item, runError: run.error };
+    };
+
+    // 1. Look at the start page before writing anything — or, continuing,
+    //    at where the earlier script stopped.
+    let evidence: {
+      snapshot: string | null;
+      screenshot: ClaudeImage | null;
+      failedRequests?: FailedRequest[];
+    } = {
+      snapshot: null,
+      screenshot: null,
+    };
+    let previous: { code: string; status: string; error: string | null; log: string | null } | null = null;
+    if (earlier) {
+      const last = earlier.attempts.at(-1);
+      const lastItem =
+        last && last.code === earlier.code
+          ? await prisma.testRunItem.findFirst({
+              where: { runId: last.runId },
+              select: { id: true, status: true, error: true, log: true, durationMs: true },
+            })
+          : null;
+      if (lastItem && last) {
+        previous = { code: earlier.code, status: lastItem.status, error: lastItem.error, log: lastItem.log };
+        evidence = await readItemEvidence(lastItem.id);
+        // Listed first, so the round shows what it picked up from.
+        result.attempts.push({ code: earlier.code, runId: last.runId, status: lastItem.status, error: lastItem.error, durationMs: lastItem.durationMs, earlier: true });
+      } else {
+        // The earlier job ended on a script it never ran (it judged a
+        // product bug or needed information): run it now to see.
+        const check = await tryScript(earlier.code);
+        previous = { code: earlier.code, status: check.item.status, error: check.item.error, log: check.item.log };
+        evidence = await readItemEvidence(check.item.id);
+        result.attempts.push({ code: earlier.code, runId: check.runId, status: check.item.status, error: check.item.error, durationMs: check.item.durationMs, earlier: true });
       }
+      await setResult(result);
+      await progress(++step, total);
+    } else if (isWeb) {
+      const probe = await tryScript(`await page.goto(${JSON.stringify(startPath)});`);
+      if (probe.item.status !== "PASSED") {
+        throw new AiError(
+          `Could not open ${startPath} on ${env.name}: ${probe.item.error ?? probe.runError ?? "the page did not load"}`,
+        );
+      }
+      evidence = await readItemEvidence(probe.item.id);
+      await progress(++step, total);
+    }
 
-      // 2. Draft, try, repair.
-      for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
-        throwIfCancelled();
-        const reply = await askClaude({
-          token,
-          model: input.model,
-          system: WRITE_SYSTEM,
-          images: evidence.screenshot ? [evidence.screenshot] : undefined,
-          prompt: withFrd(input.frdText, input.frdName) + withReferences(references) + (previous
-            ? repairPrompt({
-                testCase,
-                env,
-                instructions: input.instructions,
-                // Counting on from the earlier job's tries when continuing.
-                attempt: (earlier?.attempts.length ?? 0) + attempt - 1,
-                ...previous,
-                snapshot: evidence.snapshot,
-                hasScreenshot: Boolean(evidence.screenshot),
-                failedRequests: evidence.failedRequests,
-                // The hint is the reason for this job; it goes with every try.
-                hint: input.continueFrom?.hint,
-              })
-            : firstDraftPrompt({
-                testCase,
-                env,
-                startPath,
-                instructions: input.instructions,
-                snapshot: evidence.snapshot,
-              })),
-        });
-        const draft = readDraft(reply);
-        result.code = draft.code;
-        result.notes = draft.notes;
+    // 2. Draft, try, repair.
+    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
+      throwIfCancelled();
+      const reply = await askClaude({
+        token,
+        model: input.model,
+        system: WRITE_SYSTEM,
+        images: evidence.screenshot ? [evidence.screenshot] : undefined,
+        prompt: withFrd(input.frdText, input.frdName) + withReferences(references) + (previous
+          ? repairPrompt({
+              testCase,
+              env,
+              instructions: input.instructions,
+              // Counting on from the earlier job's tries when continuing.
+              attempt: (earlier?.attempts.length ?? 0) + attempt - 1,
+              ...previous,
+              snapshot: evidence.snapshot,
+              hasScreenshot: Boolean(evidence.screenshot),
+              failedRequests: evidence.failedRequests,
+              // The hint is the reason for this job; it goes with every try.
+              hint: input.continueFrom?.hint,
+            })
+          : firstDraftPrompt({
+              testCase,
+              env,
+              startPath,
+              instructions: input.instructions,
+              snapshot: evidence.snapshot,
+            })),
+      });
+      const draft = readDraft(reply);
+      result.code = draft.code;
+      result.notes = draft.notes;
 
-        // Claude's judgement that the script is right and the product is
-        // not (or that it needs QA) ends the loop: another run would only
-        // repeat the same failure.
-        //
-        // A product-bug verdict on a script Claude has just changed is a
-        // claim about code that never ran, though. Run it once first: a
-        // failed assertion confirms it, with the failing line to show; a pass
-        // means Claude was wrong and the script is good. Anything else — a
-        // timeout, a crash — never reached a check, so it proves nothing
-        // about the product: it is one more failed try to repair.
-        if (draft.verdict === "product_bug" && draft.code !== previous?.code) {
-          const { runId, item } = await tryScript(draft.code);
-          result.attempts.push(attemptOf(draft, runId, item));
-          await progress(++step, total);
-          if (item.status === "PASSED") {
-            result.outcome = "passed";
-            result.notes = `The AI expected the product to fail this check, but the script passed when it ran. ${draft.notes}`.trim();
-            await setResult(result);
-            break;
-          }
-          if (!failedAtAssertion(item)) {
-            result.notes = `The AI judged this a product bug, but its script never reached the check: ${errorHeadline(item.error)}. ${draft.notes}`.trim();
-            await setResult(result);
-            previous = { code: draft.code, status: item.status, error: item.error, log: item.log };
-            evidence = await readItemEvidence(item.id);
-            continue;
-          }
-        }
-        if (draft.verdict === "product_bug" || draft.verdict === "needs_info") {
-          result.outcome = draft.verdict;
-          await setResult(result);
-          break;
-        }
-
+      // Claude's judgement that the script is right and the product is
+      // not (or that it needs QA) ends the loop: another run would only
+      // repeat the same failure.
+      //
+      // A product-bug verdict on a script Claude has just changed is a
+      // claim about code that never ran, though. Run it once first: a
+      // failed assertion confirms it, with the failing line to show; a pass
+      // means Claude was wrong and the script is good. Anything else — a
+      // timeout, a crash — never reached a check, so it proves nothing
+      // about the product: it is one more failed try to repair.
+      if (draft.verdict === "product_bug" && draft.code !== previous?.code) {
         const { runId, item } = await tryScript(draft.code);
         result.attempts.push(attemptOf(draft, runId, item));
         await progress(++step, total);
-
         if (item.status === "PASSED") {
           result.outcome = "passed";
+          result.notes = `The AI expected the product to fail this check, but the script passed when it ran. ${draft.notes}`.trim();
           await setResult(result);
           break;
         }
+        if (!failedAtAssertion(item)) {
+          result.notes = `The AI judged this a product bug, but its script never reached the check: ${errorHeadline(item.error)}. ${draft.notes}`.trim();
+          await setResult(result);
+          previous = { code: draft.code, status: item.status, error: item.error, log: item.log };
+          evidence = await readItemEvidence(item.id);
+          continue;
+        }
+      }
+      if (draft.verdict === "product_bug" || draft.verdict === "needs_info") {
+        result.outcome = draft.verdict;
         await setResult(result);
-        previous = { code: draft.code, status: item.status, error: item.error, log: item.log };
-        evidence = await readItemEvidence(item.id);
+        break;
       }
 
-      if (input.autoSave && result.outcome === "passed") {
-        // Verified against the environment; anything short of a pass waits
-        // for QA on the case instead.
-        await saveAutomationScript(testCaseId, user.id, result.code, { verified: true });
-        result.saved = true;
-      }
+      const { runId, item } = await tryScript(draft.code);
+      result.attempts.push(attemptOf(draft, runId, item));
+      await progress(++step, total);
 
-      await progress(total, total);
+      if (item.status === "PASSED") {
+        result.outcome = "passed";
+        await setResult(result);
+        break;
+      }
       await setResult(result);
-      return {
-        passed: `Wrote a script that passes on ${env.name}`,
-        product_bug: "Wrote a script — and it looks like the product does not meet the expected result",
-        needs_info: "Wrote what it could — the AI needs something from QA to finish",
-        failing: `Wrote a script, but it still fails after ${MAX_ATTEMPTS} attempts`,
-      }[result.outcome];
-    },
-  );
-}
+      previous = { code: draft.code, status: item.status, error: item.error, log: item.log };
+      evidence = await readItemEvidence(item.id);
+    }
+
+    if (input.autoSave && result.outcome === "passed") {
+      // Verified against the environment; anything short of a pass waits
+      // for QA on the case instead.
+      await saveAutomationScript(testCaseId, userId, result.code, { verified: true });
+      result.saved = true;
+    }
+
+    await progress(total, total);
+    await setResult(result);
+    return {
+      passed: `Wrote a script that passes on ${env.name}`,
+      product_bug: "Wrote a script — and it looks like the product does not meet the expected result",
+      needs_info: "Wrote what it could — the AI needs something from QA to finish",
+      failing: `Wrote a script, but it still fails after ${MAX_ATTEMPTS} attempts`,
+    }[result.outcome];
+  };
+});
 
 // ---------------------------------------------------------------------------
 // Writing scripts for many cases
@@ -802,7 +818,8 @@ const triageSchema = z.object({
     .catch(null),
 });
 
-export async function startTriage(itemId: string, user: SessionUser): Promise<AiJobDto> {
+/** A failed result to explain, checked that it still is one. */
+async function loadTriageItem(itemId: string) {
   const item = await prisma.testRunItem.findUnique({
     where: { id: itemId },
     select: {
@@ -834,23 +851,30 @@ export async function startTriage(itemId: string, user: SessionUser): Promise<Ai
   if (item.status !== "FAILED" && item.status !== "ERROR") {
     throw badRequest("Only failed results can be explained.");
   }
+  return { item, testCase };
+}
 
-  return enqueueJob(
-    {
-      projectId: item.run.projectId,
-      kind: "TRIAGE_FAILURE",
-      userId: user.id,
-      input: { runItemId: item.id },
-    },
-    async ({ token, progress }) => {
-      await progress(0, 1);
-      const evidence = await readItemEvidence(item.id);
-      const references = await findReferenceScripts(testCase);
-      const reply = await askClaude({
-        token,
-        system: TRIAGE_SYSTEM,
-        images: evidence.screenshot ? [evidence.screenshot] : undefined,
-        prompt: `${withReferences(references)}${describeCase(testCase)}
+export async function startTriage(itemId: string, user: SessionUser): Promise<AiJobDto> {
+  const { item } = await loadTriageItem(itemId);
+  return enqueueJob({
+    projectId: item.run.projectId,
+    kind: "TRIAGE_FAILURE",
+    userId: user.id,
+    input: { runItemId: item.id },
+  });
+}
+
+defineJob("TRIAGE_FAILURE", async (job) => {
+  const { item, testCase } = await loadTriageItem((job.input as { runItemId: string }).runItemId);
+  return async ({ token, progress }) => {
+    await progress(0, 1);
+    const evidence = await readItemEvidence(item.id);
+    const references = await findReferenceScripts(testCase);
+    const reply = await askClaude({
+      token,
+      system: TRIAGE_SYSTEM,
+      images: evidence.screenshot ? [evidence.screenshot] : undefined,
+      prompt: `${withReferences(references)}${describeCase(testCase)}
 
 Environment: ${item.run.environmentName}
 
@@ -865,27 +889,26 @@ ${item.error ?? "(none reported)"}
 ${item.log ? `\nConsole output:\n${item.log.slice(-3000)}\n` : ""}
 ${evidence.screenshot ? "A screenshot of the page at the end of the test is attached.\n" : ""}${describeFailedRequests(evidence.failedRequests)}
 ${describePage(evidence.snapshot, "at the end of the test")}`,
-      });
+    });
 
-      const parsed = triageSchema.safeParse(parseJsonBlock(reply));
-      if (!parsed.success) throw new AiError("The AI's answer did not contain a readable verdict.");
-      const fixedCode = parsed.data.category === "script_issue" ? parseCodeReply(reply) : null;
+    const parsed = triageSchema.safeParse(parseJsonBlock(reply));
+    if (!parsed.success) throw new AiError("The AI's answer did not contain a readable verdict.");
+    const fixedCode = parsed.data.category === "script_issue" ? parseCodeReply(reply) : null;
 
-      const triage: Omit<RunTriageDto, "triagedAt"> = {
-        ...parsed.data,
-        fixedCode,
-        bugReport: parsed.data.category === "product_bug" ? parsed.data.bugReport : null,
-        references: references.map(asReference),
-      };
-      await prisma.testRunItem.update({
-        where: { id: item.id },
-        data: { triage, triagedAt: new Date() },
-      });
-      await progress(1, 1);
-      return `${testCase.tcId}: ${triage.summary}`;
-    },
-  );
-}
+    const triage: Omit<RunTriageDto, "triagedAt"> = {
+      ...parsed.data,
+      fixedCode,
+      bugReport: parsed.data.category === "product_bug" ? parsed.data.bugReport : null,
+      references: references.map(asReference),
+    };
+    await prisma.testRunItem.update({
+      where: { id: item.id },
+      data: { triage, triagedAt: new Date() },
+    });
+    await progress(1, 1);
+    return `${testCase.tcId}: ${triage.summary}`;
+  };
+});
 
 /** Explain every failure in a run that has not been explained yet. */
 export async function startRunTriage(runId: string, user: SessionUser) {

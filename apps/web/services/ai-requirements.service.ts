@@ -15,7 +15,7 @@ import {
 } from "@wetestcase/dto";
 import { splitDocument } from "@/utils/document-text";
 
-import { enqueueJob } from "./ai-job.service";
+import { defineJob, enqueueJob } from "./ai-job.service";
 import { resolveProjectPlatform } from "./project.service";
 import {
   startRequirementReading,
@@ -225,79 +225,89 @@ export async function startExtraction(
   });
   if (busy) throw badRequest("This document is already being read.");
 
-  return enqueueJob(
-    {
-      projectId: doc.projectId,
-      kind: "EXTRACT_REQUIREMENTS",
-      userId: user.id,
-      docId: doc.id,
-    },
-    async ({ token, progress }) => {
-      const parts = splitDocument(doc.content, EXTRACT_PART_CHARS);
-      await progress(0, parts.length);
-
-      const reading = await startRequirementReading(docId);
-      // Codes from earlier parts of *this* run. The document's existing codes
-      // are listed apart: re-extraction is meant to land on them again.
-      const taken: string[] = [];
-      let position = 0;
-      let found = 0;
-
-      for (const [index, text] of parts.entries()) {
-        const reply = await askClaude({
-          token,
-          system: EXTRACT_SYSTEM,
-          prompt: extractPrompt({
-            title: doc.title,
-            kind: doc.kind,
-            part: index + 1,
-            parts: parts.length,
-            takenCodes: taken,
-            previous: reading.previous,
-            text,
-          }),
-        });
-
-        const seen = new Set(taken);
-        const items: ExtractedRequirement[] = parseItems(
-          reply,
-          "requirements",
-          extractedRequirementSchema,
-        ).filter((item) => {
-          // The model was told not to repeat codes; hold it to that.
-          if (seen.has(item.code)) return false;
-          seen.add(item.code);
-          return true;
-        });
-
-        for (const item of items) await reading.save(item, position++);
-        found += items.length;
-        taken.push(...items.map((item) => item.code));
-        await progress(index + 1, parts.length);
-      }
-
-      if (found === 0) {
-        // Nothing to compare: marking every earlier requirement missing
-        // would only bury them.
-        throw new AiError(
-          "The AI found no testable requirements in this document.",
-        );
-      }
-      const tally = await reading.finish();
-      if (!reading.previous.length) return `Found ${found} requirements`;
-      return [
-        `Version ${reading.version}: ${found} requirements`,
-        tally.added ? `${tally.added} new` : null,
-        tally.changed ? `${tally.changed} changed` : null,
-        tally.missing ? `${tally.missing} not found — review them` : null,
-        tally.toConfirm ? `${tally.toConfirm} may be renamed — confirm` : null,
-        !tally.added && !tally.changed && !tally.missing ? "no changes" : null,
-      ]
-        .filter(Boolean)
-        .join(", ");
-    },
-  );
+  return enqueueJob({
+    projectId: doc.projectId,
+    kind: "EXTRACT_REQUIREMENTS",
+    userId: user.id,
+    docId: doc.id,
+  });
 }
+
+// Started over after a restart, it is a re-read of the same version, which
+// keeps what the interrupted reading found (see startRequirementReading).
+defineJob("EXTRACT_REQUIREMENTS", async (job) => {
+  const docId = job.docId;
+  if (!docId) throw notFound("Document");
+  const doc = await prisma.requirementDoc.findUnique({
+    where: { id: docId },
+    select: { id: true, projectId: true, title: true, kind: true, content: true },
+  });
+  if (!doc) throw notFound("Document");
+  return async ({ token, progress }) => {
+    const parts = splitDocument(doc.content, EXTRACT_PART_CHARS);
+    await progress(0, parts.length);
+
+    const reading = await startRequirementReading(docId);
+    // Codes from earlier parts of *this* run. The document's existing codes
+    // are listed apart: re-extraction is meant to land on them again.
+    const taken: string[] = [];
+    let position = 0;
+    let found = 0;
+
+    for (const [index, text] of parts.entries()) {
+      const reply = await askClaude({
+        token,
+        system: EXTRACT_SYSTEM,
+        prompt: extractPrompt({
+          title: doc.title,
+          kind: doc.kind,
+          part: index + 1,
+          parts: parts.length,
+          takenCodes: taken,
+          previous: reading.previous,
+          text,
+        }),
+      });
+
+      const seen = new Set(taken);
+      const items: ExtractedRequirement[] = parseItems(
+        reply,
+        "requirements",
+        extractedRequirementSchema,
+      ).filter((item) => {
+        // The model was told not to repeat codes; hold it to that.
+        if (seen.has(item.code)) return false;
+        seen.add(item.code);
+        return true;
+      });
+
+      for (const item of items) await reading.save(item, position++);
+      found += items.length;
+      taken.push(...items.map((item) => item.code));
+      await progress(index + 1, parts.length);
+    }
+
+    if (found === 0) {
+      // Nothing to compare: marking every earlier requirement missing
+      // would only bury them.
+      throw new AiError(
+        "The AI found no testable requirements in this document.",
+      );
+    }
+    const tally = await reading.finish();
+    if (!reading.previous.length) return `Found ${found} requirements`;
+    return [
+      `Version ${reading.version}: ${found} requirements`,
+      tally.added ? `${tally.added} new` : null,
+      tally.changed ? `${tally.changed} changed` : null,
+      tally.missing ? `${tally.missing} not found — review them` : null,
+      tally.toConfirm ? `${tally.toConfirm} may be renamed — confirm` : null,
+      !tally.added && !tally.changed && !tally.missing ? "no changes" : null,
+    ]
+      .filter(Boolean)
+      .join(", ");
+  };
+});
 
 // ---------------------------------------------------------------------------
 // Test case generation
@@ -448,95 +458,114 @@ export async function startGeneration(
     throw badRequest("None of the selected requirements exist any more.");
   }
 
-  return enqueueJob(
-    {
-      projectId,
-      kind: "GENERATE_TEST_CASES",
-      userId: user.id,
-      input: { ...input, requirementIds },
-    },
-    async ({ jobId, token, progress }) => {
-      const batchSize = BATCH_SIZE[input.depth];
-      const batches: string[][] = [];
-      for (let i = 0; i < requirementIds.length; i += batchSize) {
-        batches.push(requirementIds.slice(i, i + batchSize));
-      }
-      await progress(0, batches.length);
-
-      let drafted = 0;
-      for (const [index, ids] of batches.entries()) {
-        // Read per batch, so modules and coverage added by earlier batches —
-        // or by QA meanwhile — are taken into account.
-        const [requirements, modules] = await Promise.all([
-          prisma.requirement.findMany({
-            where: { id: { in: ids } },
-            orderBy: { position: "asc" },
-            select: {
-              id: true,
-              code: true,
-              title: true,
-              description: true,
-              acceptanceCriteria: true,
-              openQuestions: true,
-              testCases: { select: { testCase: { select: { title: true } } } },
-            },
-          }),
-          moduleOutline(projectId),
-        ]);
-        if (requirements.length === 0) continue;
-
-        const reply = await askClaude({
-          token,
-          system: GENERATE_SYSTEM,
-          prompt: generatePrompt({
-            projectName: project.name,
-            platform: input.platform,
-            depth: input.depth,
-            modules,
-            instructions: input.instructions,
-            requirements,
-          }),
-        });
-
-        const idByCode = new Map(requirements.map((req) => [req.code, req.id]));
-        const cases = parseItems(reply, "testCases", draftReplySchema);
-
-        await prisma.testCaseDraft.createMany({
-          data: cases.map((testCase) => {
-            const linked = testCase.requirementCodes
-              .map((code) => idByCode.get(code.trim()))
-              .filter((id): id is string => Boolean(id));
-            return {
-              projectId,
-              jobId,
-              moduleName: testCase.module,
-              subModule: testCase.subModule,
-              title: testCase.title,
-              preconditions: testCase.preconditions ?? null,
-              steps: testCase.steps ?? null,
-              expectedResult: testCase.expectedResult ?? null,
-              testType: testCase.testType,
-              priority: testCase.priority,
-              platform: input.platform,
-              // A case the model did not tie to a code still came from this
-              // batch; with one requirement in it, the link is unambiguous.
-              requirementIds:
-                linked.length > 0
-                  ? Array.from(new Set(linked))
-                  : requirements.length === 1
-                    ? [requirements[0]!.id]
-                    : [],
-            };
-          }),
-        });
-        drafted += cases.length;
-        await progress(index + 1, batches.length);
-      }
-
-      if (drafted === 0) {
-        throw new AiError("The AI did not write any test cases. Try again.");
-      }
-      return `Drafted ${drafted} test case${drafted === 1 ? "" : "s"} for ${requirementIds.length} requirement${requirementIds.length === 1 ? "" : "s"} — review them before they are added`;
-    },
-  );
+  return enqueueJob({
+    projectId,
+    kind: "GENERATE_TEST_CASES",
+    userId: user.id,
+    input: { ...input, requirementIds },
+  });
 }
+
+defineJob("GENERATE_TEST_CASES", async (job) => {
+  const projectId = job.projectId;
+  const input = job.input as {
+    requirementIds: string[];
+    platform: Platform;
+    depth: GenerationDepth;
+    instructions?: string;
+  };
+  const { requirementIds } = input;
+  const project = await prisma.project.findUnique({
+    where: { id: projectId },
+    select: { name: true },
+  });
+  if (!project) throw notFound("Project");
+
+  return async ({ jobId, token, progress }) => {
+    const batchSize = BATCH_SIZE[input.depth];
+    const batches: string[][] = [];
+    for (let i = 0; i < requirementIds.length; i += batchSize) {
+      batches.push(requirementIds.slice(i, i + batchSize));
+    }
+    // Started over after a restart, it carries on after the last batch it
+    // saved rather than drafting those requirements twice.
+    const done = Math.min(job.progressDone, batches.length);
+    await progress(done, batches.length);
+
+    let drafted = done > 0 ? await prisma.testCaseDraft.count({ where: { jobId } }) : 0;
+    for (const [index, ids] of batches.entries()) {
+      if (index < done) continue;
+      // Read per batch, so modules and coverage added by earlier batches —
+      // or by QA meanwhile — are taken into account.
+      const [requirements, modules] = await Promise.all([
+        prisma.requirement.findMany({
+          where: { id: { in: ids } },
+          orderBy: { position: "asc" },
+          select: {
+            id: true,
+            code: true,
+            title: true,
+            description: true,
+            acceptanceCriteria: true,
+            openQuestions: true,
+            testCases: { select: { testCase: { select: { title: true } } } },
+          },
+        }),
+        moduleOutline(projectId),
+      ]);
+      if (requirements.length === 0) continue;
+
+      const reply = await askClaude({
+        token,
+        system: GENERATE_SYSTEM,
+        prompt: generatePrompt({
+          projectName: project.name,
+          platform: input.platform,
+          depth: input.depth,
+          modules,
+          instructions: input.instructions,
+          requirements,
+        }),
+      });
+
+      const idByCode = new Map(requirements.map((req) => [req.code, req.id]));
+      const cases = parseItems(reply, "testCases", draftReplySchema);
+
+      await prisma.testCaseDraft.createMany({
+        data: cases.map((testCase) => {
+          const linked = testCase.requirementCodes
+            .map((code) => idByCode.get(code.trim()))
+            .filter((id): id is string => Boolean(id));
+          return {
+            projectId,
+            jobId,
+            moduleName: testCase.module,
+            subModule: testCase.subModule,
+            title: testCase.title,
+            preconditions: testCase.preconditions ?? null,
+            steps: testCase.steps ?? null,
+            expectedResult: testCase.expectedResult ?? null,
+            testType: testCase.testType,
+            priority: testCase.priority,
+            platform: input.platform,
+            // A case the model did not tie to a code still came from this
+            // batch; with one requirement in it, the link is unambiguous.
+            requirementIds:
+              linked.length > 0
+                ? Array.from(new Set(linked))
+                : requirements.length === 1
+                  ? [requirements[0]!.id]
+                  : [],
+          };
+        }),
+      });
+      drafted += cases.length;
+      await progress(index + 1, batches.length);
+    }
+
+    if (drafted === 0) {
+      throw new AiError("The AI did not write any test cases. Try again.");
+    }
+    return `Drafted ${drafted} test case${drafted === 1 ? "" : "s"} for ${requirementIds.length} requirement${requirementIds.length === 1 ? "" : "s"} — review them before they are added`;
+  };
+});

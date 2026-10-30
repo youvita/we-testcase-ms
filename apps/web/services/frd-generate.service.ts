@@ -7,7 +7,7 @@ import { PLATFORM_LABELS, PRIORITY_LABELS, TEST_TYPE_LABELS } from "@/lib/consta
 import type { SessionUser } from "@/lib/session";
 import type { AiJobDto, AiModel } from "@wetestcase/dto";
 
-import { enqueueJob } from "./ai-job.service";
+import { defineJob, enqueueJob } from "./ai-job.service";
 
 /**
  * An FRD written from a test case that has none — a case written by hand,
@@ -201,15 +201,23 @@ export async function generateCaseFrd(
     return { saved: true };
   }
 
-  const job = await enqueueJob(
-    { projectId: tc.projectId, kind: "GENERATE_FRD", userId: user.id, input: { testCaseId, ...input } },
-    async ({ token, progress }) => {
-      await progress(0, 1);
-      const reply = await askClaude({ token, model: input.model, system: FRD_SYSTEM, prompt: frdPrompt(tc) });
-      await saveFrd(tc, user.id, readAiFrd(reply, tc), "ai");
-      await progress(1, 1);
-      return `Wrote the FRD for ${tc.tcId}`;
-    },
-  );
+  const job = await enqueueJob({
+    projectId: tc.projectId,
+    kind: "GENERATE_FRD",
+    userId: user.id,
+    input: { testCaseId, ...input },
+  });
   return { job };
 }
+
+defineJob("GENERATE_FRD", async (job) => {
+  const input = job.input as { testCaseId: string; model?: AiModel };
+  const tc = await loadCase(input.testCaseId);
+  return async ({ token, progress }) => {
+    await progress(0, 1);
+    const reply = await askClaude({ token, model: input.model, system: FRD_SYSTEM, prompt: frdPrompt(tc) });
+    await saveFrd(tc, job.createdById, readAiFrd(reply, tc), "ai");
+    await progress(1, 1);
+    return `Wrote the FRD for ${tc.tcId}`;
+  };
+});

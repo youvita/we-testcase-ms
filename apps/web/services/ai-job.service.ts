@@ -18,10 +18,12 @@ import { requireClaudeToken } from "./claude-connection.service";
  * person's subscription, and running them side by side would only reach its
  * usage limit sooner.
  *
- * No queue service: a server restart loses whatever was in flight. That is
- * detected rather than hidden — a job the database says is queued or running
- * but this process does not know about is marked failed the next time anyone
- * looks (see `sweepInterrupted`).
+ * No queue service, but jobs survive a restart — a deploy is one. A job is
+ * rebuilt from its row (kind, input, creator) by the builder its kind
+ * registered with `defineJob`, never from memory, so when the server starts
+ * again `resumeJobs` queues what was waiting and starts over what was running.
+ * A job interrupted on each of its MAX_STARTS starts is failed instead: it may
+ * be what is bringing the server down.
  */
 
 export type JobContext = {
@@ -41,6 +43,21 @@ class JobCancelled extends Error {}
 /** Does the work and returns the one-line summary shown when it succeeds. */
 export type JobWork = (context: JobContext) => Promise<string>;
 
+/** A job as stored: everything its work is rebuilt from. */
+export type StoredJob = Pick<
+  AiJob,
+  "id" | "kind" | "input" | "projectId" | "docId" | "createdById" | "progressDone" | "attempts"
+>;
+
+/**
+ * Turns a stored job into its work: reloads what it needs and checks it still
+ * makes sense — the case or document may have gone while the job waited.
+ */
+export type JobBuilder = (job: StoredJob) => Promise<JobWork>;
+
+/** Starts, counting the first, before an interrupted job is given up on. */
+const MAX_STARTS = 2;
+
 type Runtime = {
   /** Jobs this process owns, queued or running. */
   active: Set<string>;
@@ -48,6 +65,9 @@ type Runtime = {
   cancelled: Set<string>;
   /** The tail of each user's queue. */
   queues: Map<string, Promise<void>>;
+  builders: Map<AiJobKind, JobBuilder>;
+  /** Set once this process has taken back the jobs a restart left. */
+  resumed?: Promise<void>;
 };
 
 // On globalThis so dev hot reloads do not forget jobs that are still running.
@@ -55,9 +75,16 @@ const runtime: Runtime = ((globalThis as { __aiJobs?: Runtime }).__aiJobs ??= {
   active: new Set(),
   cancelled: new Set(),
   queues: new Map(),
+  builders: new Map(),
 });
 // A runtime from before cancelling existed, kept across a dev hot reload.
 runtime.cancelled ??= new Set();
+runtime.builders ??= new Map();
+
+/** Register how jobs of a kind are built. Each service does so for its own. */
+export function defineJob(kind: AiJobKind, build: JobBuilder) {
+  runtime.builders.set(kind, build);
+}
 
 const jobInclude = {
   createdBy: { select: { id: true, name: true } },
@@ -82,19 +109,23 @@ function toDto(job: JobRow): AiJobDto {
   };
 }
 
-export async function enqueueJob(
-  params: {
-    projectId: string;
-    kind: AiJobKind;
-    userId: string;
-    docId?: string;
-    input?: Prisma.InputJsonValue;
-  },
-  work: JobWork,
-): Promise<AiJobDto> {
+/**
+ * Record a job and queue it. `input` must hold everything the kind's builder
+ * needs: after a restart, it is all there is.
+ */
+export async function enqueueJob(params: {
+  projectId: string;
+  kind: AiJobKind;
+  userId: string;
+  docId?: string;
+  input?: Prisma.InputJsonValue;
+}): Promise<AiJobDto> {
+  if (!runtime.builders.has(params.kind)) {
+    throw new Error(`No job builder for ${params.kind}: call defineJob in its service.`);
+  }
   // Before the row exists, so "connect your subscription" is the answer to
   // the click rather than a job that fails a moment later.
-  const token = await requireClaudeToken(params.userId);
+  await requireClaudeToken(params.userId);
 
   const job = await prisma.aiJob.create({
     data: {
@@ -107,28 +138,39 @@ export async function enqueueJob(
     include: jobInclude,
   });
 
-  runtime.active.add(job.id);
-  const previous = runtime.queues.get(params.userId) ?? Promise.resolve();
-  const next = previous.then(() => run(job.id, token, work));
-  runtime.queues.set(params.userId, next);
-  void next.finally(() => {
-    // Drop the tail only if nothing was queued behind it meanwhile.
-    if (runtime.queues.get(params.userId) === next) {
-      runtime.queues.delete(params.userId);
-    }
-  });
-
+  schedule(job.id, params.userId);
   return toDto(job);
 }
 
-async function run(jobId: string, token: string, work: JobWork) {
+/** Put a queued job at the end of its creator's line. */
+function schedule(jobId: string, userId: string) {
+  runtime.active.add(jobId);
+  const previous = runtime.queues.get(userId) ?? Promise.resolve();
+  const next = previous.then(() => run(jobId));
+  runtime.queues.set(userId, next);
+  void next.finally(() => {
+    // Drop the tail only if nothing was queued behind it meanwhile.
+    if (runtime.queues.get(userId) === next) {
+      runtime.queues.delete(userId);
+    }
+  });
+}
+
+async function run(jobId: string) {
   try {
     // Guarded on QUEUED: a job stopped while it waited is skipped, not run.
     const { count } = await prisma.aiJob.updateMany({
       where: { id: jobId, status: "QUEUED" },
-      data: { status: "RUNNING", startedAt: new Date() },
+      data: { status: "RUNNING", startedAt: new Date(), attempts: { increment: 1 } },
     });
     if (count === 0) return;
+
+    const job = await prisma.aiJob.findUniqueOrThrow({ where: { id: jobId } });
+    const build = runtime.builders.get(job.kind);
+    if (!build) throw new Error(`No job builder for ${job.kind}`);
+    // Read now rather than when queued: it may have been reconnected since.
+    const token = await requireClaudeToken(job.createdById);
+    const work = await build(job);
 
     const throwIfCancelled = () => {
       if (runtime.cancelled.has(jobId)) throw new JobCancelled();
@@ -207,8 +249,46 @@ export async function stopQueuedJobs(where: Prisma.AiJobWhereInput) {
   return count;
 }
 
-/** Mark jobs left behind by a restart as failed, so nobody waits on them. */
+/**
+ * Take back the jobs a restart left: queue the waiting ones again in the order
+ * they were made, and start the running ones over — unless this was already
+ * their last start. Called once, when the server starts (instrumentation.ts).
+ */
+export function resumeJobs(): Promise<void> {
+  runtime.resumed ??= (async () => {
+    const owned = Array.from(runtime.active);
+    await prisma.aiJob.updateMany({
+      where: { status: "RUNNING", attempts: { gte: MAX_STARTS }, id: { notIn: owned } },
+      data: {
+        status: "FAILED",
+        error: "Interrupted each time it ran — the server restarted while it was running. Run it again.",
+        finishedAt: new Date(),
+      },
+    });
+    await prisma.aiJob.updateMany({
+      where: { status: "RUNNING", id: { notIn: owned } },
+      data: { status: "QUEUED" },
+    });
+    const waiting = await prisma.aiJob.findMany({
+      where: { status: "QUEUED", id: { notIn: owned } },
+      orderBy: { createdAt: "asc" },
+      select: { id: true, createdById: true },
+    });
+    for (const job of waiting) schedule(job.id, job.createdById);
+    if (waiting.length > 0) console.log(`[ai-job] resumed ${waiting.length} job(s)`);
+  })().catch((error) => {
+    // Left for sweepInterrupted to fail, as before resuming existed.
+    console.error("[ai-job] could not resume jobs", error);
+  });
+  return runtime.resumed;
+}
+
+/**
+ * Mark jobs nobody is running as failed, so nobody waits on them. After a
+ * restart, only once `resumeJobs` has had its chance to take them back.
+ */
 export async function sweepInterrupted(where: Prisma.AiJobWhereInput) {
+  await runtime.resumed;
   await prisma.aiJob.updateMany({
     where: {
       ...where,
