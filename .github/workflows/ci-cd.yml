@@ -21,13 +21,29 @@ permissions:
 
 jobs:
   ci:
-    name: Lint and typecheck
+    name: Lint, typecheck and test
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
       DATABASE_URL: postgresql://ci:ci@127.0.0.1:5432/ci
       DIRECT_URL: postgresql://ci:ci@127.0.0.1:5432/ci
+      TEST_DATABASE_URL: postgresql://ci:ci@127.0.0.1:5432/ci_test
       BETTER_AUTH_SECRET: ci-placeholder-not-used
+    # Same image as production: the natural_sort collation needs ICU.
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: ci
+          POSTGRES_PASSWORD: ci
+          POSTGRES_DB: ci_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ci -d ci_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     steps:
       - uses: actions/checkout@v4
 
@@ -47,6 +63,12 @@ jobs:
 
       - name: Lint
         run: npm run lint
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Database tests
+        run: npm run test:db
 
   deploy:
     name: Deploy to Mac mini
