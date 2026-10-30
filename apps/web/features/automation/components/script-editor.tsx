@@ -22,7 +22,10 @@ const IGNORED_DIAGNOSTICS = [1375, 1378, 1208];
 
 type TypeScriptApi = Monaco["typescript"];
 
-/** VS Code's light theme, with the current line boxed rather than filled. */
+/**
+ * VS Code's light theme, with outlines rather than grey fills: the current
+ * line, and the word under the cursor with its other occurrences.
+ */
 const THEME = "wetestcase-light";
 const defineTheme: BeforeMount = (monaco) => {
   monaco.editor.defineTheme(THEME, {
@@ -32,6 +35,12 @@ const defineTheme: BeforeMount = (monaco) => {
     colors: {
       "editor.lineHighlightBackground": "#00000000",
       "editor.lineHighlightBorder": "#cbd5e1",
+      "editor.wordHighlightBackground": "#00000000",
+      "editor.wordHighlightBorder": "#94a3b8",
+      "editor.wordHighlightStrongBackground": "#00000000",
+      "editor.wordHighlightStrongBorder": "#94a3b8",
+      "editor.wordHighlightTextBackground": "#00000000",
+      "editor.wordHighlightTextBorder": "#94a3b8",
     },
   });
 };
