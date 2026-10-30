@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import Editor, { loader, type Monaco, type OnMount } from "@monaco-editor/react";
+import Editor, { loader, type BeforeMount, type Monaco, type OnMount } from "@monaco-editor/react";
 import { Loader2 } from "lucide-react";
 
 import {
@@ -21,6 +21,20 @@ const MAX_LINES = 28;
 const IGNORED_DIAGNOSTICS = [1375, 1378, 1208];
 
 type TypeScriptApi = Monaco["typescript"];
+
+/** VS Code's light theme, with the current line boxed rather than filled. */
+const THEME = "wetestcase-light";
+const defineTheme: BeforeMount = (monaco) => {
+  monaco.editor.defineTheme(THEME, {
+    base: "vs",
+    inherit: true,
+    rules: [],
+    colors: {
+      "editor.lineHighlightBackground": "#00000000",
+      "editor.lineHighlightBorder": "#cbd5e1",
+    },
+  });
+};
 
 /** Set up TypeScript and load Playwright's types: once per page, shared by every editor. */
 let setup: Promise<void> | null = null;
@@ -134,7 +148,9 @@ export function ScriptEditor({
         path={`file:///script.${platform.toLowerCase()}.ts`}
         value={value}
         onChange={(next) => onChange(next ?? "")}
+        beforeMount={defineTheme}
         onMount={handleMount}
+        theme={THEME}
         loading={
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
             <Loader2 className="size-3.5 animate-spin" />
