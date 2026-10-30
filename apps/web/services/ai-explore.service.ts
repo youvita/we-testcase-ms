@@ -13,7 +13,7 @@ import {
   type GenerationDepth,
 } from "@wetestcase/dto";
 
-import { enqueueJob } from "./ai-job.service";
+import { defineJob, enqueueJob } from "./ai-job.service";
 import {
   draftReplySchema,
   moduleOutline,
@@ -93,17 +93,19 @@ const DEPTH_GUIDE: Record<GenerationDepth, string> = {
 
 const observationsSchema = z.array(z.string().trim().min(1)).catch([]);
 
-export async function startExploration(
-  projectId: string,
-  user: SessionUser,
-  input: {
-    environmentId: string;
-    paths: string[];
-    setupTestCaseId?: string;
-    depth: GenerationDepth;
-    instructions?: string;
-  },
-): Promise<AiJobDto> {
+type ExplorationInput = {
+  environmentId: string;
+  paths: string[];
+  setupTestCaseId?: string;
+  depth: GenerationDepth;
+  instructions?: string;
+};
+
+/**
+ * What exploring works from — the project, environment and sign-in script —
+ * checked when it is asked for and again when the job is built.
+ */
+async function loadExploration(projectId: string, input: ExplorationInput) {
   if (!isAutomationConfigured()) {
     throw new HttpError(503, "Automation is not set up on this server (RUNNER_TOKEN), so the app cannot be opened.");
   }
@@ -129,76 +131,88 @@ export async function startExploration(
     setup = { tcId: found.tcId, code: found.script.code };
   }
 
-  const paths = input.paths.slice(0, MAX_PAGES);
+  return { project, env, setup, paths: input.paths.slice(0, MAX_PAGES) };
+}
 
-  return enqueueJob(
-    {
+export async function startExploration(
+  projectId: string,
+  user: SessionUser,
+  input: ExplorationInput,
+): Promise<AiJobDto> {
+  const { paths } = await loadExploration(projectId, input);
+  return enqueueJob({
+    projectId,
+    kind: "EXPLORE_APP",
+    userId: user.id,
+    input: { ...input, paths },
+  });
+}
+
+defineJob("EXPLORE_APP", async (job) => {
+  const input = job.input as ExplorationInput;
+  const projectId = job.projectId;
+  const { project, env, setup, paths } = await loadExploration(projectId, input);
+  return async ({ jobId, token, progress, setResult }) => {
+    await progress(0, 2);
+    const result: ExploreAppResult = { pages: [], drafted: 0, observations: [], runId: null };
+
+    // 1. Look at the pages.
+    const queued = await queueRun({
       projectId,
-      kind: "EXPLORE_APP",
-      userId: user.id,
-      input: { ...input, paths },
-    },
-    async ({ jobId, token, progress, setResult }) => {
-      await progress(0, 2);
-      const result: ExploreAppResult = { pages: [], drafted: 0, observations: [], runId: null };
+      userId: job.createdById,
+      environment: env,
+      purpose: "SCRIPT_CHECK",
+      recordResults: false,
+      // No test case: exploring comes before there are any.
+      items: [{ testCaseId: null, code: explorationScript(paths, setup?.code ?? null) }],
+    });
+    result.runId = queued.id;
+    await setResult(result);
 
-      // 1. Look at the pages.
-      const queued = await queueRun({
-        projectId,
-        userId: user.id,
-        environment: env,
-        purpose: "SCRIPT_CHECK",
-        recordResults: false,
-        // No test case: exploring comes before there are any.
-        items: [{ testCaseId: null, code: explorationScript(paths, setup?.code ?? null) }],
-      });
-      result.runId = queued.id;
-      await setResult(result);
+    const run = await waitForRun(queued.id);
+    const item = run.items[0];
+    // Only a visit that got through every page counts: when one fails, the
+    // last outline the runner took is of whatever error page was left.
+    const pages =
+      item?.status === "PASSED" ? await readItemPages(item.id, paths.length) : [];
+    if (pages.length === 0) {
+      const reason = item?.error?.split("\n")[0] ?? run.error ?? "the pages did not load";
+      throw new AiError(
+        setup
+          ? `Could not sign in with ${setup.tcId} or open the pages: ${reason}`
+          : `Could not open the pages on ${env.name}: ${reason}`,
+      );
+    }
+    result.pages = pages.map((p) => ({ url: p.url, title: p.title }));
+    await setResult(result);
+    await progress(1, 2);
 
-      const run = await waitForRun(queued.id);
-      const item = run.items[0];
-      // Only a visit that got through every page counts: when one fails, the
-      // last outline the runner took is of whatever error page was left.
-      const pages =
-        item?.status === "PASSED" ? await readItemPages(item.id, paths.length) : [];
-      if (pages.length === 0) {
-        const reason = item?.error?.split("\n")[0] ?? run.error ?? "the pages did not load";
-        throw new AiError(
-          setup
-            ? `Could not sign in with ${setup.tcId} or open the pages: ${reason}`
-            : `Could not open the pages on ${env.name}: ${reason}`,
-        );
-      }
-      result.pages = pages.map((p) => ({ url: p.url, title: p.title }));
-      await setResult(result);
-      await progress(1, 2);
+    // 2. Ask Claude what to test.
+    const [modules, current, pending] = await Promise.all([
+      moduleOutline(projectId),
+      prisma.testCase.findMany({
+        where: { projectId },
+        orderBy: { tcId: "asc" },
+        take: 300,
+        select: { title: true, subModule: true, module: { select: { name: true } } },
+      }),
+      // Suggestions still waiting for review count too — exploring the same
+      // page twice before reviewing must not suggest everything again.
+      prisma.testCaseDraft.findMany({
+        where: { projectId, status: "PENDING" },
+        take: 200,
+        select: { title: true, moduleName: true, subModule: true },
+      }),
+    ]);
+    const existing = [
+      ...current.map((c) => `- [${groupName(c.module.name, c.subModule)}] ${c.title}`),
+      ...pending.map(
+        (d) => `- [${groupName(d.moduleName, d.subModule)}] ${d.title} (suggested, awaiting review)`,
+      ),
+    ];
 
-      // 2. Ask Claude what to test.
-      const [modules, current, pending] = await Promise.all([
-        moduleOutline(projectId),
-        prisma.testCase.findMany({
-          where: { projectId },
-          orderBy: { tcId: "asc" },
-          take: 300,
-          select: { title: true, subModule: true, module: { select: { name: true } } },
-        }),
-        // Suggestions still waiting for review count too — exploring the same
-        // page twice before reviewing must not suggest everything again.
-        prisma.testCaseDraft.findMany({
-          where: { projectId, status: "PENDING" },
-          take: 200,
-          select: { title: true, moduleName: true, subModule: true },
-        }),
-      ]);
-      const existing = [
-        ...current.map((c) => `- [${groupName(c.module.name, c.subModule)}] ${c.title}`),
-        ...pending.map(
-          (d) => `- [${groupName(d.moduleName, d.subModule)}] ${d.title} (suggested, awaiting review)`,
-        ),
-      ];
-
-      const images: ClaudeImage[] = pages.flatMap((p) => (p.screenshot ? [p.screenshot] : []));
-      const prompt = `Project: ${project.name}
+    const images: ClaudeImage[] = pages.flatMap((p) => (p.screenshot ? [p.screenshot] : []));
+    const prompt = `Project: ${project.name}
 Environment: ${env.name} (${env.webBaseUrl})
 ${setup ? `Signed in first, using the script of ${setup.tcId}.\n` : ""}Variables available for test data: ${env.variables.map((v) => `vars.${v.key}`).join(", ") || "none"}
 Existing modules (reuse a name when one fits): ${modules}
@@ -210,43 +224,42 @@ ${existing.length ? existing.join("\n") : "(none)"}
 The pages, in the order visited — screenshots are attached in the same order:
 
 ${pages
-  .map(
-    (p, index) => `### Page ${index + 1}: ${p.title || "(no title)"} — ${p.url}
+.map(
+  (p, index) => `### Page ${index + 1}: ${p.title || "(no title)"} — ${p.url}
 \`\`\`yaml
 ${p.outline.replace(/^URL: .*\nTitle: .*\n\n/, "").slice(0, OUTLINE_CHARS)}
 \`\`\``,
-  )
-  .join("\n\n")}`;
+)
+.join("\n\n")}`;
 
-      const reply = await askClaude({ token, system: EXPLORE_SYSTEM, images, prompt });
-      const cases = parseItems(reply, "testCases", draftReplySchema);
-      const json = parseJsonReply(reply) as { observations?: unknown };
-      result.observations = observationsSchema.parse(json.observations);
+    const reply = await askClaude({ token, system: EXPLORE_SYSTEM, images, prompt });
+    const cases = parseItems(reply, "testCases", draftReplySchema);
+    const json = parseJsonReply(reply) as { observations?: unknown };
+    result.observations = observationsSchema.parse(json.observations);
 
-      await prisma.testCaseDraft.createMany({
-        data: cases.map((c) => ({
-          projectId,
-          jobId,
-          moduleName: c.module,
-          subModule: c.subModule,
-          title: c.title,
-          preconditions: c.preconditions ?? null,
-          steps: c.steps ?? null,
-          expectedResult: c.expectedResult ?? null,
-          testType: c.testType,
-          priority: c.priority,
-          platform: "WEB" as const,
-          requirementIds: [],
-        })),
-      });
-      result.drafted = cases.length;
-      await setResult(result);
-      await progress(2, 2);
+    await prisma.testCaseDraft.createMany({
+      data: cases.map((c) => ({
+        projectId,
+        jobId,
+        moduleName: c.module,
+        subModule: c.subModule,
+        title: c.title,
+        preconditions: c.preconditions ?? null,
+        steps: c.steps ?? null,
+        expectedResult: c.expectedResult ?? null,
+        testType: c.testType,
+        priority: c.priority,
+        platform: "WEB" as const,
+        requirementIds: [],
+      })),
+    });
+    result.drafted = cases.length;
+    await setResult(result);
+    await progress(2, 2);
 
-      if (cases.length === 0) {
-        throw new AiError("The AI did not suggest any new test cases for these pages.");
-      }
-      return `Suggested ${cases.length} test case${cases.length === 1 ? "" : "s"} from ${pages.length} page${pages.length === 1 ? "" : "s"} — review them before they are added`;
-    },
-  );
-}
+    if (cases.length === 0) {
+      throw new AiError("The AI did not suggest any new test cases for these pages.");
+    }
+    return `Suggested ${cases.length} test case${cases.length === 1 ? "" : "s"} from ${pages.length} page${pages.length === 1 ? "" : "s"} — review them before they are added`;
+  };
+});

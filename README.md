@@ -297,8 +297,12 @@ Messages API, moving to an Anthropic API key later is a config change.
 **Jobs.** AI work runs in the background inside the app process (the Cloudflare
 tunnel cuts requests at 100 s); the page polls and refreshes when a job ends.
 One person's jobs run one at a time, since they share that person's usage
-limits. A restart loses in-flight jobs; they are marked failed with a "run it
-again" message rather than left spinning.
+limits. Jobs survive a restart, so a deploy does not cost anyone their work:
+each is rebuilt from what its row stores, and when the server starts
+(`instrumentation.ts`) waiting jobs are queued again in order and running ones
+start over — drafting test cases carries on after its last saved batch. A job
+interrupted on its second start as well is failed with a "run it again"
+message, in case it is what brings the server down.
 
 ---
 
