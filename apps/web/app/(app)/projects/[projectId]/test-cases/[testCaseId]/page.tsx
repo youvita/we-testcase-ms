@@ -111,11 +111,12 @@ export default async function TestCaseDetailPage({
   const canExecute = canExecuteTests(user.role);
 
   /**
-   * The fix pipeline only makes sense once something has gone wrong. A case
-   * that has never failed has no failure to track, and one that passed a retest
-   * still deserves to show the completed run.
+   * Once a case has a result worth tracking: anything that has gone wrong, and
+   * any pass — a first-time pass shows the single step it took. A case never
+   * run has nothing to show.
    */
   const showTimeline =
+    testCase.status === "PASSED" ||
     testCase.status === "FAILED" ||
     testCase.status === "BLOCKED" ||
     testCase.fixStatus !== "NONE" ||
