@@ -59,6 +59,30 @@ function resolvePlatforms(rows: ParsedRow[], projectPlatforms: Platform[]) {
   return { fallback, added, all };
 }
 
+/**
+ * The project's cases with these TC IDs, keyed by lower-cased ID.
+ *
+ * TC IDs are unique per project regardless of case, as they are within one
+ * file: "tc-1" in a sheet is the case already stored as "TC-1". When older
+ * data holds both spellings, the exact one wins.
+ */
+async function findExistingTcIds(
+  projectId: string,
+  tcIds: string[],
+): Promise<Map<string, string>> {
+  const found = await prisma.testCase.findMany({
+    where: { projectId, tcId: { in: tcIds, mode: "insensitive" } },
+    select: { id: true, tcId: true },
+  });
+  const exact = new Set(tcIds);
+  const byKey = new Map<string, string>();
+  for (const testCase of found) {
+    const key = testCase.tcId.toLowerCase();
+    if (!byKey.has(key) || exact.has(testCase.tcId)) byKey.set(key, testCase.id);
+  }
+  return byKey;
+}
+
 type ParsedRow = {
   /** 1-based row number in the sheet, header included, for error reporting. */
   row: number;
@@ -297,11 +321,10 @@ export async function importTestCases(
 
   const rows = [...seen.values()];
 
-  const existing = await prisma.testCase.findMany({
-    where: { projectId, tcId: { in: rows.map((r) => r.tcId) } },
-    select: { id: true, tcId: true },
-  });
-  const existingByTcId = new Map(existing.map((t) => [t.tcId, t.id]));
+  const existingByTcId = await findExistingTcIds(
+    projectId,
+    rows.map((r) => r.tcId),
+  );
 
   const modulesCreated: string[] = [];
   let created = 0;
@@ -345,7 +368,7 @@ export async function importTestCases(
       const moduleId = moduleIdByName.get(row.module);
       if (!moduleId) continue; // unreachable; keeps the type narrow
 
-      const existingId = existingByTcId.get(row.tcId);
+      const existingId = existingByTcId.get(row.tcId.toLowerCase());
 
       if (existingId) {
         if (mode === "skip") {
@@ -455,10 +478,10 @@ export async function previewImport(
   const rows = [...byTcId.values()];
 
   const [existing, projectModules, project] = await Promise.all([
-    prisma.testCase.findMany({
-      where: { projectId, tcId: { in: rows.map((row) => row.tcId) } },
-      select: { tcId: true },
-    }),
+    findExistingTcIds(
+      projectId,
+      rows.map((row) => row.tcId),
+    ),
     prisma.module.findMany({ where: { projectId }, select: { name: true } }),
     prisma.project.findUniqueOrThrow({
       where: { id: projectId },
@@ -466,11 +489,12 @@ export async function previewImport(
     }),
   ]);
 
-  const existingTcIds = new Set(existing.map((row) => row.tcId));
   const known = new Set(projectModules.map((mod) => mod.name));
   const moduleNames = [...new Set(rows.map((row) => row.module))];
 
-  const duplicates = rows.filter((row) => existingTcIds.has(row.tcId)).length;
+  const duplicates = rows.filter((row) =>
+    existing.has(row.tcId.toLowerCase()),
+  ).length;
 
   return {
     fileName: file.fileName,

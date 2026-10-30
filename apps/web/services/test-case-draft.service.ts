@@ -110,13 +110,16 @@ async function allocateTcId(
 ): Promise<string> {
   const prefix = `TC-${stem}-`;
   const taken = await tx.testCase.findMany({
-    where: { projectId, tcId: { startsWith: prefix } },
+    where: { projectId, tcId: { startsWith: prefix, mode: "insensitive" } },
     select: { tcId: true },
   });
-  const used = new Set([...taken.map((row) => row.tcId), ...reserved]);
+  // Lower-cased: TC IDs are unique regardless of case.
+  const used = new Set(
+    [...taken.map((row) => row.tcId), ...reserved].map((id) => id.toLowerCase()),
+  );
   for (let n = 1; ; n += 1) {
     const candidate = `${prefix}${String(n).padStart(2, "0")}`;
-    if (!used.has(candidate)) {
+    if (!used.has(candidate.toLowerCase())) {
       reserved.add(candidate);
       return candidate;
     }

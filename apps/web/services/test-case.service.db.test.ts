@@ -3,7 +3,12 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { testCaseQuerySchema } from "@/lib/validations";
 import { createProject, createTestCase, resetDatabase } from "@/test/db";
 
-import { getTestCaseNeighbours, listTestCases } from "./test-case.service";
+import {
+  createTestCase as createTestCaseFromForm,
+  getTestCaseNeighbours,
+  listTestCases,
+  updateTestCase,
+} from "./test-case.service";
 
 beforeEach(resetDatabase);
 
@@ -45,5 +50,39 @@ describe("TC ID ordering", () => {
 
     expect(prevId).toBe(cases.get("TC-2"));
     expect(nextId).toBe(cases.get("TC-10"));
+  });
+});
+
+describe("TC ID uniqueness", () => {
+  function form(moduleId: string, tcId: string) {
+    return { moduleId, tcId, title: `Case ${tcId}` };
+  }
+
+  it("refuses a new case whose TC ID differs only in capitalisation", async () => {
+    const { project, module } = await createProject();
+    await createTestCase(project.id, module.id, "TC-1");
+
+    await expect(createTestCaseFromForm(project.id, form(module.id, "tc-1"))).rejects.toThrow(
+      /already used/,
+    );
+  });
+
+  it("refuses renaming a case onto another's TC ID in different capitals", async () => {
+    const { project, module } = await createProject();
+    await createTestCase(project.id, module.id, "TC-1");
+    const other = await createTestCase(project.id, module.id, "TC-2");
+
+    await expect(updateTestCase(other.id, form(module.id, "tc-1"))).rejects.toThrow(
+      /already used/,
+    );
+  });
+
+  it("lets a case change the capitalisation of its own TC ID", async () => {
+    const { project, module } = await createProject();
+    const tc = await createTestCase(project.id, module.id, "tc-1");
+
+    const updated = await updateTestCase(tc.id, form(module.id, "TC-1"));
+
+    expect(updated.tcId).toBe("TC-1");
   });
 });
