@@ -175,15 +175,41 @@ services:
   #
   # The hostname is random and every restart mints a new one, so leave it
   # running. For a URL that never changes, use the `cloudflared` service above.
+  # Reverse proxy between cloudflared and the app. Its only job is to hand the
+  # app a decoded path: Cloudflare percent-encodes ( ) [ ] in Next.js route
+  # group / dynamic segment chunk URLs, and Next.js 15 404s when both are
+  # encoded at once, so pages die with "Loading chunk ... failed". See the note
+  # in deploy/web/nginx.conf. Shares the `quick` profile with the tunnel,
+  # because the tunnel is the only thing that talks to it.
+  web:
+    image: nginx:1.27-alpine
+    container_name: wetestcase-web
+    restart: unless-stopped
+    profiles: ["quick"]
+    volumes:
+      - ./deploy/web/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      app:
+        condition: service_healthy
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:80/healthz"]
+      interval: 15s
+      timeout: 3s
+      retries: 3
+
   quicktunnel:
     image: cloudflare/cloudflared:latest
     container_name: wetestcase-quick-tunnel
     restart: unless-stopped
     profiles: ["quick"]
-    # The app owns BASE_PATH, so the public app lives at <random>/cases/.
-    command: tunnel --no-autoupdate --protocol http2 --url http://app:3000
+    # Through `web`, never straight to app:3000 -- the app needs the decoded
+    # path that nginx passes on. The app owns BASE_PATH, so the public app
+    # lives at <random>/cases/.
+    command: tunnel --no-autoupdate --protocol http2 --url http://web:80
     depends_on:
-      app:
+      web:
         condition: service_healthy
     networks:
       - internal
