@@ -14,26 +14,42 @@ Users → Cloudflare → Tunnel → Mac mini :3000 (Next.js)
                                └─ Volume: screenshots / avatars
 ```
 
-## Many projects: one nginx + one tunnel (recommended)
+## Free public URL: this app's own tunnel
 
-Avoid one `cloudflared` / terminal per repo. Use the shared edge proxy (also in SecureScan):
-
-```text
-Internet → Cloudflare → cloudflared (1 process) → nginx :8080
-                                                   ├─ /cases/       → :3000
-                                                   └─ /securescan/  → :3001
-```
+`npm run tunnel:own` runs a Cloudflare Quick Tunnel in Docker, straight to
+`app:3000`, and we-testcase depends on nothing outside this repo:
 
 ```bash
-npm run edge:up      # nginx on 127.0.0.1:8080
-npm run tunnel:edge  # one free trycloudflare URL → edge (leave running)
-# → https://….trycloudflare.com/cases/
-# → https://….trycloudflare.com/securescan/
+npm run tunnel:own       # start it (leave it running)
+npm run tunnel:own:url   # print the https://....trycloudflare.com URL
+# -> https://....trycloudflare.com/cases/
 ```
 
-Do **not** also run `tunnel:free` if you use `tunnel:edge`.
+Every other app on the Mac mini (OhMyCMO, POS168) already runs its own tunnel
+this way. The hostname is random and a restart mints a new one; for a URL that
+never changes, see **Stable tunnel** below.
 
-Details: [edge/README.md](./edge/README.md). Start edge from **either** this repo or `secure-scanner` — not both (same `macmini-edge` container).
+`tunnel:own` passes `--no-deps`, so it starts the tunnel without touching the
+running app or database.
+
+### The shared edge proxy is no longer here
+
+`/cases/` is also reachable through the Mac mini edge — one nginx and one
+tunnel fronting several projects. That edge used to live in this repo at
+`deploy/edge`, which meant we-testcase owned five other projects' routing and
+`npm run edge:up` from here decided whether they had a public URL.
+
+It now lives on its own:
+
+```bash
+cd ~/Projects/macmini-edge
+./scripts/run-edge.sh
+./scripts/run-edge-free-tunnel.sh
+```
+
+Nothing in this repo starts, stops or configures it. If `/cases/` needs to
+change on the shared hostname, edit `nginx.conf` there. Use `tunnel:own` above
+for a URL this repo controls end to end.
 
 ---
 
@@ -201,9 +217,9 @@ containers stay the same (`name: we-testcase-ms` in `docker-compose.prod.yml`).
 | Task | Command |
 | --- | --- |
 | Redeploy app only (tunnel stays up) | push to `main` (or `npm run docker:stack:up`) |
-| Edge proxy (many apps, one port) | `npm run edge:up` |
-| Free public URL via edge (once, leave running) | `npm run tunnel:edge` |
-| Free public URL — this app only | `npm run tunnel:free` |
+| Free public URL — in Docker (preferred) | `npm run tunnel:own` |
+| Print that URL | `npm run tunnel:own:url` |
+| Free public URL — host `cloudflared` | `npm run tunnel:free` |
 | Logs | `docker compose -f docker-compose.prod.yml logs -f app` |
 | Bring crashed containers back now | `./deploy/scripts/autostart.sh` |
 | DB backup | `./deploy/scripts/backup-db.sh` |
@@ -225,8 +241,10 @@ One-time, on the Mac mini, as the Docker Desktop user:
 ```
 
 The LaunchAgent runs `deploy/scripts/autostart.sh` at login and every 5 minutes.
-It opens Docker Desktop if it is closed, then starts `wetestcase-*`,
-`macmini-edge` and `macmini-tunnel` if they are stopped with exit code 255.
+It opens Docker Desktop if it is closed, then starts the `wetestcase-*`
+containers if they are stopped with exit code 255. The shared edge
+(`macmini-edge`, `macmini-tunnel`) autostarts from `~/Projects/macmini-edge`,
+not from here.
 It never builds or recreates anything, and it leaves containers stopped on
 purpose alone. Log: `~/Library/Logs/wetestcase-autostart.log` (it also prints
 the new tunnel URL when it restarts the tunnel).

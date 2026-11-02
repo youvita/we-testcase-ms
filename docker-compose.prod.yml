@@ -160,6 +160,40 @@ services:
     networks:
       - internal
 
+  # Free public URL with no domain and no credentials: a Cloudflare Quick
+  # Tunnel straight to this app, so we-testcase does not depend on the shared
+  # Mac mini edge (now its own repo at ~/Projects/macmini-edge) or the other
+  # projects routed through it.
+  #
+  #   npm run tunnel:own       # start it
+  #   npm run tunnel:own:url   # print the https://....trycloudflare.com URL
+  #
+  # tunnel:own passes --no-deps on purpose: CI deploys this stack from the
+  # runner workspace, so ./deploy/backups resolves to a different absolute
+  # path there and compose run from a local clone would otherwise recreate
+  # (and briefly stop) postgres just to start a tunnel.
+  #
+  # The hostname is random and every restart mints a new one, so leave it
+  # running. For a URL that never changes, use the `cloudflared` service above.
+  quicktunnel:
+    image: cloudflare/cloudflared:latest
+    container_name: wetestcase-quick-tunnel
+    restart: unless-stopped
+    profiles: ["quick"]
+    # The app owns BASE_PATH, so the public app lives at <random>/cases/.
+    command: tunnel --no-autoupdate --protocol http2 --url http://app:3000
+    depends_on:
+      app:
+        condition: service_healthy
+    networks:
+      - internal
+    # cloudflared logs every request; cap it so it cannot fill the Mini's disk.
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "3"
+
 networks:
   internal:
     driver: bridge

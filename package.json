@@ -21,11 +21,9 @@
     "db:studio": "npm run db:studio -w @wetestcase/web",
     "db:seed": "npm run db:seed -w @wetestcase/web",
     "tunnel:free": "./deploy/scripts/run-free-tunnel.sh",
-    "tunnel:edge": "./deploy/scripts/run-edge-free-tunnel.sh",
-    "tunnel:edge:url": "docker logs macmini-tunnel 2>&1 | grep -oE 'https://[a-z0-9-]+\\.trycloudflare\\.com' | tail -1",
-    "tunnel:edge:down": "docker compose -f deploy/edge/docker-compose.yml --profile tunnel stop tunnel && docker compose -f deploy/edge/docker-compose.yml --profile tunnel rm -f tunnel",
-    "edge:up": "./deploy/scripts/run-edge.sh",
-    "edge:down": "docker compose -f deploy/edge/docker-compose.yml --profile tunnel down",
+    "tunnel:own": "docker compose -f docker-compose.prod.yml --env-file .env.production --profile quick up -d --no-deps quicktunnel",
+    "tunnel:own:url": "docker logs wetestcase-quick-tunnel 2>&1 | grep -oE 'https://[a-z0-9-]+\\.trycloudflare\\.com' | tail -1",
+    "tunnel:own:down": "docker compose -f docker-compose.prod.yml --env-file .env.production --profile quick stop quicktunnel && docker compose -f docker-compose.prod.yml --env-file .env.production --profile quick rm -f quicktunnel",
     "docker:stack:up": "./deploy/scripts/stack-up.sh"
   },
   "engines": {
