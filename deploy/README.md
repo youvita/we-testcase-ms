@@ -30,7 +30,15 @@ this way. The hostname is random and a restart mints a new one; for a URL that
 never changes, see **Stable tunnel** below.
 
 `tunnel:own` passes `--no-deps`, so it starts the tunnel without touching the
-running app or database.
+running app or database. It brings up two containers: the tunnel and a small
+nginx (`deploy/web/nginx.conf`) that sits between them.
+
+That proxy is not optional. Cloudflare percent-encodes `( )` and `[ ]` in the
+`/_next/static` chunk paths Next.js generates from route groups and dynamic
+segments, and Next.js 15 returns 404 when both are encoded in one URL, so
+pages fail with *Loading chunk … failed*. nginx's `$uri` is already decoded,
+so `proxy_pass http://app$uri` hands the app a path it can match. Pointing
+cloudflared straight at `app:3000` reintroduces the bug.
 
 ### The shared edge proxy is no longer here
 
