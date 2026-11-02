@@ -13,7 +13,9 @@ export PATH="/opt/homebrew/bin:/usr/local/bin:${HOME}/.docker/bin:${PATH:-/usr/b
 
 # Postgres first so the app finds its database. Missing containers are skipped
 # (the runner and the tunnel are optional).
-CONTAINERS="${AUTOSTART_CONTAINERS:-wetestcase-postgres wetestcase-claude-bridge wetestcase-app wetestcase-runner macmini-edge macmini-tunnel}"
+# The shared edge (macmini-edge / macmini-tunnel) autostarts from its own
+# repo at ~/Projects/macmini-edge; this one only owns wetestcase containers.
+CONTAINERS="${AUTOSTART_CONTAINERS:-wetestcase-postgres wetestcase-claude-bridge wetestcase-app wetestcase-runner wetestcase-quick-tunnel}"
 DOCKER_WAIT_SECONDS="${DOCKER_WAIT_SECONDS:-300}"
 
 log() { echo "$(date '+%Y-%m-%d %H:%M:%S') [autostart] $*"; }
@@ -52,9 +54,16 @@ done
 
 if [[ "$started" -gt 0 ]]; then
   log "started ${started} container(s)"
-  if [[ " $CONTAINERS " == *" macmini-tunnel "* ]] && docker inspect macmini-tunnel >/dev/null 2>&1; then
+  # A restarted Quick Tunnel always mints a new hostname, so report whichever
+  # one is fronting this app. The app's own tunnel wins when both exist.
+  for tunnel in wetestcase-quick-tunnel; do
+    [[ " $CONTAINERS " == *" $tunnel "* ]] || continue
+    docker inspect "$tunnel" >/dev/null 2>&1 || continue
     sleep 20
-    url="$(docker logs --since 2m macmini-tunnel 2>&1 | grep -oE 'https://[a-z0-9-]+\.trycloudflare\.com' | tail -1)"
-    [[ -n "$url" ]] && log "public URL is now ${url}/cases/ (share the new link)"
-  fi
+    url="$(docker logs --since 2m "$tunnel" 2>&1 | grep -oE 'https://[a-z0-9-]+\.trycloudflare\.com' | tail -1)"
+    if [[ -n "$url" ]]; then
+      log "public URL is now ${url}/cases/ (share the new link)"
+      break
+    fi
+  done
 fi

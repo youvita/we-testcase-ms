@@ -29,6 +29,25 @@ const nextConfig: NextConfig = {
   eslint: {
     ignoreDuringBuilds: false,
   },
+  // basePath means Next serves nothing at the true origin root, so on a
+  // hostname of our own (the app's dedicated tunnel) "/" is a bare 404. Send
+  // it to the app. `basePath: false` keeps the rule off the prefix, so it
+  // matches a literal "/" and not the internal "/" that "/cases/" becomes --
+  // without it the two would redirect to each other forever.
+  ...(basePath
+    ? {
+        async redirects() {
+          return [
+            {
+              source: "/",
+              destination: basePath,
+              permanent: false,
+              basePath: false,
+            },
+          ];
+        },
+      }
+    : {}),
   // Expose to the browser for Better Auth client path under the prefix.
   env: {
     NEXT_PUBLIC_BASE_PATH: basePath ?? "",
