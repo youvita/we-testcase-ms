@@ -22,6 +22,13 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import {
   ALLOWED_IMAGE_MIME_TYPES,
@@ -42,6 +49,9 @@ import {
   EXECUTION_PANEL_ANCHOR,
   useExecutionEditor,
 } from "./execution-editor-context";
+
+/** The Select's value for "did not say"; never stored. */
+const NO_ENVIRONMENT = "__none__";
 
 const STATUS_BUTTON_STYLES: Record<ExecutionStatus, string> = {
   PASSED:
@@ -65,9 +75,12 @@ const STATUS_BUTTON_STYLES: Record<ExecutionStatus, string> = {
 export function ExecutionPanel({
   testCaseId,
   currentStatus,
+  environments = [],
 }: {
   testCaseId: string;
   currentStatus: ExecutionStatus;
+  /** The project's run environment names, its default first. */
+  environments?: string[];
 }) {
   const router = useRouter();
   const imageInputRef = useRef<HTMLInputElement>(null);
@@ -86,6 +99,9 @@ export function ExecutionPanel({
   );
   const [actualResult, setActualResult] = useState("");
   const [comment, setComment] = useState("");
+  // The default environment, preselected: most results come from where the
+  // project normally runs, and a blank here would leave reports guessing.
+  const [environmentName, setEnvironmentName] = useState(environments[0] ?? NO_ENVIRONMENT);
   const [files, setFiles] = useState<File[]>([]);
   const [removedAttachments, setRemovedAttachments] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
@@ -111,6 +127,7 @@ export function ExecutionPanel({
     setFiles([]);
     setRemovedAttachments([]);
     setStatus(currentStatus === "NOT_RUN" ? "PASSED" : currentStatus);
+    setEnvironmentName(environments[0] ?? NO_ENVIRONMENT);
     editor?.close();
   }
 
@@ -159,7 +176,12 @@ export function ExecutionPanel({
           )
         : await api.post<ExecutionWithDetails>(
             `/api/test-cases/${testCaseId}/executions`,
-            { status, actualResult, comment },
+            {
+              status,
+              actualResult,
+              comment,
+              environmentName: environmentName === NO_ENVIRONMENT ? "" : environmentName,
+            },
           );
 
       // Removals first: if an upload later fails the user still sees the
@@ -262,6 +284,36 @@ export function ExecutionPanel({
           </div>
         </fieldset>
 
+        {/* Where it was tested is part of what happened, so like the tester
+            and the time it is not changed by an edit. */}
+        {editing ? (
+          editing.environmentName && (
+            <p className="text-sm text-muted-foreground">
+              Tested on{" "}
+              <span className="font-medium text-foreground">{editing.environmentName}</span>
+            </p>
+          )
+        ) : (
+          environments.length > 0 && (
+            <div className="space-y-2">
+              <Label htmlFor="environmentName">Tested on</Label>
+              <Select value={environmentName} onValueChange={setEnvironmentName}>
+                <SelectTrigger id="environmentName">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {environments.map((name) => (
+                    <SelectItem key={name} value={name}>
+                      {name}
+                    </SelectItem>
+                  ))}
+                  <SelectItem value={NO_ENVIRONMENT}>Not specified</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          )
+        )}
+
         <div className="space-y-2">
           <Label htmlFor="actualResult">
             Actual result
@@ -289,7 +341,7 @@ export function ExecutionPanel({
             rows={2}
             value={comment}
             onChange={(event) => setComment(event.target.value)}
-            placeholder="Environment, build number, anything a developer should know…"
+            placeholder="Build number, device, anything a developer should know…"
           />
         </div>
 

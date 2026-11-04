@@ -28,6 +28,7 @@ import { api, errorMessage } from "@/utils/api-client";
 import type { SubModuleOption } from "@/types";
 
 import { WatchLiveFields, type LiveChoice } from "./live-view";
+import { NoEnvironmentHint } from "@/features/environments/components/no-environment-hint";
 
 const NO_SIGN_IN = "none";
 
@@ -127,9 +128,7 @@ export function NewRunDialog({
         </DialogHeader>
 
         {environments.length === 0 ? (
-          <p className="text-sm text-muted-foreground">
-            Add an environment first, under Automation → Environments.
-          </p>
+          <NoEnvironmentHint projectId={projectId} />
         ) : (
           <div className="space-y-4">
             <div className="space-y-2">

@@ -1,7 +1,7 @@
 import type { Prisma } from "@prisma/client";
 
 import { prisma } from "@/lib/prisma";
-import { forbidden, notFound } from "@/lib/api";
+import { badRequest, forbidden, notFound } from "@/lib/api";
 import { isAdmin } from "@/lib/permissions";
 import type { Role } from "@/lib/constants";
 import type { ExecutionInput } from "@/lib/validations";
@@ -41,6 +41,7 @@ export async function recordExecution(
         status: input.status,
         actualResult: input.actualResult ?? null,
         comment: input.comment ?? null,
+        environmentName: input.environmentName ?? null,
         executedAt,
       },
       include: { tester: testerSelect, attachments: true },
@@ -64,6 +65,24 @@ export async function recordExecution(
 
     return execution;
   });
+}
+
+/**
+ * A tester's "tested on" must be one of the case's project's environments.
+ *
+ * Checked for results people record, not for those a run records: the run
+ * already names its environment, which may since have been renamed.
+ */
+export async function assertEnvironmentName(
+  testCaseId: string,
+  environmentName: string | undefined,
+) {
+  if (!environmentName) return;
+  const found = await prisma.runEnvironment.findFirst({
+    where: { name: environmentName, project: { testCases: { some: { id: testCaseId } } } },
+    select: { id: true },
+  });
+  if (!found) throw badRequest(`"${environmentName}" is not one of this project's environments`);
 }
 
 /**

@@ -20,6 +20,7 @@ import {
   type TestRunCreateInput,
   type TestRunDetailDto,
   type TestRunDto,
+  type Paginated,
 } from "@wetestcase/dto";
 
 import { resolveStoredPath } from "./attachment.service";
@@ -276,6 +277,39 @@ export async function sweepStaleRuns() {
       error: "The runner stopped responding during this run. Check that the runner container is up, then run again.",
     });
   }
+}
+
+/**
+ * One page of a project's runs, newest first. A page past the end shows the
+ * last one, so deleting or a stale link never lands on an empty table.
+ */
+export async function listTestRunsPage(
+  projectId: string,
+  options: { page: number; pageSize: number },
+): Promise<Paginated<TestRunDto>> {
+  await sweepStaleRuns();
+  const where = { projectId, purpose: "RUN" as const };
+  const total = await prisma.testRun.count({ where });
+  const totalPages = Math.max(1, Math.ceil(total / options.pageSize));
+  const page = Math.min(Math.max(1, options.page), totalPages);
+  const runs = await prisma.testRun.findMany({
+    where,
+    orderBy: { number: "desc" },
+    skip: (page - 1) * options.pageSize,
+    take: options.pageSize,
+    include: runInclude,
+  });
+  return { items: runs.map(toRunDto), page, pageSize: options.pageSize, total, totalPages };
+}
+
+/** The newest run that finished and was not cancelled — what "last run" means. */
+export async function getLastFinishedRun(projectId: string): Promise<TestRunDto | null> {
+  const run = await prisma.testRun.findFirst({
+    where: { projectId, purpose: "RUN", finishedAt: { not: null }, status: { not: "CANCELLED" } },
+    orderBy: { number: "desc" },
+    include: runInclude,
+  });
+  return run ? toRunDto(run) : null;
 }
 
 export async function listTestRuns(projectId: string, limit = 30): Promise<TestRunDto[]> {
@@ -622,6 +656,7 @@ export async function reportItemResult(
       status: recordAs,
       actualResult: recordAs === "FAILED" ? (result.error?.slice(0, 4000) ?? null) : null,
       comment: `Automated — Run #${item.run.number} on ${item.run.environmentName}`,
+      environmentName: item.run.environmentName,
     });
     executionId = execution.id;
   }

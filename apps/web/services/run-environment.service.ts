@@ -1,3 +1,5 @@
+import type { Prisma } from "@prisma/client";
+
 import { prisma } from "@/lib/prisma";
 import { badRequest, conflict, notFound } from "@/lib/api";
 import { open, seal } from "@/lib/secret-box";
@@ -34,16 +36,20 @@ function readVariables(sealed: string | null): StoredVariable[] {
   }
 }
 
-function toDto(row: {
-  id: string;
-  name: string;
-  webBaseUrl: string | null;
-  apiBaseUrl: string | null;
-  startPath: string | null;
-  variablesSealed: string | null;
-}): RunEnvironmentDto {
+function toDto(
+  row: {
+    id: string;
+    name: string;
+    webBaseUrl: string | null;
+    apiBaseUrl: string | null;
+    startPath: string | null;
+    variablesSealed: string | null;
+  },
+  defaultId: string | null,
+): RunEnvironmentDto {
   return {
     id: row.id,
+    isDefault: row.id === defaultId,
     name: row.name,
     webBaseUrl: row.webBaseUrl,
     apiBaseUrl: row.apiBaseUrl,
@@ -58,14 +64,46 @@ function toDto(row: {
   };
 }
 
+async function defaultIdOf(projectId: string) {
+  const project = await prisma.project.findUnique({
+    where: { id: projectId },
+    select: { defaultEnvironmentId: true },
+  });
+  return project?.defaultEnvironmentId ?? null;
+}
+
+/**
+ * The project's environments, its default first. Every picker preselects the
+ * first one, so this is what makes the default the default everywhere.
+ */
 export async function listRunEnvironments(
   projectId: string,
 ): Promise<RunEnvironmentDto[]> {
-  const rows = await prisma.runEnvironment.findMany({
-    where: { projectId },
-    orderBy: { name: "asc" },
+  const [rows, defaultId] = await Promise.all([
+    prisma.runEnvironment.findMany({
+      where: { projectId },
+      orderBy: { name: "asc" },
+    }),
+    defaultIdOf(projectId),
+  ]);
+  return rows
+    .map((row) => toDto(row, defaultId))
+    .sort((a, b) => Number(b.isDefault) - Number(a.isDefault));
+}
+
+/** Make this the project's default environment. */
+export async function setDefaultRunEnvironment(environmentId: string) {
+  const env = await prisma.runEnvironment.findUnique({
+    where: { id: environmentId },
+    select: { projectId: true },
   });
-  return rows.map(toDto);
+  if (!env) throw notFound("Environment");
+  // The default now says where the project runs; the old free-text label
+  // would only contradict it.
+  await prisma.project.update({
+    where: { id: env.projectId },
+    data: { defaultEnvironmentId: environmentId, environment: null },
+  });
 }
 
 /**
@@ -103,21 +141,56 @@ type ParsedInput = {
   variables: RunEnvironmentInput["variables"];
 };
 
+/**
+ * A new project's environments, created inside its transaction. Returns
+ * their ids by name, so the caller can make one the default.
+ */
+export async function addEnvironmentsToNewProject(
+  tx: Prisma.TransactionClient,
+  projectId: string,
+  inputs: ParsedInput[],
+): Promise<Map<string, string>> {
+  const ids = new Map<string, string>();
+  for (const input of inputs) {
+    const variables = mergeVariables(input.variables, []);
+    const row = await tx.runEnvironment.create({
+      data: {
+        projectId,
+        name: input.name,
+        webBaseUrl: input.webBaseUrl ?? null,
+        apiBaseUrl: input.apiBaseUrl ?? null,
+        startPath: input.startPath ?? null,
+        variablesSealed: variables.length ? seal(JSON.stringify(variables)) : null,
+      },
+      select: { id: true },
+    });
+    ids.set(input.name, row.id);
+  }
+  return ids;
+}
+
 export async function createRunEnvironment(projectId: string, input: ParsedInput) {
   await assertProjectExists(projectId);
   await assertNameFree(projectId, input.name);
   const variables = mergeVariables(input.variables, []);
-  const row = await prisma.runEnvironment.create({
-    data: {
-      projectId,
-      name: input.name,
-      webBaseUrl: input.webBaseUrl ?? null,
-      apiBaseUrl: input.apiBaseUrl ?? null,
-      startPath: input.startPath ?? null,
-      variablesSealed: variables.length ? seal(JSON.stringify(variables)) : null,
-    },
+  return prisma.$transaction(async (tx) => {
+    const row = await tx.runEnvironment.create({
+      data: {
+        projectId,
+        name: input.name,
+        webBaseUrl: input.webBaseUrl ?? null,
+        apiBaseUrl: input.apiBaseUrl ?? null,
+        startPath: input.startPath ?? null,
+        variablesSealed: variables.length ? seal(JSON.stringify(variables)) : null,
+      },
+    });
+    // A project's first environment is where it runs until told otherwise.
+    const claimed = await tx.project.updateMany({
+      where: { id: projectId, defaultEnvironmentId: null },
+      data: { defaultEnvironmentId: row.id, environment: null },
+    });
+    return toDto(row, claimed.count > 0 ? row.id : await defaultIdOf(projectId));
   });
-  return toDto(row);
 }
 
 export async function updateRunEnvironment(environmentId: string, input: ParsedInput) {
@@ -141,12 +214,67 @@ export async function updateRunEnvironment(environmentId: string, input: ParsedI
       variablesSealed: variables.length ? seal(JSON.stringify(variables)) : null,
     },
   });
-  return toDto(row);
+  return toDto(row, await defaultIdOf(row.projectId));
+}
+
+/**
+ * A copy of an environment in the same project, as "UAT copy" — the quick way
+ * to set up PRO from UAT. Secret values come along: the copy stays in the
+ * project, where the same people could already use them. It is never the
+ * default; renaming it and pointing it elsewhere is the next step.
+ */
+export async function duplicateRunEnvironment(environmentId: string) {
+  const source = await prisma.runEnvironment.findUnique({
+    where: { id: environmentId },
+  });
+  if (!source) throw notFound("Environment");
+
+  const taken = new Set(
+    (
+      await prisma.runEnvironment.findMany({
+        where: { projectId: source.projectId },
+        select: { name: true },
+      })
+    ).map((env) => env.name),
+  );
+  let name = "";
+  for (let n = 1; !name || taken.has(name); n += 1) {
+    const suffix = n === 1 ? " copy" : ` copy ${n}`;
+    // Names are capped at 60; trim the original, never the suffix.
+    name = source.name.slice(0, 60 - suffix.length) + suffix;
+  }
+
+  const row = await prisma.runEnvironment.create({
+    data: {
+      projectId: source.projectId,
+      name,
+      webBaseUrl: source.webBaseUrl,
+      apiBaseUrl: source.apiBaseUrl,
+      startPath: source.startPath,
+      variablesSealed: source.variablesSealed,
+    },
+  });
+  return toDto(row, await defaultIdOf(row.projectId));
 }
 
 /** Past runs keep their environment name; they only lose the link. */
 export async function deleteRunEnvironment(environmentId: string) {
   await prisma.runEnvironment.delete({ where: { id: environmentId } });
+}
+
+/**
+ * An environment's variables re-sealed for another project, secret values
+ * blanked: a copy must not carry credentials somewhere new on its own. The
+ * keys stay, so the target shows exactly what to fill in.
+ */
+export function variablesForCopy(sealed: string | null) {
+  const variables = readVariables(sealed).map((v) =>
+    v.secret ? { ...v, value: "" } : v,
+  );
+  return {
+    sealed: variables.length ? seal(JSON.stringify(variables)) : null,
+    secretKeys: variables.filter((v) => v.secret).map((v) => v.key),
+  };
 }
 
 /** Variable names only — what Claude is told exists, never the values. */

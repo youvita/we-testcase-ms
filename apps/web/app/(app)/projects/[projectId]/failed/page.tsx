@@ -19,6 +19,7 @@ import { ExportMenu } from "@/features/reports/components/export-menu";
 import { requireProjectAccess } from "@/lib/project-access";
 import { requireUser } from "@/lib/session";
 import { getProject } from "@/services/project.service";
+import { listReportEnvironments } from "@/services/report.service";
 import { listFailedTestCases } from "@/services/test-case.service";
 import { formatDateTime } from "@/utils/format";
 
@@ -41,7 +42,10 @@ export default async function FailedCasesPage({
   const project = await getProject(projectId).catch(() => null);
   if (!project) notFound();
 
-  const cases = await listFailedTestCases(projectId);
+  const [cases, reportEnvironments] = await Promise.all([
+    listFailedTestCases(projectId),
+    listReportEnvironments(projectId),
+  ]);
 
   const failed = cases.filter((c) => c.status === "FAILED").length;
   const blocked = cases.filter((c) => c.status === "BLOCKED").length;
@@ -68,6 +72,7 @@ export default async function FailedCasesPage({
             projectId={projectId}
             excelScope="failed"
             platforms={project.platforms}
+            environments={reportEnvironments}
           />
         }
       />

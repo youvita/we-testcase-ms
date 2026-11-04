@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Globe, KeyRound, Loader2, LogIn, Pencil, Plus, Server, Trash2, X } from "lucide-react";
+import { Copy, Globe, KeyRound, Loader2, LogIn, Pencil, Plus, Server, Star, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
@@ -21,12 +21,15 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { EmptyState } from "@/components/shared/empty-state";
-import type { RunEnvironmentDto } from "@wetestcase/dto";
+import { runEnvironmentSchema, type RunEnvironmentDto, type RunEnvironmentOutput } from "@wetestcase/dto";
 import { api, errorMessage } from "@/utils/api-client";
 
 /**
  * Where runs point. Each environment has a base URL per platform and named
  * variables scripts read as `vars.NAME`; secret ones are write-only here.
+ *
+ * One is the project's default — listed first and preselected wherever an
+ * environment is chosen. The first one added becomes it.
  */
 export function EnvironmentsPanel({
   projectId,
@@ -40,6 +43,30 @@ export function EnvironmentsPanel({
   const router = useRouter();
   const [editing, setEditing] = useState<RunEnvironmentDto | "new" | null>(null);
   const [deleting, setDeleting] = useState<RunEnvironmentDto | null>(null);
+
+  async function makeDefault(env: RunEnvironmentDto) {
+    try {
+      await api.post(`/api/run-environments/${env.id}/default`);
+      toast.success(`${env.name} is now the default environment`);
+      router.refresh();
+    } catch (error) {
+      toast.error(errorMessage(error));
+    }
+  }
+
+  /** Copy it, then open the copy: it needs a new name and usually a new URL. */
+  async function duplicate(env: RunEnvironmentDto) {
+    try {
+      const copy = await api.post<RunEnvironmentDto>(`/api/run-environments/${env.id}/duplicate`);
+      toast.success(`Created ${copy.name}`, {
+        description: "Rename it and change its URLs and accounts.",
+      });
+      router.refresh();
+      setEditing(copy);
+    } catch (error) {
+      toast.error(errorMessage(error));
+    }
+  }
 
   async function handleDelete() {
     if (!deleting) return;
@@ -83,9 +110,32 @@ export function EnvironmentsPanel({
             {environments.map((env) => (
               <Card key={env.id}>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
-                  <CardTitle className="text-base">{env.name}</CardTitle>
+                  <CardTitle className="flex items-center gap-2 text-base">
+                    {env.name}
+                    {env.isDefault && <Badge variant="secondary">Default</Badge>}
+                  </CardTitle>
                   {canManage && (
                     <div className="flex gap-1">
+                      {!env.isDefault && (
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          aria-label={`Make ${env.name} the default`}
+                          title="Make default"
+                          onClick={() => void makeDefault(env)}
+                        >
+                          <Star className="size-4" />
+                        </Button>
+                      )}
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        aria-label={`Duplicate ${env.name}`}
+                        title="Duplicate"
+                        onClick={() => void duplicate(env)}
+                      >
+                        <Copy className="size-4" />
+                      </Button>
                       <Button size="icon" variant="ghost" aria-label={`Edit ${env.name}`} onClick={() => setEditing(env)}>
                         <Pencil className="size-4" />
                       </Button>
@@ -147,14 +197,27 @@ export function EnvironmentsPanel({
 
 type VariableRow = { key: string; value: string; secret: boolean; stored: boolean };
 
-function EnvironmentDialog({
+/**
+ * Add or edit one environment. Also used by the project form, which may not
+ * have a project yet: given `onDraft`, a new environment is handed back
+ * instead of saved, for the project to create along with itself.
+ */
+export function EnvironmentDialog({
   projectId,
   environment,
   onClose,
+  onCreated,
+  onDraft,
+  suggestedName = "SIT",
 }: {
-  projectId: string;
+  projectId?: string;
   environment: RunEnvironmentDto | "new" | null;
   onClose: () => void;
+  /** Called with the environment just added. */
+  onCreated?: (environment: RunEnvironmentDto) => void;
+  /** Called instead of saving a new environment. */
+  onDraft?: (input: RunEnvironmentOutput) => void;
+  suggestedName?: string;
 }) {
   const router = useRouter();
   const [openFor, setOpenFor] = useState<RunEnvironmentDto | "new" | null>(null);
@@ -169,7 +232,7 @@ function EnvironmentDialog({
   if (environment !== openFor) {
     setOpenFor(environment);
     const existing = environment !== "new" ? environment : null;
-    setName(existing?.name ?? (environment === "new" ? "SIT" : ""));
+    setName(existing?.name ?? (environment === "new" ? suggestedName : ""));
     setWebBaseUrl(existing?.webBaseUrl ?? "");
     setApiBaseUrl(existing?.apiBaseUrl ?? "");
     setStartPath(existing?.startPath ?? "");
@@ -204,9 +267,22 @@ function EnvironmentDialog({
             secret: v.secret,
           })),
       };
+      if (environment === "new" && onDraft) {
+        // Checked here, as the server would: the draft is not sent until the
+        // project is, and a mistake found then would be far from its field.
+        const parsed = runEnvironmentSchema.safeParse(body);
+        if (!parsed.success) {
+          toast.error(parsed.error.issues[0]?.message ?? "Check the environment's fields");
+          return;
+        }
+        onDraft(parsed.data);
+        onClose();
+        return;
+      }
       if (environment === "new") {
-        await api.post(`/api/projects/${projectId}/run-environments`, body);
+        const created = await api.post<RunEnvironmentDto>(`/api/projects/${projectId}/run-environments`, body);
         toast.success("Environment added");
+        onCreated?.(created);
       } else if (environment) {
         await api.patch(`/api/run-environments/${environment.id}`, body);
         toast.success("Environment saved");

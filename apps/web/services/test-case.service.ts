@@ -20,7 +20,7 @@ const testerSelect = {
 /** The sub-module filter's value for cases that have none. */
 export const NO_SUB_MODULE = "-";
 
-function buildWhere(
+export function buildWhere(
   projectId: string,
   query: Partial<TestCaseQuery>,
 ): Prisma.TestCaseWhereInput {

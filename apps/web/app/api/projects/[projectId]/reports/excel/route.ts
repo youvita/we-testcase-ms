@@ -10,6 +10,8 @@ import { getProject } from "@/services/project.service";
 import {
   buildExcelReport,
   excelReportFilenameSuffix,
+  listFilterFromQuery,
+  reportEnvironmentParam,
   reportFileSlug,
 } from "@/services/report.service";
 
@@ -40,9 +42,21 @@ export const GET = route<Ctx>({}, async (request, { params, user }) => {
     platforms = tokens as Platform[];
   }
 
+  const environment = reportEnvironmentParam(request);
   const project = await getProject(projectId);
-  const buffer = await buildExcelReport(projectId, scope, platforms);
-  const filename = `${reportFileSlug(project.name)}-${excelReportFilenameSuffix(scope)}.xlsx`;
+  // The test case list exports what it shows: its filters, platform included,
+  // narrow the whole report. Elsewhere `platform` only picks rows, as before.
+  const listFilter =
+    scope === "cases"
+      ? await listFilterFromQuery(projectId, new URL(request.url).searchParams)
+      : null;
+  const buffer = await buildExcelReport(projectId, scope, {
+    platforms: listFilter ? undefined : platforms,
+    environment,
+    filter: listFilter?.filter,
+    filterLabels: listFilter?.labels,
+  });
+  const filename = `${reportFileSlug(project.name)}${environment ? `-${reportFileSlug(environment)}` : ""}-${excelReportFilenameSuffix(scope)}.xlsx`;
 
   return new Response(new Uint8Array(buffer), {
     headers: {

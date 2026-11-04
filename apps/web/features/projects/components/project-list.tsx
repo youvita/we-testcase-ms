@@ -73,14 +73,12 @@ export function ProjectList({
   projects,
   qaOwners,
   memberCandidates,
-  environments,
   canManage,
   canDelete,
 }: {
   projects: ProjectWithStats[];
   qaOwners: QaOwnerOption[];
   memberCandidates: MemberOption[];
-  environments: string[];
   canManage: boolean;
   canDelete: boolean;
 }) {
@@ -217,7 +215,7 @@ export function ProjectList({
                     <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                       <ProjectStatusBadge status={project.status} />
                       {project.version && <span>v{project.version}</span>}
-                      {project.environment && <span>{project.environment}</span>}
+                      <ProjectEnvironment project={project} />
                       {project.platforms.map((platform) => (
                         <PlatformBadge key={platform} platform={platform} />
                       ))}
@@ -313,9 +311,7 @@ export function ProjectList({
                       <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                         <ProjectStatusBadge status={project.status} />
                         {project.version && <span>v{project.version}</span>}
-                        {project.environment && (
-                          <span>{project.environment}</span>
-                        )}
+                        <ProjectEnvironment project={project} />
                         {project.platforms.map((platform) => (
                           <PlatformBadge key={platform} platform={platform} />
                         ))}
@@ -383,7 +379,6 @@ export function ProjectList({
           project={editing}
           qaOwners={qaOwners}
           memberCandidates={memberCandidates}
-          environments={environments}
         />
       )}
 
@@ -488,4 +483,10 @@ function ProjectActions({
       </DropdownMenuContent>
     </DropdownMenu>
   );
+}
+
+/** Where the project runs by default; an old label until one is chosen. */
+function ProjectEnvironment({ project }: { project: ProjectWithStats }) {
+  const name = project.defaultEnvironment?.name ?? project.environment;
+  return name ? <span title="Default run environment">{name}</span> : null;
 }

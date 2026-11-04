@@ -2,7 +2,11 @@ import { ROLES } from "@/lib/constants";
 import { ok, readJson, route } from "@/lib/api";
 import { assertTestCaseAccess } from "@/lib/project-access";
 import { executionSchema } from "@/lib/validations";
-import { listExecutions, recordExecution } from "@/services/execution.service";
+import {
+  assertEnvironmentName,
+  listExecutions,
+  recordExecution,
+} from "@/services/execution.service";
 
 type Ctx = { params: Promise<{ testCaseId: string }> };
 
@@ -22,6 +26,7 @@ export const POST = route<Ctx>(
     const { testCaseId } = await params;
     await assertTestCaseAccess(testCaseId, user);
     const body = executionSchema.parse(await readJson(request));
+    await assertEnvironmentName(testCaseId, body.environmentName);
     const execution = await recordExecution(testCaseId, user.id, body);
     return ok(execution, 201);
   },

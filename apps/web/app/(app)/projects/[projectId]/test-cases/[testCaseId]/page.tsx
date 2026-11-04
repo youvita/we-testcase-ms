@@ -330,6 +330,7 @@ export default async function TestCaseDetailPage({
               <ExecutionPanel
                 testCaseId={testCase.id}
                 currentStatus={testCase.status}
+                environments={environments.map((env) => env.name)}
               />
             )}
 

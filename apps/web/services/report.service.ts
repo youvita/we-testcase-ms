@@ -1,3 +1,4 @@
+import type { Prisma } from "@prisma/client";
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from "pdf-lib";
 import * as XLSX from "xlsx";
 
@@ -5,6 +6,7 @@ import { prisma } from "@/lib/prisma";
 import {
   EXECUTION_STATUSES,
   EXECUTION_STATUS_LABELS,
+  FIX_STATUS_SHORT_LABELS,
   PLATFORMS,
   PLATFORM_LABELS,
   PRIORITIES,
@@ -28,44 +30,104 @@ import {
 const MODULE_LIST_SHEET = "Lists";
 import { formatDate, formatDateTime } from "@/utils/format";
 
-import { getModuleProgress } from "./module.service";
-import { getProject } from "./project.service";
+import { testCaseQuerySchema, type ModuleProgress } from "@wetestcase/dto";
 
-/** Everything both exporters need, fetched once. */
-async function loadReportData(projectId: string) {
+import { getProject } from "./project.service";
+import { listRunEnvironments } from "./run-environment.service";
+import { buildWhere, NO_SUB_MODULE } from "./test-case.service";
+
+/**
+ * Environment names a report can be narrowed to: the project's run
+ * environments, its default first, and any others its results name — an
+ * environment deleted since still has results worth reporting.
+ */
+export async function listReportEnvironments(projectId: string): Promise<string[]> {
+  const [environments, recorded] = await Promise.all([
+    listRunEnvironments(projectId),
+    prisma.testExecution.findMany({
+      where: { testCase: { projectId }, environmentName: { not: null } },
+      select: { environmentName: true },
+      distinct: ["environmentName"],
+      orderBy: { environmentName: "asc" },
+    }),
+  ]);
+  return [
+    ...new Set([
+      ...environments.map((env) => env.name),
+      ...recorded.map((row) => row.environmentName!),
+    ]),
+  ];
+}
+
+/**
+ * Everything both exporters need, fetched once.
+ *
+ * Given an environment, every case reads as its latest result *there* — Not
+ * Run if it has none — so a PRO report is not coloured by UAT results. Given
+ * a filter (the test case list's own), only matching cases are reported.
+ * Either way the totals and module progress are counted from the cases
+ * reported, so the Summary always describes the rows below it.
+ */
+async function loadReportData(
+  projectId: string,
+  options: { environment?: string; filter?: Prisma.TestCaseWhereInput } = {},
+) {
+  const { environment, filter } = options;
   const project = await getProject(projectId);
 
-  const [testCases, moduleProgress] = await Promise.all([
-    prisma.testCase.findMany({
-      where: { projectId },
-      orderBy: [
-        { module: { position: "asc" } },
-        { subModule: { sort: "asc", nulls: "first" } },
-        { tcId: "asc" },
-      ],
-      include: {
-        module: { select: { name: true } },
-        executions: {
-          orderBy: { executedAt: "desc" },
-          take: 1,
-          include: {
-            tester: { select: { name: true } },
-            attachments: { select: { id: true, fileName: true } },
-          },
+  const loaded = await prisma.testCase.findMany({
+    where: { ...filter, projectId },
+    orderBy: [
+      { module: { position: "asc" } },
+      { subModule: { sort: "asc", nulls: "first" } },
+      { tcId: "asc" },
+    ],
+    include: {
+      module: { select: { name: true } },
+      executions: {
+        ...(environment ? { where: { environmentName: environment } } : {}),
+        orderBy: { executedAt: "desc" },
+        take: 1,
+        include: {
+          tester: { select: { name: true } },
+          attachments: { select: { id: true, fileName: true } },
         },
       },
-    }),
-    getModuleProgress(projectId),
-  ]);
+    },
+  });
+  const testCases = environment
+    ? loaded.map((tc) => ({
+        ...tc,
+        status: tc.executions[0]?.status ?? ("NOT_RUN" as const),
+        lastExecutedAt: tc.executions[0]?.executedAt ?? null,
+      }))
+    : loaded;
 
-  const stats = buildBreakdown(
-    testCases.reduce<Record<string, number>>((acc, tc) => {
-      acc[tc.status] = (acc[tc.status] ?? 0) + 1;
-      return acc;
-    }, {}),
-  );
+  const counts = new Map<string, Record<string, number>>();
+  const all: Record<string, number> = {};
+  for (const tc of testCases) {
+    const entry = counts.get(tc.moduleId) ?? {};
+    entry[tc.status] = (entry[tc.status] ?? 0) + 1;
+    counts.set(tc.moduleId, entry);
+    all[tc.status] = (all[tc.status] ?? 0) + 1;
+  }
+  const moduleProgress: ModuleProgress[] = project.modules
+    // A filtered report lists only the modules it has rows from.
+    .filter((m) => !filter || counts.has(m.id))
+    .map((m) => ({
+      moduleId: m.id,
+      moduleName: m.name,
+      ...buildBreakdown(counts.get(m.id) ?? {}),
+    }));
 
-  return { project, testCases, moduleProgress, stats };
+  return {
+    project,
+    environment: environment ?? null,
+    projectEnvironment: project.defaultEnvironment?.name ?? project.environment,
+    testCases,
+    moduleProgress,
+    stats: buildBreakdown(all),
+  };
 }
 
 /** Filesystem-safe slug for the download filename. Keeps letter case. */
@@ -76,6 +138,56 @@ export function reportFileSlug(name: string) {
       .replace(/^-|-$/g, "")
       .slice(0, 60) || "project"
   );
+}
+
+/** The test case list's filters, as its URL carries them. */
+const listFilterSchema = testCaseQuerySchema.pick({
+  search: true,
+  moduleId: true,
+  subModule: true,
+  testType: true,
+  priority: true,
+  status: true,
+  fixStatus: true,
+  platform: true,
+  automated: true,
+});
+
+/**
+ * The filter the test case list is showing, read from the same query string,
+ * as a `where` — via the list's own buildWhere, so the export cannot match
+ * different cases than the table — and in words for the Summary sheet.
+ * Null when nothing is filtered.
+ */
+export async function listFilterFromQuery(projectId: string, params: URLSearchParams) {
+  const query = listFilterSchema.parse(
+    Object.fromEntries([...params].filter(([key, value]) => key in listFilterSchema.shape && value)),
+  );
+  if (Object.values(query).every((value) => !value)) return null;
+
+  const moduleName = query.moduleId
+    ? (await prisma.module.findFirst({ where: { id: query.moduleId, projectId }, select: { name: true } }))?.name
+    : undefined;
+  const labels = [
+    query.search && `Search "${query.search}"`,
+    query.moduleId && `Module: ${moduleName ?? "—"}`,
+    query.subModule && `Sub-module: ${query.subModule === NO_SUB_MODULE ? "none" : query.subModule}`,
+    query.status && `Status: ${EXECUTION_STATUS_LABELS[query.status]}`,
+    query.platform && `Platform: ${PLATFORM_LABELS[query.platform]}`,
+    query.automated && (query.automated === "yes" ? "Automated" : "Not automated"),
+    query.testType && `Test type: ${TEST_TYPE_LABELS[query.testType]}`,
+    query.priority && `Priority: ${PRIORITY_LABELS[query.priority]}`,
+    query.fixStatus &&
+      `Dev update: ${query.fixStatus === "NONE" ? "none" : FIX_STATUS_SHORT_LABELS[query.fixStatus]}`,
+  ].filter((label): label is string => Boolean(label));
+
+  return { filter: buildWhere(projectId, query), labels };
+}
+
+/** `?environment=PRO` — the one environment a report's results come from. */
+export function reportEnvironmentParam(request: Request): string | undefined {
+  const value = new URL(request.url).searchParams.get("environment")?.trim();
+  return value ? value.slice(0, 60) : undefined;
 }
 
 /** Filename stem after the project slug, by Excel export scope. */
@@ -104,10 +216,18 @@ export function excelReportFilenameSuffix(scope: ExcelReportScope) {
 export async function buildExcelReport(
   projectId: string,
   scope: ExcelReportScope = "summary",
-  platforms?: Platform[],
+  options: {
+    platforms?: Platform[];
+    environment?: string;
+    /** The test case list's filter: the export is what the list shows. */
+    filter?: Prisma.TestCaseWhereInput;
+    /** The same filter in words, for the Summary sheet. */
+    filterLabels?: string[];
+  } = {},
 ): Promise<Buffer> {
-  const { project, testCases, moduleProgress, stats } =
-    await loadReportData(projectId);
+  const { platforms, environment, filter, filterLabels = [] } = options;
+  const { project, testCases, moduleProgress, stats, projectEnvironment } =
+    await loadReportData(projectId, { environment, filter });
 
   // Narrows which rows land in the Test Cases / Failed & Blocked sheets only —
   // Summary keeps reporting whole-project numbers regardless of this filter,
@@ -128,7 +248,9 @@ export async function buildExcelReport(
     ["Project", project.name],
     ["Description", project.description ?? "—"],
     ["Version", project.version ?? "—"],
-    ["Environment", project.environment ?? "—"],
+    ["Default Environment", projectEnvironment ?? "—"],
+    ["Results From", environment ?? "All environments (latest result per case)"],
+    ...(filter ? [["Filters", filterLabels.join(", ") || "—"]] : []),
     ["Status", PROJECT_STATUS_LABELS[project.status]],
     ["QA Owner", project.qaOwner?.name ?? "Unassigned"],
     ["Start Date", formatDate(project.startDate)],
@@ -928,9 +1050,9 @@ class PdfWriter {
  * PDF summary report: project meta, dashboard-style stat cards, the Execution
  * Status donut, module progress, and write-ups for any failed/blocked cases.
  */
-export async function buildPdfReport(projectId: string): Promise<Buffer> {
-  const { project, testCases, moduleProgress, stats } =
-    await loadReportData(projectId);
+export async function buildPdfReport(projectId: string, environment?: string): Promise<Buffer> {
+  const { project, testCases, moduleProgress, stats, projectEnvironment } =
+    await loadReportData(projectId, { environment });
 
   const doc = await PDFDocument.create();
   doc.setTitle(`${project.name} — Summary Report`);
@@ -948,7 +1070,9 @@ export async function buildPdfReport(projectId: string): Promise<Buffer> {
 
   const meta = [
     `Version: ${project.version ?? "—"}`,
-    `Environment: ${project.environment ?? "—"}`,
+    environment
+      ? `Results from: ${environment}`
+      : `Environment: ${projectEnvironment ?? "—"} (results from all environments)`,
     `Status: ${PROJECT_STATUS_LABELS[project.status]}`,
     `QA Owner: ${project.qaOwner?.name ?? "Unassigned"}`,
     `Period: ${formatDate(project.startDate)} – ${formatDate(project.endDate)}`,

@@ -10,6 +10,7 @@ import {
   ChevronsUpDown,
   FolderTree,
   ClipboardList,
+  Copy,
   Download,
   MoreHorizontal,
   Pencil,
@@ -63,6 +64,7 @@ import {
   TestCaseFormDialog,
   type ModuleOption,
 } from "./test-case-form-dialog";
+import { CopyToProjectDialog } from "./copy-to-project-dialog";
 import { SubModuleDialog } from "./sub-module-dialog";
 
 type SortKey = "tcId" | "testType" | "priority" | "module" | "updatedAt";
@@ -117,6 +119,7 @@ export function TestCaseTable({
   const router = useRouter();
   const [bulkWriteOpen, setBulkWriteOpen] = useState(false);
   const [bulkRunOpen, setBulkRunOpen] = useState(false);
+  const [copyOpen, setCopyOpen] = useState(false);
   const { get, setParams, isPending } = useQueryParams();
   const [editing, setEditing] = useState<TestCaseListItem | null>(null);
   const [formOpen, setFormOpen] = useState(false);
@@ -281,6 +284,14 @@ export function TestCaseTable({
           >
             <Download className="mr-2 size-4" />
             Download scripts
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setCopyOpen(true)}
+          >
+            <Copy className="mr-2 size-4" />
+            Copy to project
           </Button>
           <Button
             variant="outline"
@@ -614,6 +625,16 @@ export function TestCaseTable({
             setSelected(new Set());
             router.refresh();
           }}
+        />
+      )}
+
+      {canManage && copyOpen && (
+        <CopyToProjectDialog
+          projectId={projectId}
+          selectedIds={selectedCases.map((item) => item.id)}
+          open={copyOpen}
+          onOpenChange={setCopyOpen}
+          onCopied={() => setSelected(new Set())}
         />
       )}
 

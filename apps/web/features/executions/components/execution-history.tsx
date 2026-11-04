@@ -139,6 +139,9 @@ function ExecutionEntry({
             </p>
             <p className="text-xs text-muted-foreground">
               {formatDateTime(execution.executedAt)}
+              {execution.environmentName && (
+                <span title="Tested on">{` \u00b7 ${execution.environmentName}`}</span>
+              )}
               {execution.editedAt && (
                 // Flagged rather than silent: a reader is entitled to know this
                 // is not what was first recorded.

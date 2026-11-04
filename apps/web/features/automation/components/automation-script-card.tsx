@@ -407,7 +407,7 @@ export function AutomationScriptCard({
                     dirty
                       ? "Save the script first"
                       : environments.length === 0
-                        ? "Add an environment under Automation first"
+                        ? "Add an environment on the Environments page first"
                         : undefined
                   }
                   onClick={() => setRunOpen(true)}
@@ -483,6 +483,7 @@ export function AutomationScriptCard({
       )}
 
       <WriteWithClaudeDialog
+        projectId={projectId}
         testCaseId={testCaseId}
         platform={platform}
         environments={environments}

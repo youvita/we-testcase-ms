@@ -280,6 +280,9 @@ model Project {
   name        String
   description String?
   version     String?
+  /// A free-text label from before projects had run environments. Superseded
+  /// by `defaultEnvironment`; kept, and still shown when no default is set,
+  /// so no label is lost. Cleared once a default is chosen.
   environment String?
   status      ProjectStatus @default(PLANNING)
   /// The platforms this project is tested on. Forms, filters and AI drafting
@@ -303,8 +306,14 @@ model Project {
   requirements    Requirement[]
   aiJobs          AiJob[]
   testCaseDrafts  TestCaseDraft[]
-  runEnvironments RunEnvironment[]
+  runEnvironments RunEnvironment[] @relation("ProjectRunEnvironments")
   testRuns        TestRun[]
+
+  /// Where this project normally runs: preselected wherever an environment
+  /// is chosen, and recorded on manual results unless the tester picks
+  /// another. One of the project's own `runEnvironments`.
+  defaultEnvironmentId String?
+  defaultEnvironment   RunEnvironment? @relation("ProjectDefaultEnvironment", fields: [defaultEnvironmentId], references: [id], onDelete: SetNull)
 
   @@index([status])
   @@index([qaOwnerId])
@@ -455,11 +464,16 @@ model Comment {
 }
 
 model TestExecution {
-  id           String          @id @default(cuid())
-  actualResult String?
-  status       ExecutionStatus
-  comment      String?
-  executedAt   DateTime        @default(now())
+  id              String          @id @default(cuid())
+  actualResult    String?
+  status          ExecutionStatus
+  comment         String?
+  executedAt      DateTime        @default(now())
+  /// The run environment it was tested on, by name, copied at the time — as
+  /// a run keeps its own — so renaming or deleting the environment later
+  /// does not change where a past result says it came from. Null when the
+  /// tester did not say, and for results from before this was recorded.
+  environmentName String?
 
   /// Set when the narrative (actual result / comment) is corrected after the
   /// fact. `status`, `testerId` and `executedAt` are never editable: the
@@ -737,9 +751,10 @@ model RunEnvironment {
   updatedAt       DateTime @updatedAt
 
   projectId String
-  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  project   Project @relation("ProjectRunEnvironments", fields: [projectId], references: [id], onDelete: Cascade)
 
-  runs TestRun[]
+  runs      TestRun[]
+  defaultOf Project[] @relation("ProjectDefaultEnvironment")
 
   @@unique([projectId, name])
 }

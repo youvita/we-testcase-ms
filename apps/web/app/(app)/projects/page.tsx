@@ -8,7 +8,6 @@ import { canManageProjects } from "@/lib/permissions";
 import { projectAccessWhere } from "@/lib/project-access";
 import { requireUser } from "@/lib/session";
 import {
-  listEnvironmentOptions,
   listProjectMemberCandidates,
   listProjects,
   listQaOwnerCandidates,
@@ -20,7 +19,7 @@ export default async function ProjectsPage() {
   const user = await requireUser();
   const canManage = canManageProjects(user.role);
 
-  const [projects, qaOwners, memberCandidates, environments] =
+  const [projects, qaOwners, memberCandidates] =
     await Promise.all([
       // Only the projects this person is on — see lib/project-access.ts.
       listProjects({ access: projectAccessWhere(user) }),
@@ -28,7 +27,6 @@ export default async function ProjectsPage() {
       // the roles that get one.
       canManage ? listQaOwnerCandidates() : Promise.resolve([]),
       canManage ? listProjectMemberCandidates() : Promise.resolve([]),
-      canManage ? listEnvironmentOptions() : Promise.resolve([]),
     ]);
 
   return (
@@ -48,7 +46,6 @@ export default async function ProjectsPage() {
         projects={projects}
         qaOwners={qaOwners}
         memberCandidates={memberCandidates}
-        environments={environments}
         canManage={canManage}
         canDelete={user.role === ROLES.ADMIN}
       />

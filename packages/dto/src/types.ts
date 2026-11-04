@@ -240,6 +240,8 @@ export type RunEnvironmentDto = {
   /** Where Web work starts, e.g. "/kh/login"; null means "/". */
   startPath: string | null;
   variables: RunVariableDto[];
+  /** The project's default: listed first, so pickers preselect it. */
+  isDefault: boolean;
 };
 
 export type TestRunDto = {
@@ -444,4 +446,45 @@ export type RunnerItemResult = {
   durationMs?: number;
   error?: string;
   log?: string;
+};
+
+/** A project cases can be copied into. */
+export type CopyTarget = { id: string; name: string };
+
+/**
+ * What copying into another project *would* do, computed without writing.
+ * Counts reflect the chosen mode: skipped cases bring no requirement links.
+ */
+export type ProjectCopyPreview = {
+  targetProjectName: string;
+  cases: number;
+  newCases: number;
+  /** TC IDs the target already has — skipped or overwritten, per the mode. */
+  existing: number;
+  scripts: number;
+  newModules: number;
+  platformsAdded: Platform[];
+  newEnvironments: number;
+  /** Source environments the target already has by name — left as they are. */
+  existingEnvironments: number;
+  newRequirementDocs: number;
+  newRequirements: number;
+};
+
+export type ProjectCopySummary = {
+  targetProjectId: string;
+  targetProjectName: string;
+  created: number;
+  updated: number;
+  /** TC IDs left alone because the target already had them. */
+  skipped: string[];
+  scriptsCopied: number;
+  modulesCreated: string[];
+  platformsAdded: Platform[];
+  environmentsCreated: string[];
+  /** Secret variables copied without their value: fill them in the target. */
+  secretsToFill: { environment: string; keys: string[] }[];
+  requirementDocsCreated: number;
+  requirementsCreated: number;
+  requirementLinks: number;
 };

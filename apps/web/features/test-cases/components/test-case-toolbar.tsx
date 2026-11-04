@@ -2,11 +2,12 @@
 
 import { useCallback, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { FileUp, Loader2, Plus, Sparkles } from "lucide-react";
+import { Copy, Loader2, Plus, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { ClaudeConnectionDialog } from "@/features/ai/components/claude-connection-dialog";
+import { ExportMenu } from "@/features/reports/components/export-menu";
 import { isJobActive, useAiJob } from "@/features/ai/use-ai-job";
 import {
   ExploreAppDialog,
@@ -17,6 +18,7 @@ import type { AiJobDto, ExploreAppResult, RunEnvironmentDto } from "@wetestcase/
 import { ApiError, errorMessage } from "@/utils/api-client";
 import type { Platform, SubModuleOption } from "@/types";
 
+import { CopyToProjectDialog } from "./copy-to-project-dialog";
 import { ImportDialog } from "./import-dialog";
 import {
   TestCaseFormDialog,
@@ -24,7 +26,8 @@ import {
 } from "./test-case-form-dialog";
 
 /**
- * "Explore the app", "Import" and "New test case" for the test case list
+ * "Excel" (export and import), "Explore the app", "Copy to project" and
+ * "New test case" for the test case list
  * header.
  *
  * Owns the dialogs so the page itself can stay a server component. Exploring
@@ -47,6 +50,7 @@ export function TestCaseToolbar({
   signInCases: SignInCase[];
 }) {
   const [importOpen, setImportOpen] = useState(false);
+  const [copyOpen, setCopyOpen] = useState(false);
   const [formOpen, setFormOpen] = useState(false);
   const router = useRouter();
   const [exploreOpen, setExploreOpen] = useState(false);
@@ -83,6 +87,14 @@ export function TestCaseToolbar({
 
   return (
     <>
+      <ExportMenu
+        projectId={projectId}
+        excelScope="cases"
+        platforms={platforms}
+        withListFilters
+        onImport={() => setImportOpen(true)}
+      />
+
       {platforms.includes("WEB") && (
         <Button variant="outline" disabled={exploring} onClick={() => setExploreOpen(true)}>
           {exploring ? (
@@ -96,9 +108,10 @@ export function TestCaseToolbar({
         </Button>
       )}
 
-      <Button variant="outline" onClick={() => setImportOpen(true)}>
-        <FileUp className="mr-2 size-4" />
-        Import Excel
+
+      <Button variant="outline" onClick={() => setCopyOpen(true)}>
+        <Copy className="mr-2 size-4" />
+        Copy to project
       </Button>
 
       {/* Enabled even with no modules: the dialog creates the first one itself,
@@ -112,6 +125,13 @@ export function TestCaseToolbar({
         projectId={projectId}
         open={importOpen}
         onOpenChange={setImportOpen}
+      />
+
+      <CopyToProjectDialog
+        projectId={projectId}
+        modules={modules}
+        open={copyOpen}
+        onOpenChange={setCopyOpen}
       />
 
       <ExploreAppDialog

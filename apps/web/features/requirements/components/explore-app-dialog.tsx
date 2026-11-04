@@ -25,6 +25,7 @@ import type { AiJobDto, GenerationDepth, RunEnvironmentDto } from "@wetestcase/d
 import { api } from "@/utils/api-client";
 
 import type { StartAi } from "./requirements-workspace";
+import { NoEnvironmentHint } from "@/features/environments/components/no-environment-hint";
 
 export type SignInCase = { id: string; tcId: string; title: string };
 
@@ -102,10 +103,7 @@ export function ExploreAppDialog({
         </DialogHeader>
 
         {webEnvironments.length === 0 ? (
-          <p className="text-sm text-muted-foreground">
-            Add an environment with a Web base URL first, under Automation →
-            Environments.
-          </p>
+          <NoEnvironmentHint projectId={projectId}> with a Web base URL</NoEnvironmentHint>
         ) : (
           <div className="space-y-4">
             <div className="space-y-2">

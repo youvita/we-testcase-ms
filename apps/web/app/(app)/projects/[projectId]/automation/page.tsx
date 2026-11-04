@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Bot, CheckCircle2, Server, XCircle } from "lucide-react";
 
@@ -17,7 +18,8 @@ import { listModules } from "@/services/module.service";
 import { listSubModules } from "@/services/test-case.service";
 import { getProject } from "@/services/project.service";
 import { listRunEnvironments } from "@/services/run-environment.service";
-import { listTestRuns } from "@/services/test-run.service";
+import { getLastFinishedRun, listTestRunsPage } from "@/services/test-run.service";
+import { DEFAULT_PAGE_SIZE } from "@/lib/constants";
 
 export const metadata: Metadata = { title: "Automation" };
 
@@ -33,8 +35,11 @@ export default async function AutomationPage({
   const project = await getProject(projectId).catch(() => null);
   if (!project) notFound();
 
-  const [runs, environments, modules, subModules, automatedCount, automatableCount, signInCases] = await Promise.all([
-    listTestRuns(projectId),
+  const [runs, lastFinished, environments, modules, subModules, automatedCount, automatableCount, signInCases] = await Promise.all([
+    // The first page; the table fetches the others itself.
+    listTestRunsPage(projectId, { page: 1, pageSize: DEFAULT_PAGE_SIZE }),
+    // From all runs, not this page: page 3 must not change the "last run" cards.
+    getLastFinishedRun(projectId),
     listRunEnvironments(projectId),
     listModules(projectId),
     listSubModules(projectId),
@@ -47,8 +52,6 @@ export default async function AutomationPage({
     listSignInCases(projectId),
   ]);
 
-  // A cancelled run says nothing about the product, so the stats skip it.
-  const lastFinished = runs.find((run) => run.finishedAt && run.status !== "CANCELLED");
 
   return (
     <div className="space-y-6">
@@ -62,7 +65,7 @@ export default async function AutomationPage({
 
       <PageHeader
         title="Automation"
-        description="Run Playwright scripts for Web and API test cases against an environment. Results land on the test cases with screenshots and traces."
+        description="Run Playwright scripts for Web and API test cases against one of the project's environments. Results land on the test cases with screenshots and traces."
       />
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -85,7 +88,19 @@ export default async function AutomationPage({
           tone={lastFinished && lastFinished.failed + lastFinished.errored > 0 ? "failed" : undefined}
           icon={XCircle}
         />
-        <StatCard label="Environments" value={environments.length} icon={Server} />
+        {/* Environments have their own page; the card is the way there. */}
+        <Link
+          href={`/projects/${projectId}/environments`}
+          className="rounded-xl transition-shadow hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          <StatCard
+            label="Environments"
+            value={environments.length}
+            icon={Server}
+            hint={environments.find((env) => env.isDefault)?.name.concat(" is the default") ?? "Manage"}
+            className="h-full"
+          />
+        </Link>
       </div>
 
       <AutomationWorkspace

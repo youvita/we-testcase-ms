@@ -27,6 +27,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { ClaudeConnectionDialog } from "@/features/ai/components/claude-connection-dialog";
 import type { Platform, RunEnvironmentDto, ScriptBatchResult } from "@wetestcase/dto";
 import { ApiError, api, errorMessage } from "@/utils/api-client";
+import { NoEnvironmentHint } from "@/features/environments/components/no-environment-hint";
 
 export type BulkWriteCase = { id: string; tcId: string; platform: Platform; hasScript: boolean };
 
@@ -108,9 +109,7 @@ export function BulkWriteDialog({
           </DialogHeader>
 
           {environments.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              Add an environment first, under Automation → Environments.
-            </p>
+            <NoEnvironmentHint projectId={projectId} />
           ) : (
             <div className="space-y-4">
               <p className="rounded-md bg-muted px-3 py-2 text-sm">

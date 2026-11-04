@@ -119,8 +119,14 @@ export const projectSchema = z
     name: trimmed(160).min(2, "Project name must be at least 2 characters"),
     description: optionalText(2000),
     version: optionalText(60),
-    // Free text on purpose — see PROJECT_ENVIRONMENTS.
-    environment: optionalText(60),
+    /**
+     * One of the project's run environments, or null for none. Absent leaves
+     * it as it is (as with memberIds) — a new project has none to choose yet.
+     */
+    defaultEnvironmentId: z
+      .string()
+      .nullish()
+      .transform((v) => (v === "" || v === "none" ? null : v)),
     status: projectStatusSchema.default("PLANNING"),
     qaOwnerId: z
       .string()
@@ -217,6 +223,33 @@ export const testCaseBulkSubModuleSchema = z.object({
 
 export type TestCaseBulkSubModuleInput = z.input<typeof testCaseBulkSubModuleSchema>;
 
+/**
+ * Copy cases, with their scripts, into another project.
+ *
+ * The scope is the ticked rows, one module, or the whole project. `mode`
+ * decides what happens to a TC ID the target already has, as on import.
+ */
+export const projectCopySchema = z.object({
+  targetProjectId: z.string().min(1, "Choose a project to copy to"),
+  scope: z.discriminatedUnion("kind", [
+    z.object({
+      kind: z.literal("cases"),
+      ids: z
+        .array(z.string().min(1))
+        .min(1, "Select at least one test case")
+        .max(200, "Copy at most 200 selected test cases at a time"),
+    }),
+    z.object({ kind: z.literal("module"), moduleId: z.string().min(1) }),
+    z.object({ kind: z.literal("project") }),
+  ]),
+  mode: z.enum(["skip", "overwrite"]).default("skip"),
+  includeEnvironments: z.boolean().default(true),
+  includeRequirements: z.boolean().default(true),
+});
+
+export type ProjectCopyInput = z.input<typeof projectCopySchema>;
+export type ProjectCopyRequest = z.output<typeof projectCopySchema>;
+
 // ---------------------------------------------------------------------------
 // Execution
 // ---------------------------------------------------------------------------
@@ -225,6 +258,8 @@ export const executionSchema = z.object({
   status: executionStatusSchema,
   actualResult: optionalText(4000),
   comment: optionalText(2000),
+  /** The run environment it was tested on, by name; blank if not said. */
+  environmentName: optionalText(60),
 });
 
 export type ExecutionInput = z.input<typeof executionSchema>;
@@ -449,6 +484,30 @@ export const runEnvironmentSchema = z
   );
 
 export type RunEnvironmentInput = z.input<typeof runEnvironmentSchema>;
+export type RunEnvironmentOutput = z.output<typeof runEnvironmentSchema>;
+
+/**
+ * A new project, with any run environments added in its form. They are
+ * created with it, in one go; `defaultEnvironmentName` picks one of them as
+ * the default (null for none), since none has an id yet.
+ */
+export const projectCreateSchema = z.intersection(
+  projectSchema,
+  z.object({
+    environments: z
+      .array(runEnvironmentSchema)
+      .max(20)
+      .default([])
+      .refine(
+        (list) => new Set(list.map((env) => env.name)).size === list.length,
+        "Each environment needs its own name",
+      ),
+    defaultEnvironmentName: z.string().nullish(),
+  }),
+);
+
+export type ProjectCreateInput = z.input<typeof projectCreateSchema>;
+export type ProjectCreateOutput = z.output<typeof projectCreateSchema>;
 
 export const automationScriptSchema = z.object({
   code: z

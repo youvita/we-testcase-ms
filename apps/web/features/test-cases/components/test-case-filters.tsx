@@ -1,8 +1,10 @@
 "use client";
 
-import { X } from "lucide-react";
+import { SlidersHorizontal, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   Select,
   SelectContent,
@@ -32,6 +34,10 @@ const NO_SUB_MODULE = "-";
 
 /**
  * Filter bar for the test case list.
+ *
+ * Search, module and status stay in view — what a tester narrows by while
+ * working through a list. The rest sit behind "Filters", which counts the
+ * ones in use so a hidden filter never quietly empties the list.
  *
  * State lives in the URL so the server component refetches, and a filtered view
  * is shareable and survives a reload.
@@ -68,16 +74,15 @@ export function TestCaseFilters({
   const platform = get("platform", "ALL");
   const automated = get("automated", "ALL");
 
+  const moreActive = [platform, automated, testType, priority, fixStatus].filter(
+    (value) => value !== "ALL",
+  ).length;
   const hasFilters =
     Boolean(search) ||
     moduleId !== "ALL" ||
     subModule !== "ALL" ||
-    testType !== "ALL" ||
-    priority !== "ALL" ||
     status !== "ALL" ||
-    fixStatus !== "ALL" ||
-    platform !== "ALL" ||
-    automated !== "ALL";
+    moreActive > 0;
 
   return (
     <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
@@ -111,7 +116,8 @@ export function TestCaseFilters({
           </SelectContent>
         </Select>
 
-        {(subModules.length > 0 || subModule !== "ALL") && (
+        {/* Only once a module is chosen: its sub-modules are what narrow it. */}
+        {((moduleId !== "ALL" && subModuleOptions.length > 0) || subModule !== "ALL") && (
           <Select
             value={subModuleValue}
             onValueChange={(value) => {
@@ -144,73 +150,6 @@ export function TestCaseFilters({
           </Select>
         )}
 
-        {(platforms.length > 1 || platform !== "ALL") && (
-          <Select
-            value={platform}
-            onValueChange={(value) => setParams({ platform: value })}
-          >
-            <SelectTrigger className="lg:w-[150px]" aria-label="Filter by platform">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="ALL">All platforms</SelectItem>
-              {platforms.map((option) => (
-                <SelectItem key={option} value={option}>
-                  {PLATFORM_LABELS[option]}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        )}
-
-        <Select
-          value={automated}
-          onValueChange={(value) => setParams({ automated: value })}
-        >
-          <SelectTrigger className="lg:w-[150px]" aria-label="Filter by automation">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="ALL">Manual &amp; automated</SelectItem>
-            <SelectItem value="yes">Automated</SelectItem>
-            <SelectItem value="no">Not automated</SelectItem>
-          </SelectContent>
-        </Select>
-
-        <Select
-          value={testType}
-          onValueChange={(value) => setParams({ testType: value })}
-        >
-          <SelectTrigger className="lg:w-[160px]" aria-label="Filter by test type">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="ALL">All test types</SelectItem>
-            {TEST_TYPES.map((option) => (
-              <SelectItem key={option} value={option}>
-                {TEST_TYPE_LABELS[option]}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-
-        <Select
-          value={priority}
-          onValueChange={(value) => setParams({ priority: value })}
-        >
-          <SelectTrigger className="lg:w-[150px]" aria-label="Filter by priority">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="ALL">All priorities</SelectItem>
-            {PRIORITIES.map((option) => (
-              <SelectItem key={option} value={option}>
-                {PRIORITY_LABELS[option]}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-
         <Select
           value={status}
           onValueChange={(value) => setParams({ status: value })}
@@ -228,29 +167,123 @@ export function TestCaseFilters({
           </SelectContent>
         </Select>
 
-        {/* A second axis, not a variant of the one above: a case can be Failed
-            *and* flagged ready for retest, and "what should I run next?" is
-            exactly that combination. */}
-        <Select
-          value={fixStatus}
-          onValueChange={(value) => setParams({ fixStatus: value })}
-        >
-          <SelectTrigger
-            className="lg:w-[175px]"
-            aria-label="Filter by developer update"
-          >
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="ALL">Any dev update</SelectItem>
-            <SelectItem value="NONE">No dev update</SelectItem>
-            {FIX_STATUSES.map((option) => (
-              <SelectItem key={option} value={option}>
-                {FIX_STATUS_SHORT_LABELS[option]}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <Popover>
+          <PopoverTrigger asChild>
+            <Button variant="outline" className="justify-start">
+              <SlidersHorizontal className="mr-2 size-4" />
+              Filters
+              {moreActive > 0 && (
+                <span className="ml-2 rounded-full bg-primary px-1.5 text-xs font-semibold text-primary-foreground">
+                  {moreActive}
+                </span>
+              )}
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent align="start" className="w-72 space-y-3">
+            {(platforms.length > 1 || platform !== "ALL") && (
+              <div className="space-y-1.5">
+                <Label htmlFor="filter-platform">Platform</Label>
+                <Select
+                  value={platform}
+                  onValueChange={(value) => setParams({ platform: value })}
+                >
+                  <SelectTrigger id="filter-platform">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="ALL">All platforms</SelectItem>
+                    {platforms.map((option) => (
+                      <SelectItem key={option} value={option}>
+                        {PLATFORM_LABELS[option]}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
+            <div className="space-y-1.5">
+              <Label htmlFor="filter-automated">Automation</Label>
+              <Select
+                value={automated}
+                onValueChange={(value) => setParams({ automated: value })}
+              >
+                <SelectTrigger id="filter-automated">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="ALL">Manual &amp; automated</SelectItem>
+                  <SelectItem value="yes">Automated</SelectItem>
+                  <SelectItem value="no">Not automated</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="filter-test-type">Test type</Label>
+              <Select
+                value={testType}
+                onValueChange={(value) => setParams({ testType: value })}
+              >
+                <SelectTrigger id="filter-test-type">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="ALL">All test types</SelectItem>
+                  {TEST_TYPES.map((option) => (
+                    <SelectItem key={option} value={option}>
+                      {TEST_TYPE_LABELS[option]}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="filter-priority">Priority</Label>
+              <Select
+                value={priority}
+                onValueChange={(value) => setParams({ priority: value })}
+              >
+                <SelectTrigger id="filter-priority">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="ALL">All priorities</SelectItem>
+                  {PRIORITIES.map((option) => (
+                    <SelectItem key={option} value={option}>
+                      {PRIORITY_LABELS[option]}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* A second axis, not a variant of status: a case can be Failed
+                *and* flagged ready for retest, and "what should I run next?" is
+                exactly that combination. */}
+            <div className="space-y-1.5">
+              <Label htmlFor="filter-fix-status">Developer update</Label>
+              <Select
+                value={fixStatus}
+                onValueChange={(value) => setParams({ fixStatus: value })}
+              >
+                <SelectTrigger id="filter-fix-status">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="ALL">Any dev update</SelectItem>
+                  <SelectItem value="NONE">No dev update</SelectItem>
+                  {FIX_STATUSES.map((option) => (
+                    <SelectItem key={option} value={option}>
+                      {FIX_STATUS_SHORT_LABELS[option]}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </PopoverContent>
+        </Popover>
       </div>
 
       {hasFilters && (

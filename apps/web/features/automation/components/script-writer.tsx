@@ -53,12 +53,14 @@ import { ScriptReferences } from "./script-references";
 import { diffLines } from "@/utils/line-diff";
 import { CodeView } from "@/components/shared/code-view";
 import { errorHeadline, findErrorLine } from "@/utils/error-line";
+import { NoEnvironmentHint } from "@/features/environments/components/no-environment-hint";
 
 /**
  * Ask Claude to write the script. It tries each draft against the chosen
  * environment, so the environment matters as much as the steps.
  */
 export function WriteWithClaudeDialog({
+  projectId,
   testCaseId,
   platform,
   environments,
@@ -67,6 +69,7 @@ export function WriteWithClaudeDialog({
   onStarted,
   onNeedsSubscription,
 }: {
+  projectId: string;
   testCaseId: string;
   platform: Platform;
   environments: RunEnvironmentDto[];
@@ -149,10 +152,9 @@ export function WriteWithClaudeDialog({
         </DialogHeader>
 
         {environments.length === 0 ? (
-          <p className="text-sm text-muted-foreground">
-            Add an environment first, under Automation → Environments, with the
-            base URL and the test account variables.
-          </p>
+          <NoEnvironmentHint projectId={projectId}>
+            , with the base URL and the test account variables
+          </NoEnvironmentHint>
         ) : (
           <div className="space-y-4">
             <div className="space-y-2">

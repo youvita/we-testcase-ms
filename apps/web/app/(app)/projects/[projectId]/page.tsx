@@ -10,6 +10,7 @@ import {
   ClipboardList,
   FileText,
   ListChecks,
+  Server,
   XCircle,
 } from "lucide-react";
 
@@ -43,6 +44,7 @@ import { getSessionUser, requireUser } from "@/lib/session";
 import { getProjectDashboard } from "@/services/dashboard.service";
 import { listModules } from "@/services/module.service";
 import { getProject } from "@/services/project.service";
+import { listReportEnvironments } from "@/services/report.service";
 import { formatDate } from "@/utils/format";
 
 export async function generateMetadata({
@@ -78,9 +80,10 @@ export default async function ProjectOverviewPage({
   const project = await getProject(projectId).catch(() => null);
   if (!project) notFound();
 
-  const [dashboard, modules] = await Promise.all([
+  const [dashboard, modules, reportEnvironments] = await Promise.all([
     getProjectDashboard(projectId),
     listModules(projectId),
+    listReportEnvironments(projectId),
   ]);
 
   const { stats } = dashboard;
@@ -100,30 +103,7 @@ export default async function ProjectOverviewPage({
         description={project.description ?? undefined}
         actions={
           <>
-            <ExportMenu projectId={projectId} format="pdf" />
-            <Button variant="outline" asChild>
-              <Link href={`/projects/${projectId}/failed`}>
-                <BugPlay className="mr-2 size-4" />
-                Failed &amp; blocked
-                {problemCount > 0 && (
-                  <span className="ml-2 rounded-full bg-destructive/10 px-1.5 text-xs font-semibold text-destructive">
-                    {problemCount}
-                  </span>
-                )}
-              </Link>
-            </Button>
-            <Button variant="outline" asChild>
-              <Link href={`/projects/${projectId}/automation`}>
-                <Bot className="mr-2 size-4" />
-                Automation
-              </Link>
-            </Button>
-            <Button variant="outline" asChild>
-              <Link href={`/projects/${projectId}/requirements`}>
-                <FileText className="mr-2 size-4" />
-                Requirements
-              </Link>
-            </Button>
+            <ExportMenu projectId={projectId} format="pdf" environments={reportEnvironments} />
             <Button asChild>
               <Link href={`/projects/${projectId}/test-cases`}>
                 <ListChecks className="mr-2 size-4" />
@@ -141,7 +121,18 @@ export default async function ProjectOverviewPage({
             ))}
           </span>
           {project.version && <span>Version {project.version}</span>}
-          {project.environment && <span>{project.environment}</span>}
+          {/* The way to the project's environments: where it runs by default,
+              or a prompt to add some. */}
+          <Link
+            href={`/projects/${projectId}/environments`}
+            title="Environments"
+            className="inline-flex items-center gap-1.5 hover:text-foreground hover:underline"
+          >
+            <Server className="size-3.5" />
+            {project.defaultEnvironment?.name ??
+              project.environment ??
+              (project.runEnvironments.length > 0 ? "No default environment" : "Add environments")}
+          </Link>
           <span>QA owner: {project.qaOwner?.name ?? "Unassigned"}</span>
           {project.members.length > 0 && (
             <span>
@@ -155,6 +146,40 @@ export default async function ProjectOverviewPage({
             </span>
           )}
         </div>
+
+        {/* The project's other pages, in a row of their own: beside the title
+            they squeezed the project name. */}
+        <nav aria-label="Project pages" className="flex flex-wrap gap-2">
+          <Button variant="outline" asChild>
+            <Link href={`/projects/${projectId}/failed`}>
+              <BugPlay className="mr-2 size-4" />
+              Failed &amp; blocked
+              {problemCount > 0 && (
+                <span className="ml-2 rounded-full bg-destructive/10 px-1.5 text-xs font-semibold text-destructive">
+                  {problemCount}
+                </span>
+              )}
+            </Link>
+          </Button>
+          <Button variant="outline" asChild>
+            <Link href={`/projects/${projectId}/automation`}>
+              <Bot className="mr-2 size-4" />
+              Automation
+            </Link>
+          </Button>
+          <Button variant="outline" asChild>
+            <Link href={`/projects/${projectId}/environments`}>
+              <Server className="mr-2 size-4" />
+              Environments
+            </Link>
+          </Button>
+          <Button variant="outline" asChild>
+            <Link href={`/projects/${projectId}/requirements`}>
+              <FileText className="mr-2 size-4" />
+              Requirements
+            </Link>
+          </Button>
+        </nav>
       </PageHeader>
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-6">

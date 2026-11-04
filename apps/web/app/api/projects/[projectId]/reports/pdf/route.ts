@@ -1,20 +1,25 @@
 import { route } from "@/lib/api";
 import { assertProjectAccess } from "@/lib/project-access";
 import { getProject } from "@/services/project.service";
-import { buildPdfReport, reportFileSlug } from "@/services/report.service";
+import {
+  buildPdfReport,
+  reportEnvironmentParam,
+  reportFileSlug,
+} from "@/services/report.service";
 
 type Ctx = { params: Promise<{ projectId: string }> };
 
 export const runtime = "nodejs";
 
 /** PDF summary report. Readable by every role, including Developers. */
-export const GET = route<Ctx>({}, async (_request, { params, user }) => {
+export const GET = route<Ctx>({}, async (request, { params, user }) => {
   const { projectId } = await params;
   await assertProjectAccess(projectId, user);
 
+  const environment = reportEnvironmentParam(request);
   const project = await getProject(projectId);
-  const buffer = await buildPdfReport(projectId);
-  const filename = `${reportFileSlug(project.name)}-summary-report.pdf`;
+  const buffer = await buildPdfReport(projectId, environment);
+  const filename = `${reportFileSlug(project.name)}${environment ? `-${reportFileSlug(environment)}` : ""}-summary-report.pdf`;
 
   return new Response(new Uint8Array(buffer), {
     headers: {

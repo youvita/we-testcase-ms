@@ -67,11 +67,14 @@ export default async function TestCasesPage({
         description={`${page.total} test case${page.total === 1 ? "" : "s"} in ${project.name}`}
         actions={
           <>
-            <ExportMenu
-              projectId={projectId}
-              excelScope="cases"
-              platforms={project.platforms}
-            />
+            {/* Those who can import get one Excel menu from the toolbar. */}
+            {!canManage && (
+              <ExportMenu
+                projectId={projectId}
+                excelScope="cases"
+                withListFilters
+              />
+            )}
             {canManage && (
               <TestCaseToolbar
                 projectId={projectId}

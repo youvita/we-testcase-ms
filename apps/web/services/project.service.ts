@@ -2,16 +2,24 @@ import type { Platform, Prisma, ProjectStatus } from "@prisma/client";
 
 import { prisma } from "@/lib/prisma";
 import { badRequest, conflict, notFound } from "@/lib/api";
-import { PLATFORM_LABELS, PROJECT_ENVIRONMENTS } from "@/lib/constants";
-import type { ProjectOutput } from "@/lib/validations";
+import { PLATFORM_LABELS } from "@/lib/constants";
+import type { ProjectCreateOutput, ProjectOutput } from "@/lib/validations";
 import type { ProjectWithStats, StatusBreakdown } from "@/types";
 import { buildBreakdown } from "@/utils/stats";
+
+import { addEnvironmentsToNewProject } from "./run-environment.service";
 
 const qaOwnerSelect = {
   select: { id: true, name: true, email: true, image: true },
 } as const;
 
 /** People in charge, in a stable order for display. */
+/** Where the project runs by default, and what it could choose from. */
+const environmentInclude = {
+  defaultEnvironment: { select: { id: true, name: true } },
+  runEnvironments: { select: { id: true, name: true }, orderBy: { name: "asc" } },
+} as const satisfies Prisma.ProjectInclude;
+
 const memberSelect = {
   select: { user: qaOwnerSelect },
   orderBy: [{ user: { name: "asc" } }],
@@ -54,7 +62,7 @@ export async function listProjects(options?: {
   const [projects, grouped, moduleCounts] = await Promise.all([
     prisma.project.findMany({
       where,
-      include: { qaOwner: qaOwnerSelect, members: memberSelect },
+      include: { qaOwner: qaOwnerSelect, members: memberSelect, ...environmentInclude },
       orderBy: [{ updatedAt: "desc" }],
     }),
     prisma.testCase.groupBy({
@@ -95,6 +103,7 @@ export async function getProject(projectId: string) {
       createdBy: qaOwnerSelect,
       members: memberSelect,
       modules: { orderBy: [{ position: "asc" }, { name: "asc" }] },
+      ...environmentInclude,
     },
   });
   if (!project) throw notFound("Project");
@@ -130,14 +139,35 @@ function toProjectData(input: ProjectOutput) {
     name: input.name,
     description: input.description ?? null,
     version: input.version ?? null,
-    environment: input.environment ?? null,
     status: input.status,
     startDate: input.startDate,
     endDate: input.endDate,
     qaOwnerId: input.qaOwnerId,
     // Absent on update means "leave as is" — see projectSchema.
     ...(input.platforms ? { platforms: input.platforms } : {}),
+    // Absent leaves it; choosing one retires the old free-text label.
+    ...(input.defaultEnvironmentId === undefined
+      ? {}
+      : {
+          defaultEnvironmentId: input.defaultEnvironmentId,
+          ...(input.defaultEnvironmentId ? { environment: null } : {}),
+        }),
   };
+}
+
+/** The default must be one of this project's own environments. */
+async function assertDefaultEnvironment(
+  projectId: string | null,
+  environmentId: string | null | undefined,
+) {
+  if (!environmentId) return;
+  const found = projectId
+    ? await prisma.runEnvironment.findFirst({
+        where: { id: environmentId, projectId },
+        select: { id: true },
+      })
+    : null;
+  if (!found) throw badRequest("Choose one of this project's run environments");
 }
 
 /**
@@ -180,22 +210,48 @@ async function resolveMemberIds(memberIds: string[]): Promise<string[]> {
   return users.map((user) => user.id);
 }
 
-export async function createProject(input: ProjectOutput, createdById: string) {
+/**
+ * Create a project, with any run environments added in its form.
+ *
+ * Those have no ids until now, so the default is named instead: one of them,
+ * or null for none. All in one transaction — a project is never left behind
+ * by an environment that failed to save.
+ */
+export async function createProject(
+  input: ProjectOutput & Partial<Pick<ProjectCreateOutput, "environments" | "defaultEnvironmentName">>,
+  createdById: string,
+) {
+  // An id cannot name an environment of a project that does not exist yet.
+  await assertDefaultEnvironment(null, input.defaultEnvironmentId);
+  const environments = input.environments ?? [];
+  const defaultName = input.defaultEnvironmentName ?? null;
+  if (defaultName && !environments.some((env) => env.name === defaultName)) {
+    throw badRequest("The default environment must be one of the environments added");
+  }
   const memberIds = await resolveMemberIds(input.memberIds ?? []);
 
-  return prisma.project.create({
-    data: {
-      ...toProjectData(input),
-      createdById,
-      members: { create: memberIds.map((userId) => ({ userId })) },
-    },
-    include: { qaOwner: qaOwnerSelect, members: memberSelect },
+  return prisma.$transaction(async (tx) => {
+    const project = await tx.project.create({
+      data: {
+        ...toProjectData(input),
+        createdById,
+        members: { create: memberIds.map((userId) => ({ userId })) },
+      },
+      select: { id: true },
+    });
+    const ids = await addEnvironmentsToNewProject(tx, project.id, environments);
+    return tx.project.update({
+      where: { id: project.id },
+      data: { defaultEnvironmentId: defaultName ? ids.get(defaultName)! : null },
+      include: { qaOwner: qaOwnerSelect, members: memberSelect },
+    });
   });
 }
 
 export async function updateProject(projectId: string, input: ProjectOutput) {
   await assertProjectExists(projectId);
   await assertPlatformsCoverCases(projectId, input.platforms);
+  await assertDefaultEnvironment(projectId, input.defaultEnvironmentId);
 
   // Omitted means "do not touch who is in charge" — see memberIds in the schema.
   if (input.memberIds === undefined) {
@@ -299,23 +355,4 @@ export async function listProjectMemberCandidates() {
     select: { id: true, name: true, email: true, role: true },
     orderBy: { name: "asc" },
   });
-}
-
-/**
- * Environments to offer in the project form: the standard three plus anything
- * teams have already typed, so a one-off name becomes a normal choice next time.
- */
-export async function listEnvironmentOptions(): Promise<string[]> {
-  const rows = await prisma.project.findMany({
-    where: { environment: { not: null } },
-    select: { environment: true },
-    distinct: ["environment"],
-    orderBy: { environment: "asc" },
-  });
-
-  const used = rows
-    .map((row) => row.environment?.trim())
-    .filter((value): value is string => Boolean(value));
-
-  return Array.from(new Set<string>([...PROJECT_ENVIRONMENTS, ...used]));
 }
