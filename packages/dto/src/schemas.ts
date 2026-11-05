@@ -391,6 +391,8 @@ export const generateTestCasesSchema = z.object({
   depth: z.enum(GENERATION_DEPTHS).default("essential"),
   /** Extra guidance for this run, e.g. "focus on validation messages". */
   instructions: optionalText(2000),
+  /** Blank means the server's default model. */
+  model: z.enum(AI_MODELS).optional(),
 });
 
 export type GenerateTestCasesInput = z.input<typeof generateTestCasesSchema>;

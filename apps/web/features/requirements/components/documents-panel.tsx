@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
+  Download,
   Eye,
   FilePlus2,
   FileText,
@@ -44,6 +45,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { EmptyState } from "@/components/shared/empty-state";
+import { PaginationControls } from "@/components/shared/pagination-controls";
 import {
   REQUIREMENT_DOC_KINDS,
   type AiJobDto,
@@ -51,7 +53,8 @@ import {
   type RequirementDocKind,
 } from "@wetestcase/dto";
 import { cn } from "@/lib/utils";
-import { api, errorMessage } from "@/utils/api-client";
+import { useClientPagination } from "@/hooks/use-client-pagination";
+import { api, downloadFile, errorMessage } from "@/utils/api-client";
 import { formatRelative } from "@/utils/format";
 
 import type { StartAi } from "./requirements-workspace";
@@ -76,6 +79,24 @@ export function DocumentsPanel({
   const [newVersionOf, setNewVersionOf] = useState<RequirementDocDto | null>(null);
   const [viewing, setViewing] = useState<RequirementDocDto | null>(null);
   const [deleting, setDeleting] = useState<RequirementDocDto | null>(null);
+  const [search, setSearch] = useState("");
+  const [kindFilter, setKindFilter] = useState<RequirementDocKind | "all">("all");
+  const [readFilter, setReadFilter] = useState<"all" | "read" | "unread">("all");
+
+  const visible = useMemo(() => {
+    const term = search.trim().toLowerCase();
+    return docs.filter((doc) => {
+      if (kindFilter !== "all" && doc.kind !== kindFilter) return false;
+      if (readFilter === "read" && doc.requirementCount === 0) return false;
+      if (readFilter === "unread" && doc.requirementCount > 0) return false;
+      if (!term) return true;
+      return [doc.title, doc.fileName, doc.createdBy.name]
+        .filter(Boolean)
+        .some((text) => text!.toLowerCase().includes(term));
+    });
+  }, [docs, search, kindFilter, readFilter]);
+
+  const paging = useClientPagination(visible, `${search}|${kindFilter}|${readFilter}`);
 
   function extract(docId: string) {
     return startAi(() =>
@@ -97,12 +118,51 @@ export function DocumentsPanel({
 
   return (
     <div className="space-y-4">
-      {canManage && docs.length > 0 && (
-        <div className="flex justify-end">
-          <Button onClick={() => setUploadOpen(true)}>
-            <Upload className="mr-2 size-4" />
-            Add document
-          </Button>
+      {docs.length > 0 && (
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex flex-wrap gap-2">
+            <Input
+              className="w-full sm:w-64"
+              placeholder="Search title, file, author…"
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+            />
+            <Select
+              value={kindFilter}
+              onValueChange={(value) => setKindFilter(value as RequirementDocKind | "all")}
+            >
+              <SelectTrigger className="w-40" aria-label="Filter by type">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All types</SelectItem>
+                {REQUIREMENT_DOC_KINDS.map((option) => (
+                  <SelectItem key={option} value={option}>
+                    {option === "OTHER" ? "Other spec" : option}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select
+              value={readFilter}
+              onValueChange={(value) => setReadFilter(value as "all" | "read" | "unread")}
+            >
+              <SelectTrigger className="w-48" aria-label="Filter by reading">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Read and not read</SelectItem>
+                <SelectItem value="read">Requirements read</SelectItem>
+                <SelectItem value="unread">Not read yet</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          {canManage && (
+            <Button onClick={() => setUploadOpen(true)}>
+              <Upload className="mr-2 size-4" />
+              Add document
+            </Button>
+          )}
         </div>
       )}
 
@@ -127,7 +187,12 @@ export function DocumentsPanel({
       ) : (
         <Card>
           <CardContent className="divide-y p-0">
-            {docs.map((doc) => {
+            {visible.length === 0 && (
+              <p className="py-10 text-center text-sm text-muted-foreground">
+                No documents match these filters.
+              </p>
+            )}
+            {paging.pageItems.map((doc) => {
               const reading = activeDocIds.has(doc.id);
               return (
                 <div key={doc.id} className="flex items-center gap-3 px-4 py-3">
@@ -177,6 +242,10 @@ export function DocumentsPanel({
                         <Eye className="mr-2 size-4" />
                         View text
                       </DropdownMenuItem>
+                      <DropdownMenuItem onSelect={() => void download(doc.id)}>
+                        <Download className="mr-2 size-4" />
+                        Download as Markdown
+                      </DropdownMenuItem>
                       {canManage && (
                         <DropdownMenuItem disabled={reading} onSelect={() => setNewVersionOf(doc)}>
                           <FilePlus2 className="mr-2 size-4" />
@@ -199,6 +268,17 @@ export function DocumentsPanel({
             })}
           </CardContent>
         </Card>
+      )}
+
+      {visible.length > 0 && (
+        <PaginationControls
+          page={paging.page}
+          pageSize={paging.pageSize}
+          total={paging.total}
+          totalPages={paging.totalPages}
+          onPageChange={paging.setPage}
+          onPageSizeChange={paging.setPageSize}
+        />
       )}
 
       <UploadDialog
@@ -408,6 +488,15 @@ function UploadDialog({
   );
 }
 
+/** The document's text as a Markdown file; the original upload is not kept. */
+async function download(docId: string) {
+  try {
+    await downloadFile(`/api/requirement-docs/${docId}/download`);
+  } catch (error) {
+    toast.error(errorMessage(error));
+  }
+}
+
 function DocumentTextDialog({
   doc,
   onClose,
@@ -440,6 +529,14 @@ function DocumentTextDialog({
           <DialogTitle>{doc?.title}</DialogTitle>
           <DialogDescription>The text the AI reads — as extracted from {doc?.fileName ?? "the pasted text"}.</DialogDescription>
         </DialogHeader>
+        {doc && (
+          <div className="flex justify-end">
+            <Button size="sm" variant="outline" onClick={() => void download(doc.id)}>
+              <Download className="mr-2 size-4" />
+              Download
+            </Button>
+          </div>
+        )}
         {content === null ? (
           <div className="flex justify-center py-10">
             <Loader2 className="size-5 animate-spin text-muted-foreground" />

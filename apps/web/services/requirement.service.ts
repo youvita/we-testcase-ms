@@ -89,6 +89,25 @@ export async function getRequirementDoc(docId: string) {
 }
 
 /**
+ * A document's text as a Markdown file. Only the text is kept, never the
+ * upload, so this is what the AI reads rather than the original PDF or Word
+ * file — and plain text is already Markdown.
+ */
+export async function exportRequirementDoc(docId: string) {
+  const doc = await prisma.requirementDoc.findUnique({
+    where: { id: docId },
+    select: { title: true, version: true, content: true },
+  });
+  if (!doc) throw notFound("Document");
+  const base =
+    doc.title.replace(/[^A-Za-z0-9._ -]+/g, "-").replace(/^[-. ]+|[-. ]+$/g, "") || "Document";
+  return {
+    fileName: `${base}${doc.version > 1 ? ` v${doc.version}` : ""}.md`,
+    content: doc.content,
+  };
+}
+
+/**
  * Replace a document's text with a newer version. The current text is
  * archived first; reading the new text (a separate job) then compares its
  * requirements with the ones the project has.

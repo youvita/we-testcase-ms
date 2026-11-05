@@ -235,8 +235,10 @@ function envelopeFailure(envelope) {
   if (envelope.subtype === 'error_max_turns') {
     return 'Claude stopped before answering — it went looking for something instead of replying.';
   }
-  if (NOT_SIGNED_IN.test(detail)) return NOT_SIGNED_IN_HELP;
   if (envelope.is_error === true || envelope.subtype !== 'success') {
+    // Only a failed run's `result` is the CLI talking. On a good run it is the model's reply,
+    // and test cases for a login page are full of "failed to authenticate".
+    if (NOT_SIGNED_IN.test(detail)) return NOT_SIGNED_IN_HELP;
     return detail || 'Claude Code ended without a reply.';
   }
   return typeof envelope.result === 'string' ? null : 'Claude Code ended without a reply.';

@@ -37,6 +37,7 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { EmptyState } from "@/components/shared/empty-state";
+import { PaginationControls } from "@/components/shared/pagination-controls";
 import {
   PriorityBadge,
   TestTypeBadge,
@@ -56,6 +57,7 @@ import type {
   TestCaseDraftInput,
 } from "@wetestcase/dto";
 import { api, errorMessage } from "@/utils/api-client";
+import { useClientPagination } from "@/hooks/use-client-pagination";
 
 /**
  * AI-written test cases, waiting for a person.
@@ -85,16 +87,81 @@ export function DraftsPanel({
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [editing, setEditing] = useState<TestCaseDraftDto | null>(null);
   const [busy, setBusy] = useState<"accept" | "reject" | null>(null);
+  const [requirementFilter, setRequirementFilter] = useState<string>(ALL);
+  const [moduleFilter, setModuleFilter] = useState<string>(ALL);
+
+  // A requirement or module whose drafts have all been reviewed is gone; its
+  // filter falls back to everything rather than showing nothing.
+  const activeRequirement =
+    requirementFilter !== ALL && drafts.some((d) => inRequirement(d, requirementFilter))
+      ? requirementFilter
+      : ALL;
+  const activeModule =
+    moduleFilter !== ALL && drafts.some((d) => d.moduleName === moduleFilter) ? moduleFilter : ALL;
+
+  // Each list counts the drafts the other filter leaves, so picking a
+  // requirement narrows the modules to its own, and the other way round.
+  const requirementOptions = useMemo(() => {
+    const byId = new Map<string, { id: string; code: string; title: string; count: number }>();
+    let unlinked = 0;
+    let total = 0;
+    for (const draft of drafts) {
+      const counted = activeModule === ALL || draft.moduleName === activeModule ? 1 : 0;
+      total += counted;
+      if (draft.requirements.length === 0) unlinked += counted;
+      for (const req of draft.requirements) {
+        const entry = byId.get(req.id) ?? { ...req, count: 0 };
+        entry.count += counted;
+        byId.set(req.id, entry);
+      }
+    }
+    const linked = Array.from(byId.values())
+      .filter((req) => req.count > 0 || req.id === activeRequirement)
+      .sort((a, b) => a.code.localeCompare(b.code, undefined, { numeric: true }));
+    return { linked, unlinked, total };
+  }, [drafts, activeModule, activeRequirement]);
+
+  const moduleOptions = useMemo(() => {
+    const counts = new Map<string, number>();
+    let total = 0;
+    for (const draft of drafts) {
+      const counted = inRequirement(draft, activeRequirement) ? 1 : 0;
+      total += counted;
+      counts.set(draft.moduleName, (counts.get(draft.moduleName) ?? 0) + counted);
+    }
+    const modules = Array.from(counts.entries())
+      .filter(([name, count]) => count > 0 || name === activeModule)
+      .sort(([a], [b]) => a.localeCompare(b, undefined, { numeric: true }));
+    return { modules, total };
+  }, [drafts, activeRequirement, activeModule]);
+
+  const visible = useMemo(
+    () =>
+      drafts.filter(
+        (d) =>
+          inRequirement(d, activeRequirement) &&
+          (activeModule === ALL || d.moduleName === activeModule),
+      ),
+    [drafts, activeRequirement, activeModule],
+  );
+  const filtered = activeRequirement !== ALL || activeModule !== ALL;
+
+  // Paged before grouping, so every page holds the same number of drafts
+  // however the modules fall.
+  const paging = useClientPagination(visible, `${activeRequirement}|${activeModule}`);
+  const shown = paging.pageItems;
 
   const groups = useMemo(() => {
     const byModule = new Map<string, TestCaseDraftDto[]>();
-    for (const draft of drafts) {
+    for (const draft of shown) {
       byModule.set(draft.moduleName, [...(byModule.get(draft.moduleName) ?? []), draft]);
     }
     return Array.from(byModule.entries());
-  }, [drafts]);
+  }, [shown]);
 
-  const selectedIds = drafts.filter((d) => selected.has(d.id)).map((d) => d.id);
+  // Only what is on screen: a bulk accept never reaches drafts the filter or
+  // another page hides.
+  const selectedIds = shown.filter((d) => selected.has(d.id)).map((d) => d.id);
 
   function toggle(set: Set<string>, ids: string[], on: boolean) {
     const next = new Set(set);
@@ -152,26 +219,72 @@ export function DraftsPanel({
 
   return (
     <div className="space-y-4">
-      {canManage && onExplore && (
-        <div className="flex justify-end">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex w-full flex-wrap gap-2 sm:w-auto">
+          <Select value={activeRequirement} onValueChange={setRequirementFilter}>
+            <SelectTrigger className="w-full sm:w-96" aria-label="Filter by requirement">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={ALL}>All requirements ({requirementOptions.total})</SelectItem>
+              {requirementOptions.linked.map((req) => (
+                <SelectItem key={req.id} value={req.id}>
+                  <span className="font-mono">{req.code}</span> — {req.title} ({req.count})
+                </SelectItem>
+              ))}
+              {(requirementOptions.unlinked > 0 || activeRequirement === NO_REQUIREMENT) && (
+                <SelectItem value={NO_REQUIREMENT}>
+                  No requirement — from exploring the app ({requirementOptions.unlinked})
+                </SelectItem>
+              )}
+            </SelectContent>
+          </Select>
+          <Select value={activeModule} onValueChange={setModuleFilter}>
+            <SelectTrigger className="w-full sm:w-56" aria-label="Filter by module">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={ALL}>All modules ({moduleOptions.total})</SelectItem>
+              {moduleOptions.modules.map(([name, count]) => (
+                <SelectItem key={name} value={name}>
+                  {name} ({count})
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {filtered && (
+            <Button
+              variant="ghost"
+              onClick={() => {
+                setRequirementFilter(ALL);
+                setModuleFilter(ALL);
+              }}
+            >
+              Clear filters
+            </Button>
+          )}
+        </div>
+        {canManage && onExplore && (
           <Button variant="outline" size="sm" onClick={onExplore}>
             <Compass className="mr-2 size-4" />
             Explore the app
           </Button>
-        </div>
-      )}
+        )}
+      </div>
       {canManage && (
         <div className="sticky top-0 z-10 flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-background/95 px-4 py-2 backdrop-blur">
           <label className="flex items-center gap-2 text-sm">
             <Checkbox
-              checked={selectedIds.length === drafts.length}
+              checked={shown.length > 0 && selectedIds.length === shown.length}
               onCheckedChange={(checked) =>
-                setSelected(checked ? new Set(drafts.map((d) => d.id)) : new Set())
+                setSelected(toggle(selected, shown.map((d) => d.id), checked === true))
               }
             />
             {selectedIds.length > 0
-              ? `${selectedIds.length} of ${drafts.length} selected`
-              : `Select all ${drafts.length}`}
+              ? `${selectedIds.length} of ${shown.length} selected`
+              : paging.totalPages > 1
+                ? `Select all ${shown.length} on this page`
+                : `Select all ${shown.length}`}
           </label>
           <div className="flex gap-2">
             <Button
@@ -195,9 +308,17 @@ export function DraftsPanel({
         </div>
       )}
 
+      {visible.length === 0 && (
+        <Card>
+          <CardContent className="py-10 text-center text-sm text-muted-foreground">
+            No drafts match these filters.
+          </CardContent>
+        </Card>
+      )}
+
       {groups.map(([moduleName, moduleDrafts]) => (
         <Card key={moduleName}>
-          <CardHeader className="flex flex-row items-center gap-3 space-y-0 py-3">
+          <CardHeader className="flex flex-row items-center gap-3 space-y-0 px-4 py-3">
             {canManage && (
               <Checkbox
                 aria-label={`Select all in ${moduleName}`}
@@ -295,6 +416,15 @@ export function DraftsPanel({
         </Card>
       ))}
 
+      <PaginationControls
+        page={paging.page}
+        pageSize={paging.pageSize}
+        total={paging.total}
+        totalPages={paging.totalPages}
+        onPageChange={paging.setPage}
+        onPageSizeChange={paging.setPageSize}
+      />
+
       <DraftEditDialog
         draft={editing}
         platforms={platforms}
@@ -302,6 +432,16 @@ export function DraftsPanel({
       />
     </div>
   );
+}
+
+const ALL = "__all";
+const NO_REQUIREMENT = "__none";
+
+/** The draft came from this requirement — or from none, or `ALL` for any. */
+function inRequirement(draft: TestCaseDraftDto, filter: string): boolean {
+  if (filter === ALL) return true;
+  if (filter === NO_REQUIREMENT) return draft.requirements.length === 0;
+  return draft.requirements.some((req) => req.id === filter);
 }
 
 function DraftField({ label, text }: { label: string; text: string | null }) {

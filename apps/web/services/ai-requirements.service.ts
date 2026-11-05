@@ -8,6 +8,7 @@ import {
   PRIORITIES,
   TEST_TYPES,
   type AiJobDto,
+  type AiModel,
   type GenerateTestCasesInput,
   type GenerationDepth,
   type Platform,
@@ -435,6 +436,8 @@ export async function startGeneration(
     platform?: Platform;
     depth: GenerationDepth;
     instructions?: string;
+    /** The AI model to use; the server's default when absent. */
+    model?: AiModel;
   },
 ): Promise<AiJobDto> {
   const project = await prisma.project.findUnique({
@@ -473,6 +476,7 @@ defineJob("GENERATE_TEST_CASES", async (job) => {
     platform: Platform;
     depth: GenerationDepth;
     instructions?: string;
+    model?: AiModel;
   };
   const { requirementIds } = input;
   const project = await prisma.project.findUnique({
@@ -517,6 +521,7 @@ defineJob("GENERATE_TEST_CASES", async (job) => {
 
       const reply = await askClaude({
         token,
+        model: input.model,
         system: GENERATE_SYSTEM,
         prompt: generatePrompt({
           projectName: project.name,

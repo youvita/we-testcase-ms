@@ -92,6 +92,28 @@ const jobInclude = {
 
 type JobRow = AiJob & { createdBy: { id: string; name: string } };
 
+/** See AiJobDto.targets. */
+function jobTargets(job: JobRow): string[] {
+  const input = (job.input ?? {}) as {
+    requirementIds?: unknown;
+    environmentId?: unknown;
+    paths?: unknown;
+  };
+  switch (job.kind) {
+    case "GENERATE_TEST_CASES":
+      return Array.isArray(input.requirementIds) ? input.requirementIds.map(String) : [];
+    case "EXTRACT_REQUIREMENTS":
+      return job.docId ? [job.docId] : [];
+    case "EXPLORE_APP": {
+      if (typeof input.environmentId !== "string") return [];
+      const paths = Array.isArray(input.paths) ? input.paths.map(String) : [];
+      return paths.map((path) => `${input.environmentId}:${path}`);
+    }
+    default:
+      return [];
+  }
+}
+
 function toDto(job: JobRow): AiJobDto {
   return {
     id: job.id,
@@ -102,6 +124,7 @@ function toDto(job: JobRow): AiJobDto {
     summary: job.summary,
     error: job.error,
     docId: job.docId,
+    targets: jobTargets(job),
     result: job.result,
     createdAt: job.createdAt.toISOString(),
     finishedAt: job.finishedAt?.toISOString() ?? null,

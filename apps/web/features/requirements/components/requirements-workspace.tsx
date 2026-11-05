@@ -16,7 +16,7 @@ import type {
 } from "@wetestcase/dto";
 import { ApiError, api, errorMessage } from "@/utils/api-client";
 
-import { AiJobList, isSubscriptionError } from "./ai-job-list";
+import { AiJobList, REQUIREMENT_JOBS_QUERY, isSubscriptionError } from "./ai-job-list";
 import { DocumentsPanel } from "./documents-panel";
 import { DraftsPanel } from "./drafts-panel";
 import { ExploreAppDialog, type SignInCase } from "./explore-app-dialog";
@@ -87,9 +87,7 @@ export function RequirementsWorkspace({
     const timer = setInterval(async () => {
       let next: AiJobDto[];
       try {
-        next = await api.get<AiJobDto[]>(
-          `/api/projects/${projectId}/ai-jobs?kind=EXTRACT_REQUIREMENTS&kind=GENERATE_TEST_CASES&kind=EXPLORE_APP`,
-        );
+        next = await api.get<AiJobDto[]>(`/api/projects/${projectId}/ai-jobs?${REQUIREMENT_JOBS_QUERY}`);
       } catch {
         return; // A missed poll is retried on the next tick.
       }
@@ -164,7 +162,7 @@ export function RequirementsWorkspace({
 
   return (
     <div className="space-y-4">
-      <AiJobList jobs={jobs} onRetry={canManage ? retryJob : undefined} />
+      <AiJobList projectId={projectId} jobs={jobs} onRetry={canManage ? retryJob : undefined} />
 
       <Tabs value={tab} onValueChange={setTab}>
         <TabsList>

@@ -145,6 +145,12 @@ export type AiJobDto = {
   summary: string | null;
   error: string | null;
   docId: string | null;
+  /**
+   * What the job worked on: the requirements it drafted for, the document it
+   * read, or the environment and pages it explored. A later job whose targets
+   * include all of these did the same work again. Empty for other kinds.
+   */
+  targets: string[];
   /** What the job produced, e.g. ScriptWritingResult for WRITE_SCRIPT. */
   result: unknown;
   createdAt: string;

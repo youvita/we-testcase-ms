@@ -54,16 +54,21 @@ import {
 } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
+import { PaginationControls } from "@/components/shared/pagination-controls";
 import { EmptyState } from "@/components/shared/empty-state";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { EXECUTION_STATUS_LABELS, PLATFORM_LABELS } from "@/lib/constants";
 import { cn } from "@/lib/utils";
-import type {
-  AiJobDto,
-  GenerationDepth,
-  Platform,
-  RequirementDocDto,
-  RequirementDto,
+import { useClientPagination } from "@/hooks/use-client-pagination";
+import {
+  AI_MODELS,
+  AI_MODEL_LABELS,
+  type AiJobDto,
+  type AiModel,
+  type GenerationDepth,
+  type Platform,
+  type RequirementDocDto,
+  type RequirementDto,
 } from "@wetestcase/dto";
 import { api, errorMessage } from "@/utils/api-client";
 
@@ -124,12 +129,15 @@ export function RequirementsPanel({
     });
   }, [requirements, search, docFilter, coverage]);
 
+  const paging = useClientPagination(visible, `${search}|${docFilter}|${coverage}`);
+  const shown = paging.pageItems;
+
   // Selection survives filtering, so it is counted against what still exists.
   const selectedIds = requirements
     .filter((req) => selected.has(req.id))
     .map((req) => req.id);
-  const allVisibleSelected =
-    visible.length > 0 && visible.every((req) => selected.has(req.id));
+  const allShownSelected =
+    shown.length > 0 && shown.every((req) => selected.has(req.id));
 
   function toggle(set: Set<string>, id: string, on: boolean) {
     const next = new Set(set);
@@ -254,11 +262,11 @@ export function RequirementsPanel({
               {canManage && (
                 <TableHead className="w-10">
                   <Checkbox
-                    aria-label="Select all shown"
-                    checked={allVisibleSelected}
+                    aria-label="Select all on this page"
+                    checked={allShownSelected}
                     onCheckedChange={(checked) => {
                       const next = new Set(selected);
-                      for (const req of visible) {
+                      for (const req of shown) {
                         if (checked) next.add(req.id);
                         else next.delete(req.id);
                       }
@@ -282,7 +290,7 @@ export function RequirementsPanel({
                 </TableCell>
               </TableRow>
             )}
-            {visible.map((req) => {
+            {shown.map((req) => {
               const open = expanded.has(req.id);
               return (
                 <Fragment key={req.id}>
@@ -389,6 +397,17 @@ export function RequirementsPanel({
           </TableBody>
         </Table>
       </Card>
+
+      {visible.length > 0 && (
+        <PaginationControls
+          page={paging.page}
+          pageSize={paging.pageSize}
+          total={paging.total}
+          totalPages={paging.totalPages}
+          onPageChange={paging.setPage}
+          onPageSizeChange={paging.setPageSize}
+        />
+      )}
 
       <GenerateDialog
         open={generateOpen}
@@ -502,11 +521,13 @@ function GenerateDialog({
   onGenerate: (options: {
     platform: Platform;
     depth: GenerationDepth;
+    model: AiModel;
     instructions: string;
   }) => Promise<void>;
 }) {
   const [platform, setPlatform] = useState<Platform>(platforms[0] ?? "WEB");
   const [depth, setDepth] = useState<GenerationDepth>("essential");
+  const [model, setModel] = useState<AiModel>("sonnet");
   const [instructions, setInstructions] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -553,6 +574,21 @@ function GenerateDialog({
             </div>
           </div>
           <div className="space-y-2">
+            <Label>AI model</Label>
+            <Select value={model} onValueChange={(value) => setModel(value as AiModel)}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {AI_MODELS.map((option) => (
+                  <SelectItem key={option} value={option}>
+                    {AI_MODEL_LABELS[option].label} — {AI_MODEL_LABELS[option].hint}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-2">
             <Label htmlFor="generate-instructions">Extra instructions (optional)</Label>
             <Textarea
               id="generate-instructions"
@@ -573,7 +609,7 @@ function GenerateDialog({
             onClick={async () => {
               setBusy(true);
               try {
-                await onGenerate({ platform, depth, instructions });
+                await onGenerate({ platform, depth, model, instructions });
               } finally {
                 setBusy(false);
               }
