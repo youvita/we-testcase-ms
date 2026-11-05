@@ -18,6 +18,7 @@ import { Label } from "@/components/ui/label";
 import { PasswordInput } from "@/components/ui/password-input";
 import type { ClaudeConnectionStatus } from "@wetestcase/dto";
 import { api, errorMessage } from "@/utils/api-client";
+import { normalizeToken } from "@/utils/claude-token";
 import { formatDate } from "@/utils/format";
 
 /**
@@ -160,10 +161,21 @@ export function ClaudeConnectionDialog({
                 placeholder="sk-ant-oat…"
                 value={token}
                 onChange={(event) => setToken(event.target.value)}
+                onPaste={(event) => {
+                  // Cleaned here, while the pasted text still has its line
+                  // breaks: a one-line field drops them on its own, and a
+                  // token wrapped in a terminal would come out with spaces
+                  // in the middle and the surrounding text attached.
+                  const pasted = event.clipboardData.getData("text");
+                  if (!pasted.includes("sk-ant-")) return;
+                  event.preventDefault();
+                  setToken(normalizeToken(pasted));
+                }}
               />
               <p className="text-xs text-muted-foreground">
-                Stored encrypted on this server and never shown again. API keys
-                are not accepted.
+                Copied from a wrapped terminal line? Spaces and line breaks are
+                removed for you. Stored encrypted on this server and never shown
+                again. API keys are not accepted.
               </p>
             </div>
           </div>

@@ -3,6 +3,7 @@ import { badRequest, HttpError } from "@/lib/api";
 import { AiError, askClaude, isAiConfigured } from "@/lib/claude";
 import { open, seal } from "@/lib/secret-box";
 import type { ClaudeConnectionStatus } from "@wetestcase/dto";
+import { normalizeToken } from "@/utils/claude-token";
 
 /**
  * People's Claude subscriptions.
@@ -36,7 +37,7 @@ export async function getConnectionStatus(
  * person is looking at the dialog, rather than minutes later as a failed job.
  */
 export async function connectClaude(userId: string, rawToken: string) {
-  const token = rawToken.trim();
+  const token = normalizeToken(rawToken);
   if (token.startsWith("sk-ant-api")) {
     throw badRequest(
       "That is an API key. Paste the subscription token from `claude setup-token` instead.",
