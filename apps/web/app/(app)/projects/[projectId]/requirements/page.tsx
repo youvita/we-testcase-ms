@@ -12,10 +12,11 @@ import { Breadcrumbs } from "@/components/layout/breadcrumbs";
 import { PageHeader } from "@/components/shared/page-header";
 import { StatCard } from "@/components/shared/stat-card";
 import { RequirementsWorkspace } from "@/features/requirements/components/requirements-workspace";
-import { canManageTestCases } from "@/lib/permissions";
+import { canAnswerPo, canAskPo, canManageTestCases } from "@/lib/permissions";
 import { requireProjectAccess } from "@/lib/project-access";
 import { requireUser } from "@/lib/session";
 import { listJobs } from "@/services/ai-job.service";
+import { listAdmins, listPoQuestions } from "@/services/clarification.service";
 import { listSignInCases } from "@/services/automation-script.service";
 import { listRunEnvironments } from "@/services/run-environment.service";
 import { getProject } from "@/services/project.service";
@@ -34,7 +35,7 @@ export default async function RequirementsPage({
   searchParams,
 }: {
   params: Promise<{ projectId: string }>;
-  searchParams: Promise<{ explore?: string }>;
+  searchParams: Promise<{ explore?: string; tab?: string; focus?: string }>;
 }) {
   const user = await requireUser();
   const { projectId } = await params;
@@ -43,15 +44,18 @@ export default async function RequirementsPage({
   const project = await getProject(projectId).catch(() => null);
   if (!project) notFound();
 
-  const [docs, requirements, drafts, jobs, environments, signInCases, { explore }] = await Promise.all([
-    listRequirementDocs(projectId),
-    listRequirements(projectId),
-    listPendingDrafts(projectId),
-    listJobs(projectId, { kinds: [...REQUIREMENT_JOB_KINDS] }),
-    listRunEnvironments(projectId),
-    listSignInCases(projectId),
-    searchParams,
-  ]);
+  const [docs, requirements, drafts, jobs, environments, signInCases, questions, admins, { explore, tab, focus }] =
+    await Promise.all([
+      listRequirementDocs(projectId),
+      listRequirements(projectId),
+      listPendingDrafts(projectId),
+      listJobs(projectId, { kinds: [...REQUIREMENT_JOB_KINDS] }),
+      listRunEnvironments(projectId),
+      listSignInCases(projectId),
+      listPoQuestions(projectId),
+      listAdmins(),
+      searchParams,
+    ]);
 
   // Requirements confirmed gone from their document no longer count.
   const inForce = requirements.filter((req) => req.status === "ACTIVE");
@@ -116,6 +120,15 @@ export default async function RequirementsPage({
         environments={environments}
         signInCases={signInCases}
         openExplore={explore === "1" && canManageTestCases(user.role)}
+        questions={questions}
+        po={{
+          admins,
+          currentUserId: user.id,
+          canAsk: canAskPo(user.role),
+          canAnswer: canAnswerPo(user.role),
+        }}
+        // From a notification: open the tab, and the requirement or draft on it.
+        focus={(tab === "requirements" || tab === "drafts") && focus ? { tab, id: focus } : undefined}
       />
 
       <p className="flex items-center gap-1.5 text-xs text-muted-foreground">

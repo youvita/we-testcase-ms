@@ -36,6 +36,7 @@ import {
   TEST_TYPE_LABELS,
 } from "@/lib/constants";
 import { testCaseSchema, type TestCaseInput } from "@/lib/validations";
+import { splitOpenQuestions } from "@/utils/open-questions";
 import { ApiError, api, errorMessage } from "@/utils/api-client";
 import type { Platform, SubModuleOption, TestCaseWithDetails } from "@/types";
 
@@ -116,6 +117,7 @@ export function TestCaseFormDialog({
       preconditions: "",
       steps: "",
       expectedResult: "",
+      openQuestions: "",
       testType: "FUNCTIONAL",
       priority: "MEDIUM",
       platform: platforms[0] ?? "WEB",
@@ -137,6 +139,7 @@ export function TestCaseFormDialog({
         preconditions: "",
         steps: "",
         expectedResult: "",
+      openQuestions: "",
         testType: "FUNCTIONAL",
         priority: "MEDIUM",
         platform: platformsRef.current[0] ?? "WEB",
@@ -155,14 +158,17 @@ export function TestCaseFormDialog({
       .get<TestCaseWithDetails>(`/api/test-cases/${testCaseId}`)
       .then((testCase) => {
         if (cancelled) return;
+        // An older case's "(confirm with PO)" markers, split out to edit.
+        const text = splitOpenQuestions(testCase);
         reset({
           moduleId: testCase.moduleId,
           subModule: testCase.subModule ?? "",
           tcId: testCase.tcId,
           title: testCase.title,
-          preconditions: testCase.preconditions ?? "",
-          steps: testCase.steps ?? "",
-          expectedResult: testCase.expectedResult ?? "",
+          preconditions: text.preconditions ?? "",
+          steps: text.steps ?? "",
+          expectedResult: text.expectedResult ?? "",
+          openQuestions: text.openQuestions ?? "",
           testType: testCase.testType,
           priority: testCase.priority,
           platform: testCase.platform,
@@ -529,6 +535,19 @@ export function TestCaseFormDialog({
                 placeholder="The user reaches the dashboard."
                 {...register("expectedResult")}
               />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="openQuestions">Open questions for the PO</Label>
+              <Textarea
+                id="openQuestions"
+                rows={2}
+                placeholder="- What exactly should the error message say?"
+                {...register("openQuestions")}
+              />
+              <p className="text-xs text-muted-foreground">
+                What is still unclear, kept out of the expected result so it stays a check.
+              </p>
             </div>
           </form>
         )}

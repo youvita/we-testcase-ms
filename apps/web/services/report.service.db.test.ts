@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { prisma } from "@/lib/prisma";
 import { createProject, createTestCase, resetDatabase } from "@/test/db";
 
+import { importTestCases } from "./import.service";
 import { buildExcelReport, listFilterFromQuery } from "./report.service";
 import { listTestCases } from "./test-case.service";
 import { testCaseQuerySchema } from "@/lib/validations";
@@ -49,5 +50,49 @@ describe("exporting the filtered test case list", () => {
   it("is no filter at all when the list is unfiltered", async () => {
     const { project } = await createProject();
     expect(await listFilterFromQuery(project.id, new URLSearchParams({ page: "3", sort: "priority" }))).toBeNull();
+  });
+});
+
+describe("the results report's case sheets", () => {
+  it("leave out Sub-module and Platform, and import back without changing either", async () => {
+    const { project, module } = await createProject();
+    await prisma.project.update({ where: { id: project.id }, data: { platforms: ["WEB", "API"] } });
+    const api = await createTestCase(project.id, module.id, "TC-API-1", "Token is issued");
+    await prisma.testCase.update({
+      where: { id: api.id },
+      data: { platform: "API", subModule: "Token", status: "FAILED" },
+    });
+
+    const cases = await buildExcelReport(project.id, "cases");
+    expect(sheet(cases, "Test Cases")[0]).toEqual([
+      "TC ID",
+      "Module",
+      "Test Case",
+      "Preconditions",
+      "Steps",
+      "Expected Result",
+      "Test Type",
+      "Priority",
+      "Status",
+    ]);
+    const failed = sheet(await buildExcelReport(project.id, "failed"), "Failed & Blocked")[0];
+    expect(failed).not.toContain("Sub-module");
+    expect(failed).not.toContain("Platform");
+
+    // Edited and sent back: the title changes, the platform and sub-module stay.
+    const book = XLSX.read(cases);
+    const casesSheet = book.Sheets["Test Cases"]!;
+    casesSheet["C2"] = { t: "s", v: "Token is issued for valid credentials" };
+    const edited = XLSX.write(book, { type: "buffer", bookType: "xlsx" }) as Buffer;
+    const summary = await importTestCases(project.id, { buffer: edited, fileName: "report.xlsx" }, "update");
+    // The Test Cases sheet, not the Summary in front of it.
+    expect(summary).toMatchObject({ sheetName: "Test Cases", created: 0, updated: 1 });
+
+    const after = await prisma.testCase.findUniqueOrThrow({ where: { id: api.id } });
+    expect(after).toMatchObject({
+      title: "Token is issued for valid credentials",
+      platform: "API",
+      subModule: "Token",
+    });
   });
 });

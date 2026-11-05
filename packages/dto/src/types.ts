@@ -167,6 +167,8 @@ export type RequirementDocDto = {
   requirementCount: number;
   /** 1 until a new version is uploaded. */
   version: number;
+  /** An uploaded Swagger / OpenAPI spec or Postman collection. */
+  isApiSpec: boolean;
   createdAt: string;
   createdBy: { id: string; name: string };
 };
@@ -205,6 +207,50 @@ export type RequirementDto = {
   pendingDraftCount: number;
 };
 
+/** One entry under the bell in the top bar. */
+export type NotificationDto = {
+  id: string;
+  kind: "QUESTION_ASKED" | "QUESTION_ANSWERED" | "QUESTION_REPLIED";
+  createdAt: string;
+  readAt: string | null;
+  actor: { id: string; name: string };
+  /** What it is about, as a person reads it: "TC-POST-AUTH-TOKEN-01", a requirement code, a draft's title. */
+  subject: string;
+  /** Where to open it. */
+  href: string;
+  /** The start of the question or the answer. */
+  excerpt: string;
+};
+
+/** A question for the PO about a requirement or a review draft. */
+export type PoQuestionDto = {
+  id: string;
+  body: string;
+  createdAt: string;
+  requirementId: string | null;
+  draftId: string | null;
+  asker: { id: string; name: string; image: string | null };
+  /** One admin, or null when every admin was asked. */
+  questionTo: { id: string; name: string } | null;
+  /** The PO's answers and QA's follow-ups, oldest first. */
+  replies: {
+    id: string;
+    body: string;
+    createdAt: string;
+    /** `isPo`: written by an admin — an answer rather than a follow-up. */
+    author: { id: string; name: string; image: string | null; isPo: boolean };
+  }[];
+  /**
+   * Who has the next word: "waiting" for the PO (nothing yet, or QA wrote
+   * last), "answered" by the PO last, or "resolved" by either side.
+   */
+  status: "waiting" | "answered" | "resolved";
+  resolvedAt: string | null;
+  resolvedBy: { id: string; name: string } | null;
+};
+
+export type NotificationList = { items: NotificationDto[]; unread: number };
+
 export type TestCaseDraftDto = {
   id: string;
   status: DraftStatus;
@@ -214,6 +260,8 @@ export type TestCaseDraftDto = {
   preconditions: string | null;
   steps: string | null;
   expectedResult: string | null;
+  /** What the PO still has to confirm, one per line ("- …"). */
+  openQuestions: string | null;
   testType: TestType;
   priority: Priority;
   platform: Platform;

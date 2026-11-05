@@ -1,9 +1,10 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   Check,
+  CircleHelp,
   ChevronDown,
   ChevronRight,
   Compass,
@@ -37,6 +38,8 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { EmptyState } from "@/components/shared/empty-state";
+import { OpenQuestions } from "@/components/shared/open-questions";
+import { AskPoDialog } from "@/features/comments/components/ask-po-dialog";
 import { PaginationControls } from "@/components/shared/pagination-controls";
 import {
   PriorityBadge,
@@ -53,11 +56,14 @@ import {
 import type {
   DraftReviewResult,
   Platform,
+  PoQuestionDto,
   TestCaseDraftDto,
   TestCaseDraftInput,
 } from "@wetestcase/dto";
 import { api, errorMessage } from "@/utils/api-client";
 import { useClientPagination } from "@/hooks/use-client-pagination";
+
+import { PoQuestionBadge, PoQuestions, type PoContext } from "./po-questions";
 
 /**
  * AI-written test cases, waiting for a person.
@@ -73,6 +79,9 @@ export function DraftsPanel({
   canManage,
   onOpenRequirements,
   onExplore,
+  questions,
+  po,
+  focusId,
 }: {
   projectId: string;
   drafts: TestCaseDraftDto[];
@@ -81,6 +90,11 @@ export function DraftsPanel({
   onExplore?: () => void;
   canManage: boolean;
   onOpenRequirements: () => void;
+  /** Questions for the PO about these drafts. */
+  questions: PoQuestionDto[];
+  po: PoContext;
+  /** A draft to open, from a notification. */
+  focusId?: string;
 }) {
   const router = useRouter();
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -150,6 +164,38 @@ export function DraftsPanel({
   // however the modules fall.
   const paging = useClientPagination(visible, `${activeRequirement}|${activeModule}`);
   const shown = paging.pageItems;
+
+  const questionsFor = useMemo(() => {
+    const byDraft = new Map<string, PoQuestionDto[]>();
+    for (const question of questions) {
+      byDraft.set(question.draftId!, [...(byDraft.get(question.draftId!) ?? []), question]);
+    }
+    return (id: string) => byDraft.get(id) ?? [];
+  }, [questions]);
+
+  // Opened from a notification: clear the filters, then — once the list has
+  // re-rendered — go to the draft's page, expand it and scroll to it.
+  const [pendingFocus, setPendingFocus] = useState<string | null>(null);
+  const [seenFocus, setSeenFocus] = useState<string | undefined>(undefined);
+  if (focusId !== seenFocus) {
+    setSeenFocus(focusId);
+    if (focusId && drafts.some((draft) => draft.id === focusId)) {
+      setRequirementFilter(ALL);
+      setModuleFilter(ALL);
+      setExpanded((current) => new Set(current).add(focusId));
+      setPendingFocus(focusId);
+    }
+  }
+  useEffect(() => {
+    if (!pendingFocus) return;
+    const index = visible.findIndex((draft) => draft.id === pendingFocus);
+    if (index === -1) return;
+    paging.setPage(Math.floor(index / paging.pageSize) + 1);
+    setPendingFocus(null);
+    requestAnimationFrame(() =>
+      document.getElementById(`draft-${pendingFocus}`)?.scrollIntoView({ block: "center", behavior: "smooth" }),
+    );
+  }, [pendingFocus, visible, paging]);
 
   const groups = useMemo(() => {
     const byModule = new Map<string, TestCaseDraftDto[]>();
@@ -335,7 +381,7 @@ export function DraftsPanel({
             {moduleDrafts.map((draft) => {
               const open = expanded.has(draft.id);
               return (
-                <div key={draft.id} className="px-4 py-3">
+                <div key={draft.id} id={`draft-${draft.id}`} className="px-4 py-3">
                   <div className="flex items-start gap-3">
                     {canManage && (
                       <Checkbox
@@ -367,6 +413,14 @@ export function DraftsPanel({
                           )}
                           <TestTypeBadge testType={draft.testType} />
                           <PriorityBadge priority={draft.priority} />
+                          {draft.openQuestions && (
+                            <span className="inline-flex items-center gap-1 text-xs text-status-blocked">
+                              <CircleHelp className="size-3.5" aria-hidden />
+                              {questionCount(draft.openQuestions)} open question
+                              {questionCount(draft.openQuestions) === 1 ? "" : "s"}
+                            </span>
+                          )}
+                          <PoQuestionBadge questions={questionsFor(draft.id)} />
                           {draft.requirements.map((req) => (
                             <Badge key={req.id} variant="outline" className="font-mono" title={req.title}>
                               {req.code}
@@ -409,6 +463,14 @@ export function DraftsPanel({
                       <DraftField label="Expected result" text={draft.expectedResult} />
                     </div>
                   )}
+                  {open && (
+                    <DraftQuestions
+                      draft={draft}
+                      projectId={projectId}
+                      questions={questionsFor(draft.id)}
+                      po={po}
+                    />
+                  )}
                 </div>
               );
             })}
@@ -444,6 +506,41 @@ function inRequirement(draft: TestCaseDraftDto, filter: string): boolean {
   return draft.requirements.some((req) => req.id === filter);
 }
 
+/**
+ * A draft's open questions, with "Ask the PO" beside them, and what has
+ * been asked and answered about it so far.
+ */
+function DraftQuestions({
+  draft,
+  projectId,
+  questions,
+  po,
+}: {
+  draft: TestCaseDraftDto;
+  projectId: string;
+  questions: PoQuestionDto[];
+  po: PoContext;
+}) {
+  const ask = po.canAsk ? (
+    <AskPoDialog
+      ask={{ url: `/api/projects/${projectId}/po-questions`, extra: { draftId: draft.id } }}
+      where="under this draft, and moves to the test case's discussion when the draft is accepted"
+      label={questions.length ? "New question" : undefined}
+      admins={po.admins}
+      currentUserId={po.currentUserId}
+      openQuestions={draft.openQuestions}
+    />
+  ) : null;
+  return (
+    <div className="ml-7 mt-3 space-y-2">
+      {draft.openQuestions ? <OpenQuestions text={draft.openQuestions} action={ask} /> : ask}
+      <PoQuestions questions={questions} po={po} />
+    </div>
+  );
+}
+
+const questionCount = (text: string) => text.split("\n").filter((line) => line.trim()).length;
+
 function DraftField({ label, text }: { label: string; text: string | null }) {
   return (
     <div>
@@ -478,6 +575,7 @@ function DraftEditDialog({
         preconditions: draft.preconditions ?? "",
         steps: draft.steps ?? "",
         expectedResult: draft.expectedResult ?? "",
+        openQuestions: draft.openQuestions ?? "",
         testType: draft.testType,
         priority: draft.priority,
         platform: draft.platform,
@@ -485,7 +583,9 @@ function DraftEditDialog({
     );
   }
 
-  const text = (key: "moduleName" | "subModule" | "title" | "preconditions" | "steps" | "expectedResult") =>
+  const text = (
+    key: "moduleName" | "subModule" | "title" | "preconditions" | "steps" | "expectedResult" | "openQuestions",
+  ) =>
     (event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
       setForm((current) => current && { ...current, [key]: event.target.value });
 
@@ -601,6 +701,16 @@ function DraftEditDialog({
             <div className="space-y-2">
               <Label htmlFor="draft-expected">Expected result</Label>
               <Textarea id="draft-expected" rows={3} value={form.expectedResult ?? ""} onChange={text("expectedResult")} />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="draft-questions">Open questions for the PO</Label>
+              <Textarea
+                id="draft-questions"
+                rows={3}
+                placeholder="- What exactly should the error message say?"
+                value={form.openQuestions ?? ""}
+                onChange={text("openQuestions")}
+              />
             </div>
           </div>
         )}

@@ -14,6 +14,7 @@ import type {
   RequirementReviewInput,
   RequirementSnapshot,
 } from "@wetestcase/dto";
+import { API_SPEC_MARKER } from "@/utils/openapi-markdown";
 import { findMatch, sameRequirementText } from "@/utils/requirement-match";
 
 import { assertProjectExists } from "./project.service";
@@ -50,23 +51,32 @@ export async function createRequirementDoc(
 export async function listRequirementDocs(
   projectId: string,
 ): Promise<RequirementDocDto[]> {
-  const docs = await prisma.requirementDoc.findMany({
-    where: { projectId },
-    orderBy: { createdAt: "asc" },
-    select: {
-      id: true,
-      title: true,
-      kind: true,
-      fileName: true,
-      charCount: true,
-      version: true,
-      createdAt: true,
-      createdBy: { select: { id: true, name: true } },
-      _count: { select: { requirements: { where: { status: "ACTIVE" } } } },
-    },
-  });
+  const [docs, specs] = await Promise.all([
+    prisma.requirementDoc.findMany({
+      where: { projectId },
+      orderBy: { createdAt: "asc" },
+      select: {
+        id: true,
+        title: true,
+        kind: true,
+        fileName: true,
+        charCount: true,
+        version: true,
+        createdAt: true,
+        createdBy: { select: { id: true, name: true } },
+        _count: { select: { requirements: { where: { status: "ACTIVE" } } } },
+      },
+    }),
+    // Told apart by the converter's first line, without loading the text.
+    prisma.requirementDoc.findMany({
+      where: { projectId, content: { startsWith: API_SPEC_MARKER } },
+      select: { id: true },
+    }),
+  ]);
+  const specIds = new Set(specs.map((spec) => spec.id));
   return docs.map(({ _count, createdAt, ...doc }) => ({
     ...doc,
+    isApiSpec: specIds.has(doc.id),
     createdAt: createdAt.toISOString(),
     requirementCount: _count.requirements,
   }));

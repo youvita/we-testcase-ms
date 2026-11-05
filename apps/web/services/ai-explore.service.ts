@@ -69,7 +69,7 @@ Suggest the test cases a careful tester would write for what is on these pages:
 
 Rules:
 - Base every case on something actually visible. Never invent features the pages do not show.
-- When an expected result depends on behaviour you cannot see (an exact error message, a rule), describe what to check and end it with "(confirm with PO)".
+- When an expected result depends on behaviour you cannot see (an exact error message, a rule), describe what to check, and put what the PO has to settle in openQuestions — one per line starting "- ". Never write "(confirm with PO)" in the other fields.
 - Do not repeat cases the project already has.
 - Use test accounts through variable names, never real data.
 - Write in English, whatever language the application is in.
@@ -78,7 +78,7 @@ Rules:
 testType is one of ${TEST_TYPES.join(", ")}; priority is one of ${PRIORITIES.join(", ")}.
 
 Answer with JSON only, in exactly this shape:
-{"testCases":[{"module":"","subModule":"","title":"","preconditions":"","steps":[""],"expectedResult":"","testType":"FUNCTIONAL","priority":"MEDIUM"}],"observations":[""]}
+{"testCases":[{"module":"","subModule":"","title":"","preconditions":"","steps":[""],"expectedResult":"","openQuestions":"","testType":"FUNCTIONAL","priority":"MEDIUM"}],"observations":[""]}
 "observations" are short notes on things a tester should know that are not test cases — e.g. a field without a label, a broken-looking element, text that seems wrong. Leave it empty if there is nothing.`;
 
 /** "Customers › Create", or the module alone. */
@@ -247,6 +247,7 @@ ${p.outline.replace(/^URL: .*\nTitle: .*\n\n/, "").slice(0, OUTLINE_CHARS)}
         preconditions: c.preconditions ?? null,
         steps: c.steps ?? null,
         expectedResult: c.expectedResult ?? null,
+        openQuestions: c.openQuestions ?? null,
         testType: c.testType,
         priority: c.priority,
         platform: "WEB" as const,

@@ -127,6 +127,8 @@ export type CommentWithAuthor = Comment & {
   author: Pick<User, "id" | "name" | "email" | "image" | "role">;
   /** Set on a withdrawn comment; `body` is blanked out when it is. */
   deletedBy: Pick<User, "id" | "name"> | null;
+  /** A question's addressee, when it went to one admin rather than all. */
+  questionTo?: Pick<User, "id" | "name"> | null;
 };
 
 /** A logged developer triage change, with who made it. */

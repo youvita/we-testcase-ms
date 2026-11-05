@@ -1,4 +1,7 @@
 import { badRequest } from "@/lib/api";
+import { excelDocumentText } from "@/utils/excel-document";
+import { openApiToMarkdown, parseOpenApi } from "@/utils/openapi-markdown";
+import { parsePostmanCollection, postmanToMarkdown } from "@/utils/postman-markdown";
 
 /**
  * Plain text from an uploaded requirements document.
@@ -16,6 +19,15 @@ export const REQUIREMENT_DOC_EXTENSIONS = [
   ".txt",
   ".html",
   ".htm",
+  // Swagger / OpenAPI specs and Postman collections, converted to one
+  // section per endpoint.
+  ".json",
+  ".yaml",
+  ".yml",
+  // Spreadsheets: a requirements list, or an API spec laid out in columns.
+  ".xlsx",
+  ".xls",
+  ".csv",
 ] as const;
 
 export async function extractDocumentText(file: {
@@ -59,6 +71,26 @@ export async function extractDocumentText(file: {
     case ".txt":
       text = file.buffer.toString("utf8");
       break;
+    case ".xlsx":
+    case ".xls":
+    case ".csv":
+      try {
+        text = excelDocumentText(file.buffer, file.fileName);
+      } catch {
+        throw badRequest("Could not read that spreadsheet. Save it as .xlsx and try again.");
+      }
+      break;
+    case ".json":
+    case ".yaml":
+    case ".yml": {
+      const spec = readSpec(file.buffer.toString("utf8"));
+      if (!spec) {
+        throw badRequest(
+          "JSON and YAML files are read as a Swagger / OpenAPI spec or a Postman collection (v2.1), and this is neither.",
+        );
+      }
+      return spec;
+    }
     default:
       throw badRequest(
         `Unsupported file type "${extension || "unknown"}". Upload ${REQUIREMENT_DOC_EXTENSIONS.join(", ")}.`,
@@ -74,6 +106,34 @@ export async function extractDocumentText(file: {
     );
   }
   return normalized;
+}
+
+/**
+ * Pasted document text: a pasted Swagger / OpenAPI spec or Postman collection
+ * is converted the same way as an uploaded one, anything else is kept as it is.
+ */
+export function pastedDocumentText(text: string): string {
+  try {
+    return readSpec(text) ?? normalizeText(text);
+  } catch (error) {
+    // Prose that only mentions "openapi: 3" is still prose; text that starts
+    // like a spec and does not parse is a broken spec, worth saying so.
+    if (/^\s*(\{|["']?(openapi|swagger)["']?\s*:)/.test(text)) throw error;
+    return normalizeText(text);
+  }
+}
+
+/** The spec or collection as Markdown, null when the text is neither. */
+function readSpec(source: string): string | null {
+  try {
+    const spec = parseOpenApi(source);
+    if (spec) return normalizeText(openApiToMarkdown(spec));
+    const collection = parsePostmanCollection(source);
+    if (collection) return normalizeText(postmanToMarkdown(collection));
+    return null;
+  } catch (error) {
+    throw badRequest((error as Error).message);
+  }
 }
 
 export function normalizeText(text: string): string {

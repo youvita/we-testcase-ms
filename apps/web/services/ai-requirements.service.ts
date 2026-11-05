@@ -3,6 +3,8 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { badRequest, notFound } from "@/lib/api";
 import { AiError, askClaude, parseJsonReply } from "@/lib/claude";
+import { apiSpecIdentifier } from "@/utils/openapi-markdown";
+import { splitOpenQuestions } from "@/utils/open-questions";
 import type { SessionUser } from "@/lib/session";
 import {
   PRIORITIES,
@@ -105,9 +107,13 @@ export const draftReplySchema = z.object({
         : value?.trim() || undefined,
     ),
   expectedResult: textOrList,
+  openQuestions: textOrList,
   testType: z.enum(TEST_TYPES).catch("FUNCTIONAL"),
   priority: z.enum(PRIORITIES).catch("MEDIUM"),
-});
+})
+  // The prompts ask for gaps in openQuestions; a marker left in the text
+  // anyway is moved there.
+  .transform(splitOpenQuestions);
 
 /** Keep the items that parse; one malformed entry should not sink a batch. */
 export function parseItems<T>(
@@ -201,6 +207,7 @@ Rules:
 - section: the heading the requirement sits under.
 - Skip what is not testable: background, goals, glossary, revision history, roadmap.
 - Write in the same language as the document.
+- An API reference, with one "###" section per operation and an "Identifier:" line in each: one requirement per operation. Its code is the Identifier exactly as written (e.g. "GET /pets/{petId}"); its title says what the operation does; its description names the endpoint, the authentication and the request fields that matter; its acceptanceCriteria list each documented response — status code and the fields or rule it checks — and the request constraints (required fields, enums, limits) a tester should violate on purpose; its section is the "##" group. Do not merge operations or split one.
 
 Answer with JSON only, in exactly this shape:
 {"requirements":[{"code":"","title":"","description":"","acceptanceCriteria":"","openQuestions":"","section":""}]}
@@ -275,12 +282,15 @@ defineJob("EXTRACT_REQUIREMENTS", async (job) => {
         reply,
         "requirements",
         extractedRequirementSchema,
-      ).filter((item) => {
-        // The model was told not to repeat codes; hold it to that.
-        if (seen.has(item.code)) return false;
-        seen.add(item.code);
-        return true;
-      });
+      )
+        // An API spec's operations are coded by their Identifier, exactly.
+        .map((item) => ({ ...item, code: apiSpecIdentifier(doc.content, item.code) ?? item.code }))
+        .filter((item) => {
+          // The model was told not to repeat codes; hold it to that.
+          if (seen.has(item.code)) return false;
+          seen.add(item.code);
+          return true;
+        });
 
       for (const item of items) await reading.save(item, position++);
       found += items.length;
@@ -316,7 +326,7 @@ defineJob("EXTRACT_REQUIREMENTS", async (job) => {
 
 const GENERATE_SYSTEM = `You are a senior QA engineer writing black-box manual test cases from requirements.
 Every case must be executable by a tester who has only the running application and the requirements — no source code, no internal knowledge.
-You never invent product behaviour. Where a requirement does not say what should happen, the expected result says what to check and ends with "(confirm with PO)".
+You never invent product behaviour. Where a requirement does not say what should happen, the expected result says what to check, and what the PO has to settle goes in openQuestions.
 You answer with JSON only.`;
 
 /**
@@ -362,7 +372,7 @@ const DEPTH_GUIDE: Record<GenerationDepth, string> = {
  */
 const PLATFORM_GUIDE: Record<Platform, string> = {
   WEB: "Web application in a desktop browser. Steps are user actions on pages: navigate, click, type, select.",
-  API: "HTTP API, tested without a UI. Each step is a request: method, endpoint, notable headers and the body with concrete values. The expected result names the status code and the response fields to check. When the requirements do not name the endpoint, describe the operation and add \"(confirm endpoint with dev)\".",
+  API: "HTTP API, tested without a UI. Each step is a request: method, endpoint, notable headers and the body with concrete values. The expected result names the status code and the response fields to check. When the requirements do not name the endpoint, describe the operation and ask for the endpoint in openQuestions.",
   IOS: "Native iOS app on an iPhone. Steps are app actions: tap, swipe, type, grant or deny permissions, background and resume the app, where relevant.",
   ANDROID: "Native Android app on a phone. Steps are app actions: tap, swipe, type, grant or deny permissions, use the system back button, background and resume the app, where relevant.",
 };
@@ -421,12 +431,13 @@ Rules:
 - preconditions: state and data needed before step 1 — accounts, roles, existing records.
 - steps: an array of concrete steps for this platform, with the test data in them, e.g. "Enter \\"user@test.com\\" in Email".
 - expectedResult: the observable outcome a tester can check.
+- openQuestions: what the PO must confirm before this case can pass or fail for sure — a message, limit or rule the requirements leave open. One per line starting "- "; empty when there are none. Never write "(confirm with PO)" or similar in the other fields: the expected result states only what to check.
 - testType: one of ${TEST_TYPES.join(", ")}.
 - priority: one of ${PRIORITIES.join(", ")}, by business impact.
 - Write in the same language as the requirements.
 
 Answer with JSON only, in exactly this shape:
-{"testCases":[{"requirementCodes":[""],"module":"","subModule":"","title":"","preconditions":"","steps":[""],"expectedResult":"","testType":"FUNCTIONAL","priority":"MEDIUM"}]}`;
+{"testCases":[{"requirementCodes":[""],"module":"","subModule":"","title":"","preconditions":"","steps":[""],"expectedResult":"","openQuestions":"","testType":"FUNCTIONAL","priority":"MEDIUM"}]}`;
 }
 
 export async function startGeneration(
@@ -550,6 +561,7 @@ defineJob("GENERATE_TEST_CASES", async (job) => {
             preconditions: testCase.preconditions ?? null,
             steps: testCase.steps ?? null,
             expectedResult: testCase.expectedResult ?? null,
+            openQuestions: testCase.openQuestions ?? null,
             testType: testCase.testType,
             priority: testCase.priority,
             platform: input.platform,

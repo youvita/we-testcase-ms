@@ -15,6 +15,7 @@ import { PLATFORM_LABELS } from "@/lib/constants";
 import { isAutomationConfigured } from "@/lib/runner-auth";
 import type { SessionUser } from "@/lib/session";
 import { errorHeadline } from "@/utils/error-line";
+import { apiSpecSection } from "@/utils/openapi-markdown";
 import {
   AUTOMATABLE_PLATFORMS,
   RUN_SPEEDS,
@@ -247,6 +248,39 @@ ${body}
 `;
 }
 
+/** Most spec sections one prompt carries — a case rarely spans more. */
+const MAX_SPEC_SECTIONS = 5;
+
+/**
+ * The API spec's own definition of the operations an API case verifies:
+ * its requirements' sections in an uploaded Swagger / OpenAPI document.
+ * Field names, required fields and status codes come from here rather than
+ * from the case's prose.
+ */
+export async function findApiSpecSections(testCase: { id: string; platform: Platform }): Promise<string[]> {
+  if (testCase.platform !== "API") return [];
+  const links = await prisma.testCaseRequirement.findMany({
+    where: { testCaseId: testCase.id },
+    select: { requirement: { select: { code: true, doc: { select: { content: true } } } } },
+  });
+  const sections = links
+    .map(({ requirement }) =>
+      requirement.doc ? apiSpecSection(requirement.doc.content, requirement.code) : null,
+    )
+    .filter((section): section is string => section !== null);
+  return [...new Set(sections)].slice(0, MAX_SPEC_SECTIONS);
+}
+
+function withApiSpec(sections: string[]): string {
+  if (!sections.length) return "";
+  return `The API spec's definition of the operation${sections.length === 1 ? "" : "s"} this case tests — use its paths, field names, required fields and status codes exactly; the test case's steps decide what to test:
+<api-spec>
+${sections.join("\n\n")}
+</api-spec>
+
+`;
+}
+
 /** How many other cases' scripts go into a prompt, and how much of each. */
 const MAX_REFERENCES = 3;
 const REFERENCE_CHARS = 8_000;
@@ -453,6 +487,7 @@ defineJob("WRITE_SCRIPT", async (job) => {
     await progress(step, total);
 
     const references = await findReferenceScripts(testCase);
+    const apiSpec = await findApiSpecSections(testCase);
     const result: ScriptWritingResult = {
       testCaseId,
       outcome: "failing",
@@ -538,7 +573,7 @@ defineJob("WRITE_SCRIPT", async (job) => {
         model: input.model,
         system: WRITE_SYSTEM,
         images: evidence.screenshot ? [evidence.screenshot] : undefined,
-        prompt: withFrd(input.frdText, input.frdName) + withReferences(references) + (previous
+        prompt: withFrd(input.frdText, input.frdName) + withApiSpec(apiSpec) + withReferences(references) + (previous
           ? repairPrompt({
               testCase,
               env,
@@ -870,11 +905,12 @@ defineJob("TRIAGE_FAILURE", async (job) => {
     await progress(0, 1);
     const evidence = await readItemEvidence(item.id);
     const references = await findReferenceScripts(testCase);
+    const apiSpec = await findApiSpecSections(testCase);
     const reply = await askClaude({
       token,
       system: TRIAGE_SYSTEM,
       images: evidence.screenshot ? [evidence.screenshot] : undefined,
-      prompt: `${withReferences(references)}${describeCase(testCase)}
+      prompt: `${withApiSpec(apiSpec)}${withReferences(references)}${describeCase(testCase)}
 
 Environment: ${item.run.environmentName}
 

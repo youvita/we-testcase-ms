@@ -9,6 +9,7 @@ import { ClaudeConnectionDialog } from "@/features/ai/components/claude-connecti
 import type {
   AiJobDto,
   Platform,
+  PoQuestionDto,
   RunEnvironmentDto,
   RequirementDocDto,
   RequirementDto,
@@ -21,6 +22,7 @@ import { DocumentsPanel } from "./documents-panel";
 import { DraftsPanel } from "./drafts-panel";
 import { ExploreAppDialog, type SignInCase } from "./explore-app-dialog";
 import { RequirementsPanel } from "./requirements-panel";
+import type { Focus, PoContext } from "./po-questions";
 
 export type StartAi = (start: () => Promise<AiJobDto>) => Promise<boolean>;
 
@@ -49,6 +51,9 @@ export function RequirementsWorkspace({
   environments,
   signInCases,
   openExplore = false,
+  questions,
+  po,
+  focus,
 }: {
   projectId: string;
   docs: RequirementDocDto[];
@@ -61,12 +66,23 @@ export function RequirementsWorkspace({
   signInCases: SignInCase[];
   /** Arrived with ?explore=1: open "Explore the app" straight away. */
   openExplore?: boolean;
+  /** Questions for the PO about requirements and pending drafts. */
+  questions: PoQuestionDto[];
+  po: PoContext;
+  focus?: Focus;
 }) {
   const router = useRouter();
   const [jobs, setJobs] = useState(initialJobs);
   const [tab, setTab] = useState(
-    openExplore || drafts.length > 0 ? "drafts" : docs.length === 0 ? "documents" : "requirements",
+    focus?.tab ??
+      (openExplore || drafts.length > 0 ? "drafts" : docs.length === 0 ? "documents" : "requirements"),
   );
+  // A notification opened while already on this page changes only the URL.
+  const focusTab = focus?.tab;
+  const focusId = focus?.id;
+  useEffect(() => {
+    if (focusTab) setTab(focusTab);
+  }, [focusTab, focusId]);
   const [exploreOpen, setExploreOpen] = useState(openExplore);
   const canExplore = platforms.includes("WEB");
   const [connectOpen, setConnectOpen] = useState(false);
@@ -190,6 +206,9 @@ export function RequirementsWorkspace({
             generating={generating}
             startAi={startAi}
             onOpenDocuments={() => setTab("documents")}
+            questions={questions.filter((question) => question.requirementId)}
+            po={po}
+            focusId={focus?.tab === "requirements" ? focus.id : undefined}
           />
         </TabsContent>
 
@@ -201,6 +220,9 @@ export function RequirementsWorkspace({
             canManage={canManage}
             onExplore={canExplore ? () => setExploreOpen(true) : undefined}
             onOpenRequirements={() => setTab("requirements")}
+            questions={questions.filter((question) => question.draftId)}
+            po={po}
+            focusId={focus?.tab === "drafts" ? focus.id : undefined}
           />
         </TabsContent>
 

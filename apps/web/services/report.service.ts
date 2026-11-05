@@ -7,7 +7,6 @@ import {
   EXECUTION_STATUSES,
   EXECUTION_STATUS_LABELS,
   FIX_STATUS_SHORT_LABELS,
-  PLATFORMS,
   PLATFORM_LABELS,
   PRIORITIES,
   PRIORITY_LABELS,
@@ -28,6 +27,23 @@ import {
 
 /** Hidden sheet backing the Module dropdown, mirroring the import template. */
 const MODULE_LIST_SHEET = "Lists";
+
+/**
+ * The results report's Test Cases sheet. No Sub-module or Platform: the
+ * importer keeps a case's own when a sheet has neither column, so the sheet
+ * can still be edited and imported back.
+ */
+const CASE_SHEET_HEADER = [
+  "TC ID",
+  "Module",
+  "Test Case",
+  "Preconditions",
+  "Steps",
+  "Expected Result",
+  "Test Type",
+  "Priority",
+  "Status",
+];
 import { formatDate, formatDateTime } from "@/utils/format";
 
 import { testCaseQuerySchema, type ModuleProgress } from "@wetestcase/dto";
@@ -326,31 +342,17 @@ export async function buildExcelReport(
 
   if (scope === "cases") {
     // Case definition + status only — no execution narrative columns.
-    const caseHeader = [
-      "TC ID",
-      "Module",
-      "Sub-module",
-      "Test Case",
-      "Preconditions",
-      "Steps",
-      "Expected Result",
-      "Test Type",
-      "Priority",
-      "Platform",
-      "Status",
-    ];
+    const caseHeader = CASE_SHEET_HEADER;
 
     const caseRows = rows.map((tc) => [
       tc.tcId,
       tc.module.name,
-      tc.subModule ?? "",
       tc.title,
       tc.preconditions ?? "",
       tc.steps ?? "",
       tc.expectedResult ?? "",
       TEST_TYPE_LABELS[tc.testType],
       PRIORITY_LABELS[tc.priority],
-      PLATFORM_LABELS[tc.platform],
       EXECUTION_STATUS_LABELS[tc.status],
     ]);
 
@@ -358,13 +360,11 @@ export async function buildExcelReport(
     caseSheet["!cols"] = [
       { wch: 16 },
       { wch: 16 },
-      { wch: 14 },
       { wch: 44 },
       { wch: 30 },
       { wch: 44 },
       { wch: 36 },
       { wch: 12 },
-      { wch: 10 },
       { wch: 10 },
       { wch: 10 },
     ];
@@ -387,12 +387,10 @@ export async function buildExcelReport(
       [
         "TC ID",
         "Module",
-        "Sub-module",
         "Test Case",
         "Status",
         "Test Type",
         "Priority",
-        "Platform",
         "Expected Result",
         "Actual Result",
         "Tester",
@@ -403,12 +401,10 @@ export async function buildExcelReport(
         return [
           tc.tcId,
           tc.module.name,
-          tc.subModule ?? "",
           tc.title,
           EXECUTION_STATUS_LABELS[tc.status],
           TEST_TYPE_LABELS[tc.testType],
           PRIORITY_LABELS[tc.priority],
-          PLATFORM_LABELS[tc.platform],
           tc.expectedResult ?? "",
           latest?.actualResult ?? "",
           latest?.tester.name ?? "",
@@ -419,11 +415,9 @@ export async function buildExcelReport(
     problemSheet["!cols"] = [
       { wch: 16 },
       { wch: 16 },
-      { wch: 14 },
       { wch: 44 },
       { wch: 10 },
       { wch: 12 },
-      { wch: 10 },
       { wch: 10 },
       { wch: 36 },
       { wch: 40 },
@@ -474,19 +468,7 @@ export async function buildExcelReport(
     ? withHiddenSheets(styled, [MODULE_LIST_SHEET])
     : styled;
 
-  const header = [
-    "TC ID",
-    "Module",
-    "Sub-module",
-    "Test Case",
-    "Preconditions",
-    "Steps",
-    "Expected Result",
-    "Test Type",
-    "Priority",
-    "Platform",
-    "Status",
-  ];
+  const header = CASE_SHEET_HEADER;
 
   return withListValidations(
     hidden,
@@ -515,13 +497,6 @@ export async function buildExcelReport(
         errorTitle: "Unknown priority",
         error:
           "Pick a value from the list, or keep yours — the import maps common spellings and falls back to Medium.",
-      },
-      {
-        column: XLSX.utils.encode_col(header.indexOf("Platform")),
-        values: PLATFORMS.map((platform) => PLATFORM_LABELS[platform]),
-        errorTitle: "Unknown platform",
-        error:
-          "Pick a value from the list. A platform the project does not have yet is added on import.",
       },
       {
         column: XLSX.utils.encode_col(header.indexOf("Status")),

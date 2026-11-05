@@ -204,15 +204,22 @@ model User {
   sessions Session[]
   accounts Account[]
 
-  ownedProjects    Project[]        @relation("ProjectQaOwner")
-  createdProjects  Project[]        @relation("ProjectCreatedBy")
-  projectRoles     ProjectMember[]  @relation("ProjectMemberUser")
+  ownedProjects    Project[]         @relation("ProjectQaOwner")
+  createdProjects  Project[]         @relation("ProjectCreatedBy")
+  projectRoles     ProjectMember[]   @relation("ProjectMemberUser")
   executions       TestExecution[]
-  editedExecutions TestExecution[]  @relation("TestExecutionEditedBy")
+  editedExecutions TestExecution[]   @relation("TestExecutionEditedBy")
   comments         Comment[]
-  deletedComments  Comment[]        @relation("CommentDeletedBy")
-  fixStatusSet     TestCase[]       @relation("TestCaseFixStatusBy")
-  fixStatusEvents  FixStatusEvent[] @relation("FixStatusEventActor")
+  deletedComments  Comment[]         @relation("CommentDeletedBy")
+  questionsAsked   Comment[]         @relation("CommentQuestionTo")
+  notifications    Notification[]    @relation("NotificationRecipient")
+  notificationsBy  Notification[]    @relation("NotificationActor")
+  poQuestions      PoQuestion[]      @relation("PoQuestionAsker")
+  poQuestionsTo    PoQuestion[]      @relation("PoQuestionTo")
+  poReplies        PoQuestionReply[]
+  poResolved       PoQuestion[]      @relation("PoQuestionResolvedBy")
+  fixStatusSet     TestCase[]        @relation("TestCaseFixStatusBy")
+  fixStatusEvents  FixStatusEvent[]  @relation("FixStatusEventActor")
 
   claudeConnection       ClaudeConnection?
   requirementDocs        RequirementDoc[]
@@ -315,6 +322,8 @@ model Project {
   defaultEnvironmentId String?
   defaultEnvironment   RunEnvironment? @relation("ProjectDefaultEnvironment", fields: [defaultEnvironmentId], references: [id], onDelete: SetNull)
 
+  poQuestions PoQuestion[]
+
   @@index([status])
   @@index([qaOwnerId])
 }
@@ -362,6 +371,9 @@ model TestCase {
   preconditions  String?
   steps          String?
   expectedResult String?
+  /// What the PO still has to confirm — undefined messages, limits, rules —
+  /// one per line. Kept out of the expected result so that stays a check.
+  openQuestions  String?
   testType       TestType @default(FUNCTIONAL)
   priority       Priority @default(MEDIUM)
   platform       Platform @default(WEB)
@@ -397,6 +409,7 @@ model TestCase {
 
   executions      TestExecution[]
   comments        Comment[]
+  notifications   Notification[]
   fixStatusEvents FixStatusEvent[]
   requirements    TestCaseRequirement[]
   drafts          TestCaseDraft[]
@@ -459,8 +472,69 @@ model Comment {
   authorId String
   author   User   @relation(fields: [authorId], references: [id])
 
+  /// A plain comment, a question for the PO, or a PO's answer to one.
+  kind CommentKind @default(COMMENT)
+
+  /// A question's addressee: one admin, or null for every admin.
+  questionToId String?
+  questionTo   User?     @relation("CommentQuestionTo", fields: [questionToId], references: [id], onDelete: SetNull)
+  /// When a question was first answered; null while it waits.
+  answeredAt   DateTime?
+
+  /// An answer's question.
+  answerToId String?
+  answerTo   Comment?  @relation("CommentAnswer", fields: [answerToId], references: [id], onDelete: SetNull)
+  answers    Comment[] @relation("CommentAnswer")
+
+  notifications Notification[]
+
   @@index([testCaseId, createdAt])
   @@index([authorId])
+}
+
+enum CommentKind {
+  COMMENT
+  QUESTION
+  ANSWER
+}
+
+enum NotificationKind {
+  /// QA asked this admin (or every admin) to clarify a case.
+  QUESTION_ASKED
+  /// An admin answered this person's question.
+  QUESTION_ANSWERED
+  /// QA followed up on a question this admin was asked or has answered.
+  QUESTION_REPLIED
+}
+
+/// In the app only: the bell in the top bar.
+model Notification {
+  id        String           @id @default(cuid())
+  kind      NotificationKind
+  createdAt DateTime         @default(now())
+  readAt    DateTime?
+
+  recipientId String
+  recipient   User   @relation("NotificationRecipient", fields: [recipientId], references: [id], onDelete: Cascade)
+
+  /// Who asked or answered.
+  actorId String
+  actor   User   @relation("NotificationActor", fields: [actorId], references: [id], onDelete: Cascade)
+
+  /// A question in a test case's discussion: the case, and the question or answer.
+  testCaseId String?
+  testCase   TestCase? @relation(fields: [testCaseId], references: [id], onDelete: Cascade)
+  commentId  String?
+  comment    Comment?  @relation(fields: [commentId], references: [id], onDelete: Cascade)
+
+  /// Or a question about a requirement or a review draft, and the reply
+  /// it is about, if any.
+  questionId String?
+  question   PoQuestion?      @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  replyId    String?
+  reply      PoQuestionReply? @relation(fields: [replyId], references: [id], onDelete: Cascade)
+
+  @@index([recipientId, readAt, createdAt])
 }
 
 model TestExecution {
@@ -632,6 +706,8 @@ model Requirement {
 
   testCases TestCaseRequirement[]
 
+  poQuestions PoQuestion[]
+
   @@unique([docId, code])
   @@index([projectId, position])
 }
@@ -701,6 +777,8 @@ model TestCaseDraft {
   preconditions  String?
   steps          String?
   expectedResult String?
+  /// What the PO still has to confirm; copied to the case on accept.
+  openQuestions  String?
   testType       TestType    @default(FUNCTIONAL)
   priority       Priority    @default(MEDIUM)
   platform       Platform    @default(WEB)
@@ -724,6 +802,8 @@ model TestCaseDraft {
 
   jobId String?
   job   AiJob?  @relation(fields: [jobId], references: [id], onDelete: SetNull)
+
+  poQuestions PoQuestion[]
 
   @@index([projectId, status])
 }
@@ -883,4 +963,61 @@ model TestRunItem {
 
   @@index([runId, position])
   @@index([testCaseId])
+}
+
+/// A question for the PO about a requirement or a review draft — things with
+/// no discussion of their own. (A test case's go in its discussion.) Accepting
+/// a draft copies its questions into the new case's discussion.
+model PoQuestion {
+  id        String   @id @default(cuid())
+  body      String
+  createdAt DateTime @default(now())
+
+  projectId String
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  /// What it is about: one of these.
+  requirementId String?
+  requirement   Requirement?   @relation(fields: [requirementId], references: [id], onDelete: Cascade)
+  draftId       String?
+  draft         TestCaseDraft? @relation(fields: [draftId], references: [id], onDelete: Cascade)
+
+  askerId      String
+  asker        User    @relation("PoQuestionAsker", fields: [askerId], references: [id], onDelete: Cascade)
+  /// One admin, or null for every admin.
+  questionToId String?
+  questionTo   User?   @relation("PoQuestionTo", fields: [questionToId], references: [id], onDelete: SetNull)
+
+  /// The conversation under the question: the PO's answers and QA's follow-ups.
+  replies    PoQuestionReply[]
+  /// When an admin first replied; null while it waits for its first answer.
+  answeredAt DateTime?
+
+  /// Settled — by the asker or an admin. A new reply opens it again.
+  resolvedAt   DateTime?
+  resolvedById String?
+  resolvedBy   User?     @relation("PoQuestionResolvedBy", fields: [resolvedById], references: [id], onDelete: SetNull)
+
+  notifications Notification[]
+
+  @@index([projectId, createdAt])
+  @@index([requirementId])
+  @@index([draftId])
+}
+
+/// One message under a PoQuestion.
+model PoQuestionReply {
+  id        String   @id @default(cuid())
+  body      String
+  createdAt DateTime @default(now())
+
+  questionId String
+  question   PoQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  authorId String
+  author   User   @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  notifications Notification[]
+
+  @@index([questionId, createdAt])
 }

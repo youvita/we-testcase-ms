@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2, MessageSquare, Send, Trash2 } from "lucide-react";
+import { CornerDownRight, Loader2, MessageSquare, Send, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -17,6 +17,7 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { EmptyState } from "@/components/shared/empty-state";
 import { ROLE_LABELS, toRole } from "@/lib/constants";
+import { cn } from "@/lib/utils";
 import { api, errorMessage } from "@/utils/api-client";
 import { formatDateTime, initials } from "@/utils/format";
 import type { CommentWithAuthor } from "@/types";
@@ -35,17 +36,41 @@ export function CommentThread({
   currentUserId,
   canComment,
   canModerate,
+  canAnswer = false,
 }: {
   testCaseId: string;
   comments: CommentWithAuthor[];
   currentUserId: string;
   canComment: boolean;
   canModerate: boolean;
+  /** An admin — a PO — who can answer questions. */
+  canAnswer?: boolean;
 }) {
   const router = useRouter();
   const [body, setBody] = useState("");
   const [posting, setPosting] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [answering, setAnswering] = useState<string | null>(null);
+  const [answer, setAnswer] = useState("");
+  const [sendingAnswer, setSendingAnswer] = useState(false);
+  const byId = new Map(comments.map((comment) => [comment.id, comment]));
+
+  async function handleAnswer(questionId: string) {
+    const trimmed = answer.trim();
+    if (!trimmed) return;
+    setSendingAnswer(true);
+    try {
+      await api.post(`/api/comments/${questionId}/answer`, { body: trimmed });
+      setAnswer("");
+      setAnswering(null);
+      toast.success("Answered — the person who asked is notified");
+      router.refresh();
+    } catch (error) {
+      toast.error(errorMessage(error));
+    } finally {
+      setSendingAnswer(false);
+    }
+  }
 
   async function handlePost() {
     const trimmed = body.trim();
@@ -78,7 +103,7 @@ export function CommentThread({
   }
 
   return (
-    <Card>
+    <Card id="discussion" className="scroll-mt-20">
       <CardHeader>
         <CardTitle className="text-base">Discussion</CardTitle>
         <CardDescription>
@@ -99,8 +124,17 @@ export function CommentThread({
           <ol className="space-y-3">
             {comments.map((comment) => {
               const withdrawn = Boolean(comment.deletedAt);
+              const question = comment.kind === "QUESTION";
+              const answerTo = comment.answerToId ? byId.get(comment.answerToId) : undefined;
               return (
-                <li key={comment.id} className="flex items-start gap-3">
+                <li
+                  key={comment.id}
+                  className={cn(
+                    "flex items-start gap-3",
+                    question && "rounded-md border-l-2 border-status-blocked bg-status-blocked/5 py-2 pl-2 pr-1",
+                    comment.answerToId && "ml-6",
+                  )}
+                >
                   <Avatar className="size-7 shrink-0">
                     {comment.author.image && (
                       <AvatarImage src={comment.author.image} alt="" />
@@ -123,6 +157,35 @@ export function CommentThread({
                       <span className="text-xs text-muted-foreground">
                         {formatDateTime(comment.createdAt)}
                       </span>
+                      {question && (
+                        <span className="inline-flex items-center gap-1.5 text-xs">
+                          <span className="font-medium text-status-blocked">
+                            Question for {comment.questionTo?.name ?? "the PO"}
+                          </span>
+                          <span
+                            className={cn(
+                              "rounded-full px-1.5 py-0.5 text-[11px] font-medium",
+                              comment.answeredAt
+                                ? "bg-status-passed/10 text-status-passed"
+                                : "bg-status-blocked/10 text-status-blocked",
+                            )}
+                          >
+                            {comment.answeredAt ? "Answered" : "Waiting for an answer"}
+                          </span>
+                        </span>
+                      )}
+                      {comment.kind === "ANSWER" && (
+                        <span className="inline-flex items-center gap-1 text-xs font-medium text-status-passed">
+                          <CornerDownRight className="size-3" aria-hidden />
+                          Answer{answerTo ? ` to ${answerTo.author.name}` : ""}
+                        </span>
+                      )}
+                      {comment.kind === "COMMENT" && comment.answerToId && (
+                        <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+                          <CornerDownRight className="size-3" aria-hidden />
+                          Follow-up
+                        </span>
+                      )}
                     </div>
                     {withdrawn ? (
                       // A tombstone, not a gap: replies below this one still need
@@ -135,6 +198,49 @@ export function CommentThread({
                       </p>
                     ) : (
                       <p className="preserve-lines text-sm">{comment.body}</p>
+                    )}
+                    {question && !withdrawn && canAnswer && answering !== comment.id && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="mt-1 h-7"
+                        onClick={() => {
+                          setAnswering(comment.id);
+                          setAnswer("");
+                        }}
+                      >
+                        <CornerDownRight className="mr-1.5 size-3.5" />
+                        Answer
+                      </Button>
+                    )}
+                    {answering === comment.id && (
+                      <div className="mt-2 space-y-2">
+                        <Textarea
+                          rows={3}
+                          autoFocus
+                          value={answer}
+                          onChange={(event) => setAnswer(event.target.value)}
+                          placeholder="The answer QA can test against — the message, the limit, the rule…"
+                          aria-label="Write the answer"
+                        />
+                        <div className="flex justify-end gap-2">
+                          <Button size="sm" variant="ghost" disabled={sendingAnswer} onClick={() => setAnswering(null)}>
+                            Cancel
+                          </Button>
+                          <Button
+                            size="sm"
+                            disabled={sendingAnswer || !answer.trim()}
+                            onClick={() => void handleAnswer(comment.id)}
+                          >
+                            {sendingAnswer ? (
+                              <Loader2 className="mr-2 size-4 animate-spin" />
+                            ) : (
+                              <Send className="mr-2 size-4" />
+                            )}
+                            Send answer
+                          </Button>
+                        </div>
+                      </div>
                     )}
                   </div>
 

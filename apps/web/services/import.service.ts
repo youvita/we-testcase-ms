@@ -97,6 +97,11 @@ type ParsedRow = {
   testType: ReturnType<typeof parseTestType>;
   priority: ReturnType<typeof parsePriority>;
   platform: ReturnType<typeof parsePlatform>;
+  /**
+   * The sheet has no Platform column (an exported results report, say): an
+   * update keeps the case's own platform instead of the project's first.
+   */
+  keepPlatform: boolean;
 };
 
 /**
@@ -126,13 +131,16 @@ export function parseWorkbook(buffer: Buffer): {
   if (workbook.SheetNames.length === 0) throw badRequest("The workbook has no sheets");
 
   // Workbooks often carry extra sheets (an "Info"/instructions tab, a hidden
-  // dropdown-source sheet) alongside the actual data. Scan every sheet and
-  // prefer the first one whose header row maps a title column, instead of
-  // assuming the data lives on SheetNames[0].
+  // dropdown-source sheet, a results report's Summary) alongside the actual
+  // data. Scan every sheet and prefer the one whose header row maps a title
+  // column and the most columns besides — a Summary's lone "Description"
+  // heading must not beat a real case list — instead of assuming the data
+  // lives on SheetNames[0]. Ties go to the earlier sheet.
   let sheetName: string | null = null;
   let matrix: unknown[][] = [];
   let headerIndex = -1;
   let headerInfo: ReturnType<typeof mapHeaders> | null = null;
+  let bestScore = 0;
 
   let fallback: {
     sheetName: string;
@@ -161,7 +169,8 @@ export function parseWorkbook(buffer: Buffer): {
 
       const info = mapHeaders(candidateRow);
       if (info.mapping.tcId !== undefined || info.mapping.title !== undefined) {
-        if (info.mapping.title !== undefined) {
+        if (info.mapping.title !== undefined && Object.keys(info.mapping).length > bestScore) {
+          bestScore = Object.keys(info.mapping).length;
           sheetName = candidateSheetName;
           matrix = candidateMatrix;
           headerIndex = i;
@@ -172,8 +181,6 @@ export function parseWorkbook(buffer: Buffer): {
         break;
       }
     }
-
-    if (headerInfo) break;
   }
 
   if (!headerInfo && fallback) {
@@ -263,6 +270,7 @@ export function parseWorkbook(buffer: Buffer): {
       platform:
         parsePlatform(read(row, "platform")) ??
         (isApiTestTypeLabel(read(row, "testType")) ? "API" : null),
+      keepPlatform: mapping.platform === undefined,
     });
   });
 
@@ -393,7 +401,9 @@ export async function importTestCases(
             expectedResult: row.expectedResult || null,
             testType: row.testType,
             priority: row.priority,
-            platform: row.platform ?? platforms.fallback,
+            ...(row.platform === null && row.keepPlatform
+              ? {}
+              : { platform: row.platform ?? platforms.fallback }),
           },
         });
         updated += 1;

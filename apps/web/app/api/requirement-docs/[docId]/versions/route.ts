@@ -4,7 +4,7 @@ import { isMultipart, readDocumentUpload } from "@/lib/document-upload";
 import { assertRequirementDocAccess } from "@/lib/project-access";
 import { requirementDocVersionTextSchema } from "@/lib/validations";
 import { addRequirementDocVersion } from "@/services/requirement.service";
-import { normalizeText } from "@/utils/document-text";
+import { pastedDocumentText } from "@/utils/document-text";
 
 type Ctx = { params: Promise<{ docId: string }> };
 
@@ -27,7 +27,7 @@ export const POST = route<Ctx>(
       return ok(
         await addRequirementDocVersion(docId, user.id, {
           fileName: null,
-          content: normalizeText(body.content),
+          content: pastedDocumentText(body.content),
         }),
         201,
       );

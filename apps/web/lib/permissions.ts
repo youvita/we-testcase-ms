@@ -46,6 +46,16 @@ export function canComment(role: Role | string | undefined | null) {
   return isAdmin(role) || isQA(role) || isDeveloper(role);
 }
 
+/** Ask the PO to clarify a case — QA, and admins asking another admin. */
+export function canAskPo(role: Role | string | undefined | null) {
+  return isAdmin(role) || isQA(role);
+}
+
+/** Answer such a question. POs are admins. */
+export function canAnswerPo(role: Role | string | undefined | null) {
+  return isAdmin(role);
+}
+
 /**
  * Set the developer's side of the triage state — investigating, fix ready,
  * won't fix, not a bug.

@@ -196,6 +196,8 @@ export const testCaseSchema = z.object({
   preconditions: optionalText(4000),
   steps: optionalText(8000),
   expectedResult: optionalText(4000),
+  /** What the PO still has to confirm, kept out of the expected result. */
+  openQuestions: optionalText(4000),
   testType: testTypeSchema.default("FUNCTIONAL"),
   priority: prioritySchema.default("MEDIUM"),
   // Omitted means the project's first platform — not Web, which the
@@ -285,6 +287,38 @@ export const commentSchema = z.object({
 });
 
 export type CommentInput = z.infer<typeof commentSchema>;
+
+/** Ask the PO about a case: one admin, or every admin when `toUserId` is empty. */
+export const questionSchema = z.object({
+  body: trimmed(4000).min(1, "Write the question first"),
+  toUserId: z
+    .string()
+    .trim()
+    .optional()
+    .transform((value) => value || undefined),
+});
+
+export type QuestionInput = z.input<typeof questionSchema>;
+
+/** Ask the PO about a requirement or a review draft — exactly one of them. */
+export const poQuestionSchema = questionSchema
+  .extend({
+    requirementId: z.string().min(1).optional(),
+    draftId: z.string().min(1).optional(),
+  })
+  .refine((input) => Boolean(input.requirementId) !== Boolean(input.draftId), {
+    message: "Ask about one requirement or one draft",
+  });
+
+export type PoQuestionInput = z.input<typeof poQuestionSchema>;
+
+/** Settle a question for the PO, or open it again. */
+export const poQuestionResolveSchema = z.object({ resolved: z.boolean() });
+
+/** Mark notifications read: these ids, or every one when `ids` is absent. */
+export const notificationsReadSchema = z.object({
+  ids: z.array(z.string().min(1)).max(200).optional(),
+});
 
 export const fixStatusSchema = z
   .object({
@@ -404,6 +438,8 @@ export const testCaseDraftSchema = z.object({
   preconditions: optionalText(4000),
   steps: optionalText(8000),
   expectedResult: optionalText(4000),
+  /** What the PO still has to confirm, kept out of the expected result. */
+  openQuestions: optionalText(4000),
   testType: testTypeSchema.default("FUNCTIONAL"),
   priority: prioritySchema.default("MEDIUM"),
   // Omitted means the project's first platform — not Web, which the

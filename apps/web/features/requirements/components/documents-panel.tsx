@@ -59,7 +59,9 @@ import { formatRelative } from "@/utils/format";
 
 import type { StartAi } from "./requirements-workspace";
 
-const ACCEPT = ".pdf,.docx,.md,.markdown,.txt,.html,.htm";
+const ACCEPT = ".pdf,.docx,.md,.markdown,.txt,.html,.htm,.json,.yaml,.yml,.xlsx,.xls,.csv";
+/** Swagger / OpenAPI specs and Postman collections come as JSON or YAML. */
+const isSpecFile = (name: string) => /\.(json|ya?ml)$/i.test(name);
 
 export function DocumentsPanel({
   projectId,
@@ -172,7 +174,7 @@ export function DocumentsPanel({
           title="No documents yet"
           description={
             canManage
-              ? "Upload the PRD or FRD — PDF, Word, Markdown or HTML — or paste its text. The AI reads it into a list of testable requirements."
+              ? "Upload the PRD or FRD — PDF, Word, Excel, Markdown or HTML — or a Swagger / OpenAPI spec or Postman collection, or paste its text. The AI reads it into a list of testable requirements."
               : "QA has not added any requirement documents to this project yet."
           }
           action={
@@ -445,7 +447,12 @@ function UploadDialog({
               type="file"
               accept={ACCEPT}
               className="sr-only"
-              onChange={(event) => setFile(event.target.files?.[0] ?? null)}
+              onChange={(event) => {
+                const picked = event.target.files?.[0] ?? null;
+                setFile(picked);
+                // An API spec is neither a PRD nor an FRD.
+                if (picked && isSpecFile(picked.name)) setKind("OTHER");
+              }}
             />
             <button
               type="button"
@@ -456,11 +463,16 @@ function UploadDialog({
               {file ? (
                 <span className="font-medium text-foreground">{file.name}</span>
               ) : (
-                <span>Choose a PDF, Word (.docx), Markdown, text or HTML file — up to 20 MB</span>
+                <span>
+                  Choose a PDF, Word (.docx), Excel (.xlsx, .csv), Markdown, text or HTML file, or a
+                  Swagger / OpenAPI spec or Postman collection (.json, .yaml) — up to 20 MB
+                </span>
               )}
             </button>
             <p className="text-xs text-muted-foreground">
-              Scanned PDFs have no text to read; export the original document instead.
+              {file && isSpecFile(file.name)
+                ? "Each endpoint becomes its own section with its fields, responses and checks — reading it gives one requirement per endpoint. Variable values and credentials are not copied."
+                : "Scanned PDFs have no text to read; export the original document instead."}
             </p>
           </TabsContent>
 

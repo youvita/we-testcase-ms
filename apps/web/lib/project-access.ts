@@ -133,6 +133,19 @@ export async function assertTestCaseAccess(
   if (!canAccessProject(testCase.project, user)) throw notFound("Test case");
 }
 
+/** As above, for a question for the PO about a requirement or a draft. */
+export async function assertPoQuestionAccess(
+  questionId: string,
+  user: SessionUser,
+): Promise<void> {
+  const question = await prisma.poQuestion.findUnique({
+    where: { id: questionId },
+    select: { project: { select: accessSelect } },
+  });
+  if (!question) throw notFound("Question");
+  if (!canAccessProject(question.project, user)) throw notFound("Question");
+}
+
 /** As above, for a module id. */
 export async function assertModuleAccess(
   moduleId: string,

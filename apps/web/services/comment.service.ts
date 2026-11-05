@@ -24,6 +24,7 @@ export async function listComments(
     include: {
       author: authorSelect,
       deletedBy: { select: { id: true, name: true } },
+      questionTo: { select: { id: true, name: true } },
     },
   });
 

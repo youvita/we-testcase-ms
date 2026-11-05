@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -67,6 +67,7 @@ import {
   type AiModel,
   type GenerationDepth,
   type Platform,
+  type PoQuestionDto,
   type RequirementDocDto,
   type RequirementDto,
 } from "@wetestcase/dto";
@@ -79,6 +80,8 @@ import {
   ChangesBanner,
   needsAttention,
 } from "./requirement-changes";
+import { AskPoDialog } from "@/features/comments/components/ask-po-dialog";
+import { PoQuestionBadge, PoQuestions, type PoContext } from "./po-questions";
 import type { StartAi } from "./requirements-workspace";
 
 type Coverage = "all" | "uncovered" | "covered" | "questions" | "changes" | "removed";
@@ -92,6 +95,9 @@ export function RequirementsPanel({
   generating,
   startAi,
   onOpenDocuments,
+  questions,
+  po,
+  focusId,
 }: {
   projectId: string;
   docs: RequirementDocDto[];
@@ -101,6 +107,11 @@ export function RequirementsPanel({
   generating: boolean;
   startAi: StartAi;
   onOpenDocuments: () => void;
+  /** Questions for the PO about these requirements. */
+  questions: PoQuestionDto[];
+  po: PoContext;
+  /** A requirement to open, from a notification. */
+  focusId?: string;
 }) {
   const router = useRouter();
   const [search, setSearch] = useState("");
@@ -130,6 +141,42 @@ export function RequirementsPanel({
   }, [requirements, search, docFilter, coverage]);
 
   const paging = useClientPagination(visible, `${search}|${docFilter}|${coverage}`);
+
+  const questionsFor = useMemo(() => {
+    const byRequirement = new Map<string, PoQuestionDto[]>();
+    for (const question of questions) {
+      const id = question.requirementId!;
+      byRequirement.set(id, [...(byRequirement.get(id) ?? []), question]);
+    }
+    return (id: string) => byRequirement.get(id) ?? [];
+  }, [questions]);
+
+  // Opened from a notification: clear the filters that could hide the
+  // requirement, then — once the list has re-rendered — go to its page,
+  // expand it and scroll to it.
+  const [pendingFocus, setPendingFocus] = useState<string | null>(null);
+  const [seenFocus, setSeenFocus] = useState<string | undefined>(undefined);
+  if (focusId !== seenFocus) {
+    setSeenFocus(focusId);
+    const target = focusId ? requirements.find((req) => req.id === focusId) : undefined;
+    if (target) {
+      setSearch("");
+      setDocFilter("all");
+      setCoverage(target.status === "REMOVED" ? "removed" : "all");
+      setExpanded((current) => new Set(current).add(target.id));
+      setPendingFocus(target.id);
+    }
+  }
+  useEffect(() => {
+    if (!pendingFocus) return;
+    const index = visible.findIndex((req) => req.id === pendingFocus);
+    if (index === -1) return;
+    paging.setPage(Math.floor(index / paging.pageSize) + 1);
+    setPendingFocus(null);
+    requestAnimationFrame(() =>
+      document.getElementById(`requirement-${pendingFocus}`)?.scrollIntoView({ block: "center", behavior: "smooth" }),
+    );
+  }, [pendingFocus, visible, paging]);
   const shown = paging.pageItems;
 
   // Selection survives filtering, so it is counted against what still exists.
@@ -294,7 +341,10 @@ export function RequirementsPanel({
               const open = expanded.has(req.id);
               return (
                 <Fragment key={req.id}>
-                  <TableRow data-state={selected.has(req.id) ? "selected" : undefined}>
+                  <TableRow
+                    id={`requirement-${req.id}`}
+                    data-state={selected.has(req.id) ? "selected" : undefined}
+                  >
                     {canManage && (
                       <TableCell>
                         <Checkbox
@@ -335,6 +385,7 @@ export function RequirementsPanel({
                             aria-label="Has open questions"
                           />
                         )}
+                        <PoQuestionBadge questions={questionsFor(req.id)} />
                       </div>
                       <p className="text-xs text-muted-foreground">
                         {[req.section, docs.length > 1 ? req.docTitle : null]
@@ -388,6 +439,17 @@ export function RequirementsPanel({
                           text={req.openQuestions}
                           className="text-status-blocked"
                         />
+                        <PoQuestions questions={questionsFor(req.id)} po={po} />
+                        {po.canAsk && (
+                          <AskPoDialog
+                            ask={{ url: `/api/projects/${projectId}/po-questions`, extra: { requirementId: req.id } }}
+                            where="under this requirement"
+                            label={questionsFor(req.id).length ? "New question" : undefined}
+                            admins={po.admins}
+                            currentUserId={po.currentUserId}
+                            openQuestions={req.openQuestions}
+                          />
+                        )}
                       </TableCell>
                     </TableRow>
                   )}
@@ -414,6 +476,13 @@ export function RequirementsPanel({
         onOpenChange={setGenerateOpen}
         count={selectedIds.length}
         platforms={platforms}
+        fromApiSpec={
+          selectedIds.length > 0 &&
+          selectedIds.every((id) => {
+            const docId = requirements.find((req) => req.id === id)?.docId;
+            return docs.some((doc) => doc.id === docId && doc.isApiSpec);
+          })
+        }
         onGenerate={async (options) => {
           const started = await startAi(() =>
             api.post<AiJobDto>(`/api/projects/${projectId}/test-case-drafts/generate`, {
@@ -512,12 +581,15 @@ function GenerateDialog({
   onOpenChange,
   count,
   platforms,
+  fromApiSpec,
   onGenerate,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   count: number;
   platforms: Platform[];
+  /** Every selected requirement comes from an API spec or Postman collection. */
+  fromApiSpec: boolean;
   onGenerate: (options: {
     platform: Platform;
     depth: GenerationDepth;
@@ -525,7 +597,15 @@ function GenerateDialog({
     instructions: string;
   }) => Promise<void>;
 }) {
-  const [platform, setPlatform] = useState<Platform>(platforms[0] ?? "WEB");
+  const suggested: Platform =
+    fromApiSpec && platforms.includes("API") ? "API" : (platforms[0] ?? "WEB");
+  const [platform, setPlatform] = useState<Platform>(suggested);
+  // Suggested afresh each time the dialog opens, for that selection.
+  const [wasOpen, setWasOpen] = useState(open);
+  if (open !== wasOpen) {
+    setWasOpen(open);
+    if (open) setPlatform(suggested);
+  }
   const [depth, setDepth] = useState<GenerationDepth>("essential");
   const [model, setModel] = useState<AiModel>("sonnet");
   const [instructions, setInstructions] = useState("");
@@ -559,6 +639,11 @@ function GenerateDialog({
                   ))}
                 </SelectContent>
               </Select>
+              {suggested === "API" && platform === "API" && (
+                <p className="text-xs text-muted-foreground">
+                  These requirements come from an API spec.
+                </p>
+              )}
             </div>
             <div className="space-y-2">
               <Label>Depth</Label>

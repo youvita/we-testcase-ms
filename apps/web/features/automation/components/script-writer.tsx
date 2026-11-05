@@ -217,13 +217,13 @@ export function WriteWithClaudeDialog({
                   className="flex cursor-pointer items-center gap-2 rounded-md border border-dashed px-3 py-2 text-sm text-muted-foreground hover:bg-muted/40"
                 >
                   {readingFrd ? <Loader2 className="size-4 animate-spin" /> : <Upload className="size-4" />}
-                  {readingFrd ? "Reading the document…" : "Upload a PDF, Word, Markdown or text file"}
+                  {readingFrd ? "Reading the document…" : "Upload a PDF, Word, Excel, Markdown, text, OpenAPI or Postman file"}
                   <input
                     id="write-frd"
                     type="file"
                     className="sr-only"
                     // The formats Requirements → Documents reads.
-                    accept=".pdf,.docx,.md,.markdown,.txt,.html,.htm"
+                    accept=".pdf,.docx,.md,.markdown,.txt,.html,.htm,.json,.yaml,.yml,.xlsx,.xls,.csv"
                     disabled={readingFrd}
                     onChange={(e) => {
                       void readFrd(e.target.files?.[0]);

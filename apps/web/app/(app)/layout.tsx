@@ -1,4 +1,5 @@
 import { MobileNav } from "@/components/layout/mobile-nav";
+import { NotificationBell } from "@/components/layout/notification-bell";
 import { SidebarNav } from "@/components/layout/sidebar-nav";
 import { UserMenu } from "@/components/layout/user-menu";
 import { requireUser } from "@/lib/session";
@@ -20,6 +21,7 @@ export default async function AppLayout({
         <header className="sticky top-0 z-20 flex h-14 items-center gap-2 border-b bg-background px-4 sm:px-6">
           <MobileNav role={user.role} />
           <div className="flex-1" />
+          <NotificationBell />
           <UserMenu user={user} />
         </header>
 

@@ -10,7 +10,7 @@ import {
   createRequirementDoc,
   listRequirementDocs,
 } from "@/services/requirement.service";
-import { normalizeText } from "@/utils/document-text";
+import { pastedDocumentText } from "@/utils/document-text";
 
 type Ctx = { params: Promise<{ projectId: string }> };
 
@@ -41,7 +41,7 @@ export const POST = route<Ctx>(
         title: body.title,
         kind: body.kind,
         fileName: null,
-        content: normalizeText(body.content),
+        content: pastedDocumentText(body.content),
       });
       return ok(doc, 201);
     }

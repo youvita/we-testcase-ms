@@ -2,6 +2,7 @@ import type { Prisma } from "@prisma/client";
 
 import { prisma } from "@/lib/prisma";
 import { badRequest, notFound } from "@/lib/api";
+import { splitOpenQuestions } from "@/utils/open-questions";
 import type {
   DraftReviewInput,
   DraftReviewResult,
@@ -9,6 +10,7 @@ import type {
   TestCaseDraftInput,
 } from "@wetestcase/dto";
 
+import { copyDraftQuestionsToCase } from "./clarification.service";
 import { resolveProjectPlatform } from "./project.service";
 
 /**
@@ -37,7 +39,9 @@ export async function listPendingDrafts(
   });
   const byId = new Map(requirements.map((req) => [req.id, req]));
 
-  return drafts.map((draft) => ({
+  // Drafts written before open questions had their own field still carry
+  // "(confirm with PO)" in their text; they are shown split.
+  return drafts.map(splitOpenQuestions).map((draft) => ({
     id: draft.id,
     status: draft.status,
     moduleName: draft.moduleName,
@@ -46,6 +50,7 @@ export async function listPendingDrafts(
     preconditions: draft.preconditions,
     steps: draft.steps,
     expectedResult: draft.expectedResult,
+    openQuestions: draft.openQuestions,
     testType: draft.testType,
     priority: draft.priority,
     platform: draft.platform,
@@ -78,6 +83,7 @@ export async function updateDraft(draftId: string, input: TestCaseDraftInput) {
       preconditions: input.preconditions ?? null,
       steps: input.steps ?? null,
       expectedResult: input.expectedResult ?? null,
+      openQuestions: input.openQuestions ?? null,
       testType: input.testType ?? "FUNCTIONAL",
       priority: input.priority ?? "MEDIUM",
       platform,
@@ -85,10 +91,18 @@ export async function updateDraft(draftId: string, input: TestCaseDraftInput) {
   });
 }
 
-/** "FR-012" → "FR-012", "3.2.1 Login" → "3.2.1-LOGIN". Safe inside a TC ID. */
-function tcIdStem(code: string): string {
+/**
+ * "FR-012" → "FR-012", "3.2.1 Login" → "3.2.1-LOGIN". Safe inside a TC ID.
+ * An API endpoint keeps its method and its fixed path segments only:
+ * "PATCH /customers/{account_no}" → "PATCH-CUSTOMERS".
+ */
+export function tcIdStem(code: string): string {
+  const endpoint = /^(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS|TRACE)\s+(\/\S*)/i.exec(code.trim());
+  const source = endpoint
+    ? [endpoint[1], ...endpoint[2]!.split("/").filter((segment) => segment && !segment.includes("{"))].join(" ")
+    : code;
   return (
-    code
+    source
       .toUpperCase()
       .replace(/[^A-Z0-9.]+/g, "-")
       .replace(/^-+|-+$/g, "")
@@ -138,10 +152,18 @@ export async function reviewDrafts(
   const skipped = input.ids.length - drafts.length;
 
   if (input.action === "reject") {
-    const { count } = await prisma.testCaseDraft.updateMany({
-      where: { id: { in: drafts.map((d) => d.id) }, status: "PENDING" },
-      data: { status: "REJECTED", reviewedAt: new Date(), reviewedById: reviewerId },
-    });
+    const ids = drafts.map((d) => d.id);
+    const [{ count }] = await prisma.$transaction([
+      prisma.testCaseDraft.updateMany({
+        where: { id: { in: ids }, status: "PENDING" },
+        data: { status: "REJECTED", reviewedAt: new Date(), reviewedById: reviewerId },
+      }),
+      // Questions about a rejected draft have nowhere left to open.
+      prisma.notification.updateMany({
+        where: { question: { draftId: { in: ids } }, readAt: null },
+        data: { readAt: new Date() },
+      }),
+    ]);
     return { accepted: [], rejected: count, skipped };
   }
 
@@ -203,6 +225,8 @@ export async function reviewDrafts(
           reserved,
         );
 
+        // As the reviewer saw it: an older draft's markers split out.
+        const text = splitOpenQuestions(draft);
         const testCase = await tx.testCase.create({
           data: {
             projectId,
@@ -210,9 +234,10 @@ export async function reviewDrafts(
             subModule: draft.subModule,
             tcId,
             title: draft.title,
-            preconditions: draft.preconditions,
-            steps: draft.steps,
-            expectedResult: draft.expectedResult,
+            preconditions: text.preconditions,
+            steps: text.steps,
+            expectedResult: text.expectedResult,
+            openQuestions: text.openQuestions,
             testType: draft.testType,
             priority: draft.priority,
             platform: draft.platform,
@@ -232,6 +257,7 @@ export async function reviewDrafts(
             testCaseId: testCase.id,
           },
         });
+        await copyDraftQuestionsToCase(tx, draft.id, testCase.id);
         results.push({ draftId: draft.id, testCaseId: testCase.id, tcId });
       }
       return results;

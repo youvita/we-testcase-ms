@@ -25,6 +25,7 @@ import { TestCaseCardActions } from "@/features/test-cases/components/test-case-
 import { AutomationScriptCard } from "@/features/automation/components/automation-script-card";
 import { TestCaseDetailShell } from "@/features/executions/components/test-case-detail-shell";
 import {
+  canAnswerPo,
   canComment,
   canExecuteTests,
   canManageTestCases,
@@ -48,6 +49,7 @@ import {
   getTestCaseNeighbours,
 } from "@/services/test-case.service";
 import { formatDateTime } from "@/utils/format";
+import { splitOpenQuestions } from "@/utils/open-questions";
 
 export async function generateMetadata({
   params,
@@ -137,10 +139,13 @@ export default async function TestCaseDetailPage({
   const canTriage = canSetFixStatus(user.role) && needsTriage;
   const canRetest = canMarkRetesting(user.role);
 
+  // An older case's "(confirm with PO)" markers kept out of what is shown, as
+  // they are everywhere else.
+  const text = splitOpenQuestions(testCase);
   const details: { label: string; value: string | null }[] = [
-    { label: "Preconditions", value: testCase.preconditions },
-    { label: "Steps", value: testCase.steps },
-    { label: "Expected result", value: testCase.expectedResult },
+    { label: "Preconditions", value: text.preconditions },
+    { label: "Steps", value: text.steps },
+    { label: "Expected result", value: text.expectedResult },
   ];
 
   return (
@@ -371,6 +376,7 @@ export default async function TestCaseDetailPage({
               currentUserId={user.id}
               canComment={canPostComment}
               canModerate={isAdmin(user.role)}
+              canAnswer={canAnswerPo(user.role)}
             />
           </>
         }

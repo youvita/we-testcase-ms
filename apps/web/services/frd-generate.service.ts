@@ -5,6 +5,7 @@ import { badRequest, notFound } from "@/lib/api";
 import { AiError, askClaude, parseJsonBlock } from "@/lib/claude";
 import { PLATFORM_LABELS, PRIORITY_LABELS, TEST_TYPE_LABELS } from "@/lib/constants";
 import type { SessionUser } from "@/lib/session";
+import { splitOpenQuestions } from "@/utils/open-questions";
 import type { AiJobDto, AiModel } from "@wetestcase/dto";
 
 import { defineJob, enqueueJob } from "./ai-job.service";
@@ -36,6 +37,7 @@ async function loadCase(testCaseId: string) {
       preconditions: true,
       steps: true,
       expectedResult: true,
+      openQuestions: true,
       testType: true,
       priority: true,
       platform: true,
@@ -54,13 +56,12 @@ async function loadCase(testCaseId: string) {
 
 const groupOf = (tc: CaseForFrd) => (tc.subModule ? `${tc.module.name} › ${tc.subModule}` : tc.module.name);
 
-/** What the case leaves for the PO to confirm: its "(confirm with PO)" lines. */
+/**
+ * What the case leaves for the PO to confirm: its open questions, and the
+ * "(confirm with PO)" markers of a case written before they had a field.
+ */
 function openQuestionsOf(tc: CaseForFrd): string | null {
-  const lines = [tc.preconditions, tc.steps, tc.expectedResult]
-    .flatMap((text) => (text ?? "").split(/\n|(?<=\.)\s+/))
-    .map((line) => line.trim().replace(/^\d+[.)]\s*/, ""))
-    .filter((line) => /confirm with (the )?po/i.test(line));
-  return lines.length ? lines.map((line) => `- ${line}`).join("\n") : null;
+  return splitOpenQuestions(tc).openQuestions?.trim() || null;
 }
 
 /** The case laid out as an FRD, without the AI. */
@@ -121,6 +122,8 @@ Steps:
 ${tc.steps ?? "(none)"}
 Expected result:
 ${tc.expectedResult ?? "(none)"}
+Open questions for the PO:
+${openQuestionsOf(tc) ?? "(none)"}
 
 Write the FRD for what this case tests.`;
 }
