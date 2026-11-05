@@ -35,6 +35,25 @@ const REQUEST_TIMEOUT_MS = 14 * 60_000;
 
 export type ClaudeImage = { mediaType: string; data: string };
 
+/**
+ * Waits before trying the bridge again when it could not be connected to —
+ * about 15 seconds in all. A deploy recreates the containers, and a call made
+ * in that moment should wait for the bridge rather than fail.
+ */
+export const BRIDGE_RETRY_DELAYS_MS = [1_000, 2_000, 4_000, 8_000];
+
+/**
+ * The bridge was not there to take the request: nothing was sent, so trying
+ * again cannot run the turn twice. A connection dropped mid-request is not
+ * this — the bridge may already be running the turn on someone's plan.
+ */
+function notConnected(error: unknown): boolean {
+  const code = (error as { cause?: { code?: string } } | null)?.cause?.code;
+  return ["ECONNREFUSED", "ENOTFOUND", "EAI_AGAIN", "EHOSTUNREACH"].includes(code ?? "");
+}
+
+const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
 export async function askClaude(options: {
   token: string;
   system: string;
@@ -51,43 +70,54 @@ export async function askClaude(options: {
     );
   }
 
-  let response: Response;
-  try {
-    response = await fetch(`${base}/v1/messages`, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        "anthropic-version": "2023-06-01",
-        "x-api-key": options.token,
-      },
-      body: JSON.stringify({
-        model: options.model ?? defaultModel(),
-        max_tokens: options.maxTokens ?? 16_000,
-        system: options.system,
-        messages: [
-          {
-            role: "user",
-            content: options.images?.length
-              ? [
-                  ...options.images.map((image) => ({
-                    type: "image",
-                    source: { type: "base64", media_type: image.mediaType, data: image.data },
-                  })),
-                  { type: "text", text: options.prompt },
-                ]
-              : options.prompt,
-          },
-        ],
-      }),
-      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-    });
-  } catch (error) {
-    if (error instanceof Error && error.name === "TimeoutError") {
-      throw new AiError("The AI took too long to answer.");
+  const request = {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "anthropic-version": "2023-06-01",
+      "x-api-key": options.token,
+    },
+    body: JSON.stringify({
+      model: options.model ?? defaultModel(),
+      max_tokens: options.maxTokens ?? 16_000,
+      system: options.system,
+      messages: [
+        {
+          role: "user",
+          content: options.images?.length
+            ? [
+                ...options.images.map((image) => ({
+                  type: "image",
+                  source: { type: "base64", media_type: image.mediaType, data: image.data },
+                })),
+                { type: "text", text: options.prompt },
+              ]
+            : options.prompt,
+        },
+      ],
+    }),
+  };
+
+  let response: Response | undefined;
+  for (let attempt = 0; !response; attempt += 1) {
+    try {
+      response = await fetch(`${base}/v1/messages`, {
+        ...request,
+        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+      });
+    } catch (error) {
+      if (error instanceof Error && error.name === "TimeoutError") {
+        throw new AiError("The AI took too long to answer.");
+      }
+      const delay = BRIDGE_RETRY_DELAYS_MS[attempt];
+      if (notConnected(error) && delay !== undefined) {
+        await wait(delay);
+        continue;
+      }
+      throw new AiError(
+        "Could not reach the Claude bridge. Check that the claude-bridge container is running.",
+      );
     }
-    throw new AiError(
-      "Could not reach the Claude bridge. Check that the claude-bridge container is running.",
-    );
   }
 
   const body = (await response.json().catch(() => null)) as {
