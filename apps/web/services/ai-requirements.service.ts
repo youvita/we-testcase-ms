@@ -226,6 +226,11 @@ export async function startExtraction(
     select: { id: true, projectId: true, title: true, kind: true, content: true },
   });
   if (!doc) throw notFound("Document");
+  if (doc.kind === "PRD") {
+    throw badRequest(
+      "A PRD is product background: the AI reads it whenever it drafts test cases, so it is not read into requirements. To read requirements out of it, upload it as an FRD.",
+    );
+  }
 
   const busy = await prisma.aiJob.findFirst({
     where: { docId, status: { in: ["QUEUED", "RUNNING"] } },
@@ -397,6 +402,8 @@ function generatePrompt(options: {
   /** From `moduleOutline`. */
   modules: string;
   instructions?: string;
+  /** The project's PRDs, from `productBackground`. */
+  background?: string;
   requirements: RequirementForPrompt[];
 }) {
   const requirements = options.requirements
@@ -418,7 +425,16 @@ function generatePrompt(options: {
 Platform under test: ${options.platform} — ${PLATFORM_GUIDE[options.platform]}
 Existing modules (reuse a name when one fits): ${options.modules}
 How many cases: ${DEPTH_GUIDE[options.depth]}
-${options.instructions ? `Extra instructions from QA: ${options.instructions}\n` : ""}
+${options.instructions ? `Extra instructions from QA: ${options.instructions}\n` : ""}${
+    options.background
+      ? `
+Product background, from the PRD — for context only: who the users are, their goals, business rules and terms. Use it to make the cases realistic; write cases only for the requirements below, never for something only the PRD mentions.
+"""
+${options.background}
+"""
+`
+      : ""
+  }
 Requirements:
 
 ${requirements}
@@ -438,6 +454,27 @@ Rules:
 
 Answer with JSON only, in exactly this shape:
 {"testCases":[{"requirementCodes":[""],"module":"","subModule":"","title":"","preconditions":"","steps":[""],"expectedResult":"","openQuestions":"","testType":"FUNCTIONAL","priority":"MEDIUM"}]}`;
+}
+
+/** Past this, the PRD background is cut short; the requirements matter more. */
+const BACKGROUND_CHARS = 30_000;
+
+/**
+ * The project's PRDs, oldest first, as background for drafting. A PRD is not
+ * read into requirements — what to test comes from the FRDs — but it says who
+ * the users are and why, which makes the cases realistic.
+ */
+export async function productBackground(projectId: string): Promise<string | undefined> {
+  const prds = await prisma.requirementDoc.findMany({
+    where: { projectId, kind: "PRD" },
+    orderBy: { createdAt: "asc" },
+    select: { title: true, content: true },
+  });
+  if (prds.length === 0) return undefined;
+  const text = prds.map((prd) => `# ${prd.title}\n\n${prd.content.trim()}`).join("\n\n");
+  return text.length > BACKGROUND_CHARS
+    ? `${text.slice(0, BACKGROUND_CHARS)}\n[… the rest of the PRD is left out]`
+    : text;
 }
 
 export async function startGeneration(
@@ -498,6 +535,8 @@ defineJob("GENERATE_TEST_CASES", async (job) => {
 
   return async ({ jobId, token, progress }) => {
     const batchSize = BATCH_SIZE[input.depth];
+    // Read once: the PRD does not change while the job runs.
+    const background = await productBackground(projectId);
     const batches: string[][] = [];
     for (let i = 0; i < requirementIds.length; i += batchSize) {
       batches.push(requirementIds.slice(i, i + batchSize));
@@ -523,7 +562,10 @@ defineJob("GENERATE_TEST_CASES", async (job) => {
             description: true,
             acceptanceCriteria: true,
             openQuestions: true,
-            testCases: { select: { testCase: { select: { title: true } } } },
+            testCases: {
+              where: { testCase: { deletedAt: null } },
+              select: { testCase: { select: { title: true } } },
+            },
           },
         }),
         moduleOutline(projectId),
@@ -540,6 +582,7 @@ defineJob("GENERATE_TEST_CASES", async (job) => {
           depth: input.depth,
           modules,
           instructions: input.instructions,
+          background,
           requirements,
         }),
       });

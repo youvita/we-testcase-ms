@@ -1,6 +1,6 @@
 import type { Platform, Prisma } from "@prisma/client";
 
-import { prisma } from "@/lib/prisma";
+import { includingTrash, prisma, type Tx } from "@/lib/prisma";
 import { badRequest, notFound } from "@/lib/api";
 import { PLATFORMS } from "@/lib/constants";
 import type {
@@ -25,7 +25,7 @@ import { variablesForCopy } from "./run-environment.service";
  * it out inside its transaction, so the two cannot disagree.
  */
 
-type Db = Prisma.TransactionClient;
+type Db = Tx;
 
 /** Projects this viewer may copy into: every one they can open but this. */
 export async function listCopyTargets(
@@ -79,8 +79,9 @@ async function loadSourceCases(
 
 /** The target's cases with these TC IDs, by lower-cased ID; exact spelling wins. */
 async function findExisting(db: Db, projectId: string, tcIds: string[]) {
+  // A case in the target's Trash still holds its TC ID; overwriting brings it back.
   const found = await db.testCase.findMany({
-    where: { projectId, tcId: { in: tcIds, mode: "insensitive" } },
+    where: { projectId, tcId: { in: tcIds, mode: "insensitive" }, ...includingTrash },
     select: { id: true, tcId: true, script: { select: { code: true } } },
   });
   const exact = new Set(tcIds);
@@ -328,7 +329,10 @@ export async function copyToProject(
       for (const write of plan.writes) {
         if (write.existing) {
           // Deliberately leaves `status` and `lastExecutedAt` alone.
-          await tx.testCase.update({ where: { id: write.existing.id }, data: fields(write.source) });
+          await tx.testCase.update({
+            where: { id: write.existing.id, ...includingTrash },
+            data: { ...fields(write.source), deletedAt: null, deletedById: null },
+          });
           written.push({ ...write, targetId: write.existing.id });
         } else {
           written.push({ ...write, targetId: createdIdByTcId.get(write.source.tcId)! });

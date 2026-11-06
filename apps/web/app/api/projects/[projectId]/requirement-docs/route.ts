@@ -3,6 +3,7 @@ import { ok, readJson, route } from "@/lib/api";
 import { isMultipart, readDocumentUpload } from "@/lib/document-upload";
 import { assertProjectAccess } from "@/lib/project-access";
 import {
+  requirementDocFolderSchema,
   requirementDocKindSchema,
   requirementDocTextSchema,
 } from "@/lib/validations";
@@ -40,6 +41,7 @@ export const POST = route<Ctx>(
       const doc = await createRequirementDoc(projectId, user.id, {
         title: body.title,
         kind: body.kind,
+        folder: body.folder,
         fileName: null,
         content: pastedDocumentText(body.content),
       });
@@ -51,10 +53,12 @@ export const POST = route<Ctx>(
       String(form.get("title") ?? "").trim() ||
       fileName.replace(/\.[^.]+$/, "");
     const kind = requirementDocKindSchema.catch("PRD").parse(form.get("kind"));
+    const folder = requirementDocFolderSchema.parse(form.get("folder") ?? undefined);
 
     const doc = await createRequirementDoc(projectId, user.id, {
       title,
       kind,
+      folder,
       fileName,
       content,
     });

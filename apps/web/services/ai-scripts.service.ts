@@ -314,7 +314,7 @@ async function findReferenceScripts(testCase: {
     where: {
       verifiedAt: { not: null },
       testCaseId: { not: testCase.id },
-      testCase: { projectId: testCase.projectId, platform: testCase.platform },
+      testCase: { projectId: testCase.projectId, platform: testCase.platform, deletedAt: null },
     },
     orderBy: { updatedAt: "desc" },
     take: 20,

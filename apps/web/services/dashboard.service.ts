@@ -59,6 +59,7 @@ async function getDailyExecutions(
         JOIN "TestCase" t ON t."id" = e."testCaseId"
         WHERE e."executedAt" >= ${since}
           AND t."projectId" = ${projectId}
+          AND t."deletedAt" IS NULL
         GROUP BY 1, 2
         ORDER BY 1 ASC
       `
@@ -71,6 +72,7 @@ async function getDailyExecutions(
         JOIN "TestCase" t ON t."id" = e."testCaseId"
         WHERE e."executedAt" >= ${since}
           AND t."projectId" = ANY(${scoped})
+          AND t."deletedAt" IS NULL
         GROUP BY 1, 2
         ORDER BY 1 ASC
       `
@@ -79,7 +81,9 @@ async function getDailyExecutions(
                e."status"                        AS status,
                COUNT(*)                          AS count
         FROM "TestExecution" e
+        JOIN "TestCase" t ON t."id" = e."testCaseId"
         WHERE e."executedAt" >= ${since}
+          AND t."deletedAt" IS NULL
         GROUP BY 1, 2
         ORDER BY 1 ASC
       `;
@@ -170,9 +174,10 @@ export async function getRecentActivity(limit = 8, projectIds?: string[]) {
   return prisma.testExecution.findMany({
     // Scoped for the same reason as the summary: activity names a test case, and
     // that name should not surface from a project the viewer cannot open.
-    ...(projectIds
-      ? { where: { testCase: { projectId: { in: projectIds } } } }
-      : {}),
+    // Cases in the Trash are gone from the dashboard, history included.
+    where: {
+      testCase: { deletedAt: null, ...(projectIds ? { projectId: { in: projectIds } } : {}) },
+    },
     orderBy: { executedAt: "desc" },
     take: limit,
     include: {

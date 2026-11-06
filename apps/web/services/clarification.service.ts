@@ -1,11 +1,17 @@
 import type { Prisma } from "@prisma/client";
 
-import { prisma } from "@/lib/prisma";
+import { prisma, type Tx } from "@/lib/prisma";
 import { badRequest, forbidden, notFound } from "@/lib/api";
 import { isAdmin } from "@/lib/permissions";
 import type { Role } from "@/lib/constants";
 import type { CommentWithAuthor } from "@/types";
-import type { NotificationDto, NotificationList, PoQuestionDto, PoQuestionInput } from "@wetestcase/dto";
+import type {
+  NotificationDto,
+  NotificationList,
+  PoQuestionDto,
+  PoQuestionInput,
+  SettleAnswerInput,
+} from "@wetestcase/dto";
 
 /**
  * Asking the PO, and the answer coming back.
@@ -18,7 +24,6 @@ import type { NotificationDto, NotificationList, PoQuestionDto, PoQuestionInput 
  * asked sees the answer.
  */
 
-type Tx = Prisma.TransactionClient;
 
 const commentInclude = {
   author: { select: { id: true, name: true, email: true, image: true, role: true } },
@@ -103,6 +108,46 @@ export async function answerQuestion(
       data: { readAt: new Date() },
     });
     return answer;
+  });
+}
+
+/**
+ * QA deals with the PO's answer to a question on a case: puts it into the
+ * case's expected result and open questions, or records that nothing needed
+ * to change. Either way the prompt goes away until the PO answers again.
+ */
+export async function settleAnswer(
+  questionId: string,
+  actor: { id: string },
+  input: SettleAnswerInput,
+) {
+  const question = await prisma.comment.findUnique({
+    where: { id: questionId },
+    select: { kind: true, testCaseId: true, deletedAt: true, answeredAt: true },
+  });
+  if (!question || question.kind !== "QUESTION" || question.deletedAt) throw notFound("Question");
+  if (!question.answeredAt) throw badRequest("The PO has not answered this question yet.");
+
+  return prisma.$transaction(async (tx) => {
+    if (input.update) {
+      // Through the Trash filter: a case in the Trash cannot be edited.
+      await tx.testCase.update({
+        where: { id: question.testCaseId },
+        data: {
+          expectedResult: input.update.expectedResult ?? null,
+          openQuestions: input.update.openQuestions ?? null,
+        },
+      });
+    }
+    await tx.comment.update({
+      where: { id: questionId },
+      data: {
+        settledAt: new Date(),
+        settledById: actor.id,
+        settledChangedCase: Boolean(input.update),
+      },
+    });
+    return { settled: true, changedCase: Boolean(input.update) };
   });
 }
 
@@ -396,6 +441,8 @@ export async function listNotifications(userId: string, limit = 20): Promise<Not
   const visible: Prisma.NotificationWhereInput = {
     recipientId: userId,
     OR: [{ commentId: null }, { comment: { deletedAt: null } }],
+    // A case in the Trash takes its notifications with it until restored.
+    AND: [{ OR: [{ testCaseId: null }, { testCase: { deletedAt: null } }] }],
   };
   const [rows, unread] = await Promise.all([
     prisma.notification.findMany({

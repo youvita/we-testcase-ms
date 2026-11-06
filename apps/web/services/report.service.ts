@@ -61,7 +61,7 @@ export async function listReportEnvironments(projectId: string): Promise<string[
   const [environments, recorded] = await Promise.all([
     listRunEnvironments(projectId),
     prisma.testExecution.findMany({
-      where: { testCase: { projectId }, environmentName: { not: null } },
+      where: { testCase: { projectId, deletedAt: null }, environmentName: { not: null } },
       select: { environmentName: true },
       distinct: ["environmentName"],
       orderBy: { environmentName: "asc" },

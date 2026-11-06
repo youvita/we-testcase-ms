@@ -3,8 +3,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { prisma } from "@/lib/prisma";
 import { createProject, resetDatabase } from "@/test/db";
 
+import type { SessionUser } from "@/lib/session";
+
 import { resumeJobs } from "./ai-job.service";
-import "./ai-requirements.service";
+import { startExtraction } from "./ai-requirements.service";
 
 vi.mock("./claude-connection.service", () => ({
   requireClaudeToken: async () => "test-token",
@@ -91,5 +93,54 @@ describe("drafting test cases after a restart", () => {
     const titles = (await prisma.testCaseDraft.findMany({ where: { jobId: job.id } })).map((d) => d.title);
     expect(titles.sort()).toEqual(["Check REQ-1", "Check REQ-2", "Check REQ-3", "Check REQ-4", "Check REQ-5", "Check REQ-6"]);
     expect(after.summary).toMatch(/^Drafted 6 test cases/);
+  });
+});
+
+describe("a PRD", () => {
+  it("is product background in every drafting prompt, and only its own project's", async () => {
+    const { project, owner } = await createProject();
+    const other = await createProject("Other");
+    const doc = (projectId: string, kind: "PRD" | "FRD", title: string, content: string) =>
+      prisma.requirementDoc.create({
+        data: { projectId, createdById: owner.id, kind, title, content, charCount: content.length },
+      });
+    await doc(project.id, "PRD", "Billing PRD", "Clerks bill customers monthly; managers approve refunds.");
+    await doc(other.project.id, "PRD", "Other PRD", "Something else entirely.");
+    const frd = await doc(project.id, "FRD", "FRD", "x");
+    const req = await prisma.requirement.create({
+      data: { docId: frd.id, projectId: project.id, code: "REQ-1", title: "Refunds need approval" },
+    });
+    const job = await prisma.aiJob.create({
+      data: {
+        projectId: project.id,
+        createdById: owner.id,
+        kind: "GENERATE_TEST_CASES",
+        input: { requirementIds: [req.id], platform: "WEB", depth: "essential" },
+      },
+    });
+
+    (globalThis as { __aiJobs?: { resumed?: Promise<void> } }).__aiJobs!.resumed = undefined;
+    await resumeJobs();
+    await vi.waitFor(
+      async () => {
+        const row = await prisma.aiJob.findUniqueOrThrow({ where: { id: job.id } });
+        if (row.status === "RUNNING" || row.status === "QUEUED") throw new Error("still going");
+      },
+      { timeout: 5_000, interval: 20 },
+    );
+
+    expect(prompts).toHaveLength(1);
+    expect(prompts[0]).toContain("Product background, from the PRD");
+    expect(prompts[0]).toContain("managers approve refunds");
+    expect(prompts[0]).not.toContain("Something else entirely");
+    expect(await prisma.testCaseDraft.count({ where: { jobId: job.id } })).toBe(1);
+  });
+
+  it("is not read into requirements", async () => {
+    const { project, owner } = await createProject();
+    const prd = await prisma.requirementDoc.create({
+      data: { projectId: project.id, createdById: owner.id, kind: "PRD", title: "PRD", content: "x", charCount: 1 },
+    });
+    await expect(startExtraction(prd.id, owner as unknown as SessionUser)).rejects.toThrow(/product background/);
   });
 });

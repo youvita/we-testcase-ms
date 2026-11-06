@@ -9,6 +9,7 @@ import { prisma } from "@/lib/prisma";
 import { badRequest, conflict, notFound } from "@/lib/api";
 import type {
   RequirementDocDto,
+  RequirementDocVersionDto,
   RequirementDto,
   RequirementInput,
   RequirementReviewInput,
@@ -31,6 +32,7 @@ export async function createRequirementDoc(
     kind: RequirementDocKind;
     fileName: string | null;
     content: string;
+    folder?: string | null;
   },
 ) {
   await assertProjectExists(projectId);
@@ -40,6 +42,7 @@ export async function createRequirementDoc(
       createdById: userId,
       title: input.title.trim(),
       kind: input.kind,
+      folder: input.folder?.trim() || null,
       fileName: input.fileName,
       content: input.content,
       charCount: input.content.length,
@@ -62,8 +65,15 @@ export async function listRequirementDocs(
         fileName: true,
         charCount: true,
         version: true,
+        folder: true,
         createdAt: true,
         createdBy: { select: { id: true, name: true } },
+        // The latest archived version: whoever replaced it uploaded the current one.
+        versions: {
+          orderBy: { version: "desc" },
+          take: 1,
+          select: { replacedAt: true, replacedBy: { select: { id: true, name: true } } },
+        },
         _count: { select: { requirements: { where: { status: "ACTIVE" } } } },
       },
     }),
@@ -74,15 +84,21 @@ export async function listRequirementDocs(
     }),
   ]);
   const specIds = new Set(specs.map((spec) => spec.id));
-  return docs.map(({ _count, createdAt, ...doc }) => ({
+  return docs.map(({ _count, createdAt, versions: [latest], ...doc }) => ({
     ...doc,
     isApiSpec: specIds.has(doc.id),
     createdAt: createdAt.toISOString(),
+    versionAt: (latest?.replacedAt ?? createdAt).toISOString(),
+    versionBy: latest?.replacedBy ?? doc.createdBy,
     requirementCount: _count.requirements,
   }));
 }
 
-export async function getRequirementDoc(docId: string) {
+/**
+ * The document's text — its current version, or with `version` an earlier
+ * one from its history.
+ */
+export async function getRequirementDoc(docId: string, version?: number) {
   const doc = await prisma.requirementDoc.findUnique({
     where: { id: docId },
     select: {
@@ -92,10 +108,80 @@ export async function getRequirementDoc(docId: string) {
       kind: true,
       fileName: true,
       content: true,
+      version: true,
     },
   });
   if (!doc) throw notFound("Document");
-  return doc;
+  if (version === undefined || version === doc.version) return doc;
+  const old = await prisma.requirementDocVersion.findUnique({
+    where: { docId_version: { docId, version } },
+    select: { fileName: true, content: true, version: true },
+  });
+  if (!old) throw notFound("Version");
+  return { ...doc, ...old };
+}
+
+/** Put a document in a feature folder, or take it out of one. */
+export async function setRequirementDocFolder(docId: string, folder: string | null) {
+  return prisma.requirementDoc.update({
+    where: { id: docId },
+    data: { folder: folder?.trim() || null },
+    select: { id: true, folder: true },
+  });
+}
+
+/**
+ * Every version of a document, newest first: who uploaded each and when.
+ *
+ * An archived row records who *replaced* it, so a version's uploader is the
+ * one who replaced the version before it — and version 1's is the creator.
+ */
+export async function listRequirementDocVersions(docId: string): Promise<RequirementDocVersionDto[]> {
+  const doc = await prisma.requirementDoc.findUnique({
+    where: { id: docId },
+    select: {
+      version: true,
+      fileName: true,
+      charCount: true,
+      createdAt: true,
+      createdBy: { select: { id: true, name: true } },
+      versions: {
+        orderBy: { version: "asc" },
+        select: {
+          version: true,
+          fileName: true,
+          charCount: true,
+          replacedAt: true,
+          replacedBy: { select: { id: true, name: true } },
+        },
+      },
+    },
+  });
+  if (!doc) throw notFound("Document");
+
+  const replacing = new Map(doc.versions.map((v) => [v.version + 1, v]));
+  const uploaded = (version: number) =>
+    version === 1
+      ? { at: doc.createdAt, by: doc.createdBy }
+      : { at: replacing.get(version)?.replacedAt ?? null, by: replacing.get(version)?.replacedBy ?? null };
+
+  const rows = [
+    ...doc.versions.map((v) => ({ ...v, current: false })),
+    { version: doc.version, fileName: doc.fileName, charCount: doc.charCount, current: true },
+  ];
+  return rows
+    .map((row) => {
+      const { at, by } = uploaded(row.version);
+      return {
+        version: row.version,
+        current: row.current,
+        fileName: row.fileName,
+        charCount: row.charCount,
+        uploadedAt: (at ?? doc.createdAt).toISOString(),
+        uploadedBy: by,
+      };
+    })
+    .reverse();
 }
 
 /**
@@ -103,12 +189,8 @@ export async function getRequirementDoc(docId: string) {
  * upload, so this is what the AI reads rather than the original PDF or Word
  * file — and plain text is already Markdown.
  */
-export async function exportRequirementDoc(docId: string) {
-  const doc = await prisma.requirementDoc.findUnique({
-    where: { id: docId },
-    select: { title: true, version: true, content: true },
-  });
-  if (!doc) throw notFound("Document");
+export async function exportRequirementDoc(docId: string, version?: number) {
+  const doc = await getRequirementDoc(docId, version);
   const base =
     doc.title.replace(/[^A-Za-z0-9._ -]+/g, "-").replace(/^[-. ]+|[-. ]+$/g, "") || "Document";
   return {
@@ -182,6 +264,7 @@ export async function listRequirements(
         doc: { select: { title: true, version: true } },
         possibleMatch: { select: { id: true, code: true, title: true } },
         testCases: {
+          where: { testCase: { deletedAt: null } },
           select: {
             testCase: { select: { id: true, tcId: true, status: true } },
           },

@@ -50,6 +50,7 @@ import {
 } from "@/services/test-case.service";
 import { formatDateTime } from "@/utils/format";
 import { splitOpenQuestions } from "@/utils/open-questions";
+import { answersToApply } from "@/utils/po-answers";
 
 export async function generateMetadata({
   params,
@@ -142,6 +143,14 @@ export default async function TestCaseDetailPage({
   // An older case's "(confirm with PO)" markers kept out of what is shown, as
   // they are everywhere else.
   const text = splitOpenQuestions(testCase);
+  // PO answers not yet put into the case. Only its expected result and open
+  // questions are edited from an answer, so only they are split here.
+  const canEditCase = canManageTestCases(user.role);
+  const answerText = splitOpenQuestions({
+    expectedResult: testCase.expectedResult,
+    openQuestions: testCase.openQuestions,
+  });
+  const unappliedAnswers = canEditCase ? answersToApply(comments).size : 0;
   const details: { label: string; value: string | null }[] = [
     { label: "Preconditions", value: text.preconditions },
     { label: "Steps", value: text.steps },
@@ -261,8 +270,16 @@ export default async function TestCaseDetailPage({
                   details.map((detail) =>
                     detail.value ? (
                       <div key={detail.label} className="space-y-1.5">
-                        <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                        <h3 className="flex flex-wrap items-center gap-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
                           {detail.label}
+                          {detail.label === "Expected result" && unappliedAnswers > 0 && (
+                            <a
+                              href="#discussion"
+                              className="rounded-full bg-status-passed/10 px-2 py-0.5 normal-case tracking-normal text-status-passed hover:underline"
+                            >
+                              {unappliedAnswers} PO answer{unappliedAnswers === 1 ? "" : "s"} to add
+                            </a>
+                          )}
                         </h3>
                         <p className="preserve-lines text-sm">{detail.value}</p>
                       </div>
@@ -377,6 +394,14 @@ export default async function TestCaseDetailPage({
               canComment={canPostComment}
               canModerate={isAdmin(user.role)}
               canAnswer={canAnswerPo(user.role)}
+              caseText={
+                canEditCase
+                  ? {
+                      expectedResult: answerText.expectedResult ?? null,
+                      openQuestions: answerText.openQuestions ?? null,
+                    }
+                  : undefined
+              }
             />
           </>
         }

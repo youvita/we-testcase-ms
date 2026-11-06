@@ -1,6 +1,4 @@
-import type { Prisma } from "@prisma/client";
-
-import { prisma } from "@/lib/prisma";
+import { prisma, type Tx } from "@/lib/prisma";
 import { badRequest, forbidden, notFound } from "@/lib/api";
 import { isAdmin } from "@/lib/permissions";
 import type { Role } from "@/lib/constants";
@@ -143,7 +141,7 @@ export async function updateExecution(
  * in the history.
  */
 async function refreshTestCaseStatus(
-  tx: Prisma.TransactionClient,
+  tx: Tx,
   testCaseId: string,
 ) {
   const latest = await tx.testExecution.findFirst({
@@ -188,7 +186,7 @@ export async function getExecution(executionId: string) {
 /** Latest execution per test case for a project, keyed by test case id. */
 export async function getLatestExecutions(projectId: string) {
   const executions = await prisma.testExecution.findMany({
-    where: { testCase: { projectId } },
+    where: { testCase: { projectId, deletedAt: null } },
     orderBy: { executedAt: "desc" },
     include: { tester: testerSelect, attachments: true },
   });

@@ -167,12 +167,13 @@ export function TestCaseTable({
       );
 
       toast.success(
-        `Deleted ${result.deleted} test case${result.deleted === 1 ? "" : "s"}`,
-        result.missing > 0
-          ? {
-              description: `${result.missing} were already gone — the list was out of date.`,
-            }
-          : undefined,
+        `Moved ${result.deleted} test case${result.deleted === 1 ? "" : "s"} to the Trash`,
+        {
+          ...(result.missing > 0
+            ? { description: `${result.missing} were already gone — the list was out of date.` }
+            : {}),
+          action: { label: "Undo", onClick: () => void restore(ids) },
+        },
       );
 
       setSelected(new Set());
@@ -210,11 +211,28 @@ export function TestCaseTable({
     );
   }
 
+  /** Undo a delete: bring the cases straight back from the Trash. */
+  async function restore(ids: string[]) {
+    try {
+      const { restored } = await api.post<{ restored: number }>(
+        `/api/projects/${projectId}/trash/restore`,
+        { ids },
+      );
+      toast.success(`Restored ${restored} test case${restored === 1 ? "" : "s"}`);
+      router.refresh();
+    } catch (error) {
+      toast.error(errorMessage(error));
+    }
+  }
+
   async function handleDelete() {
     if (!deleting) return;
     try {
       await api.delete(`/api/test-cases/${deleting.id}`);
-      toast.success(`Deleted ${deleting.tcId}`);
+      const { id } = deleting;
+      toast.success(`Moved ${deleting.tcId} to the Trash`, {
+        action: { label: "Undo", onClick: () => void restore([id]) },
+      });
       setDeleting(null);
       router.refresh();
     } catch (error) {
@@ -582,8 +600,8 @@ export function TestCaseTable({
         open={Boolean(deleting)}
         onOpenChange={(next) => !next && setDeleting(null)}
         title={`Delete ${deleting?.tcId}?`}
-        description="This also deletes its execution history and attachments. This cannot be undone."
-        confirmLabel="Delete test case"
+        description="It moves to the project's Trash with its history, comments and script, and can be restored from there."
+        confirmLabel="Move to Trash"
         onConfirm={handleDelete}
       />
 
@@ -659,8 +677,8 @@ export function TestCaseTable({
         description={
           <div className="space-y-2">
             <p>
-              This also deletes their execution history and attachments. This
-              cannot be undone.
+              They move to the project&apos;s Trash with their history, comments
+              and scripts, and can be restored from there.
             </p>
             {/* Spelling out the IDs makes an accidental select-all obvious
                 before the click, not after. */}
@@ -674,7 +692,7 @@ export function TestCaseTable({
             </p>
           </div>
         }
-        confirmLabel={`Delete ${selectedCases.length} test case${selectedCases.length === 1 ? "" : "s"}`}
+        confirmLabel="Move to Trash"
         onConfirm={handleBulkDelete}
       />
     </div>

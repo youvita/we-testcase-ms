@@ -10,7 +10,7 @@ export async function listModules(projectId: string) {
   return prisma.module.findMany({
     where: { projectId },
     orderBy: [{ position: "asc" }, { name: "asc" }],
-    include: { _count: { select: { testCases: true } } },
+    include: { _count: { select: { testCases: { where: { deletedAt: null } } } } },
   });
 }
 

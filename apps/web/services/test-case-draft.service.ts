@@ -1,6 +1,4 @@
-import type { Prisma } from "@prisma/client";
-
-import { prisma } from "@/lib/prisma";
+import { includingTrash, prisma, type Tx } from "@/lib/prisma";
 import { badRequest, notFound } from "@/lib/api";
 import { splitOpenQuestions } from "@/utils/open-questions";
 import type {
@@ -117,14 +115,15 @@ export function tcIdStem(code: string): string {
  * in the database yet when several drafts share a requirement.
  */
 async function allocateTcId(
-  tx: Prisma.TransactionClient,
+  tx: Tx,
   projectId: string,
   stem: string,
   reserved: Set<string>,
 ): Promise<string> {
   const prefix = `TC-${stem}-`;
+  // Cases in the Trash keep their IDs, so a new case never takes one.
   const taken = await tx.testCase.findMany({
-    where: { projectId, tcId: { startsWith: prefix, mode: "insensitive" } },
+    where: { projectId, tcId: { startsWith: prefix, mode: "insensitive" }, ...includingTrash },
     select: { tcId: true },
   });
   // Lower-cased: TC IDs are unique regardless of case.

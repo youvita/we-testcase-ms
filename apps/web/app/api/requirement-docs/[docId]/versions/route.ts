@@ -3,13 +3,20 @@ import { ok, readJson, route } from "@/lib/api";
 import { isMultipart, readDocumentUpload } from "@/lib/document-upload";
 import { assertRequirementDocAccess } from "@/lib/project-access";
 import { requirementDocVersionTextSchema } from "@/lib/validations";
-import { addRequirementDocVersion } from "@/services/requirement.service";
+import { addRequirementDocVersion, listRequirementDocVersions } from "@/services/requirement.service";
 import { pastedDocumentText } from "@/utils/document-text";
 
 type Ctx = { params: Promise<{ docId: string }> };
 
 /** PDF and Word parsing need Node, not the edge runtime. */
 export const runtime = "nodejs";
+
+/** Its versions, newest first, with who uploaded each and when. */
+export const GET = route<Ctx>({}, async (_request, { params, user }) => {
+  const { docId } = await params;
+  await assertRequirementDocAccess(docId, user);
+  return ok(await listRequirementDocVersions(docId));
+});
 
 /**
  * Upload a newer version of the document: a file as multipart form data

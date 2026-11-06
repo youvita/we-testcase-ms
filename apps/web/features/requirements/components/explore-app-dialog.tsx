@@ -166,14 +166,14 @@ export function ExploreAppDialog({
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="essential">Essential</SelectItem>
-                    <SelectItem value="thorough">Thorough</SelectItem>
+                    <SelectItem value="essential">Main checks</SelectItem>
+                    <SelectItem value="thorough">Full coverage</SelectItem>
                   </SelectContent>
                 </Select>
                 <p className="text-xs text-muted-foreground">
                   {depth === "essential"
-                    ? "About 4–8 cases per page: main flows and key negative cases."
-                    : "Every field's validation, limits, states and navigation."}
+                    ? "About 4–8 cases per page: the main flows and the most important errors. Best to start with."
+                    : "Every field's validation, limits, states and navigation. Many more drafts to review."}
                 </p>
               </div>
               <div className="space-y-2">

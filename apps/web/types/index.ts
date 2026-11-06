@@ -129,6 +129,8 @@ export type CommentWithAuthor = Comment & {
   deletedBy: Pick<User, "id" | "name"> | null;
   /** A question's addressee, when it went to one admin rather than all. */
   questionTo?: Pick<User, "id" | "name"> | null;
+  /** Who put a question's answer into the case, or said it needed no change. */
+  settledBy?: Pick<User, "id" | "name"> | null;
 };
 
 /** A logged developer triage change, with who made it. */

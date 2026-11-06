@@ -169,8 +169,24 @@ export type RequirementDocDto = {
   version: number;
   /** An uploaded Swagger / OpenAPI spec or Postman collection. */
   isApiSpec: boolean;
+  /** The feature folder it is kept in; null for none. */
+  folder: string | null;
   createdAt: string;
+  /** When its current version was uploaded, and by whom. */
+  versionAt: string;
+  versionBy: { id: string; name: string } | null;
   createdBy: { id: string; name: string };
+};
+
+
+/** One version of a document, for its history. */
+export type RequirementDocVersionDto = {
+  version: number;
+  current: boolean;
+  fileName: string | null;
+  charCount: number;
+  uploadedAt: string;
+  uploadedBy: { id: string; name: string } | null;
 };
 
 /** A requirement's text as an earlier version of its document had it. */
@@ -206,6 +222,7 @@ export type RequirementDto = {
   /** Pending AI drafts that would cover this requirement. */
   pendingDraftCount: number;
 };
+
 
 /** One entry under the bell in the top bar. */
 export type NotificationDto = {
@@ -278,6 +295,22 @@ export type DraftReviewResult = {
 // ---------------------------------------------------------------------------
 // Automation
 // ---------------------------------------------------------------------------
+
+/** A test case in its project's Trash. */
+export type TrashedTestCase = {
+  id: string;
+  tcId: string;
+  title: string;
+  platform: Platform;
+  /** Its last result before it was deleted. */
+  status: ExecutionStatus;
+  moduleName: string;
+  subModule: string | null;
+  deletedAt: string;
+  deletedByName: string | null;
+  /** Results recorded on it — what deleting it forever would lose. */
+  executions: number;
+};
 
 export type RunVariableDto = {
   key: string;

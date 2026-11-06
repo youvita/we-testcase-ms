@@ -1,6 +1,4 @@
-import type { Prisma } from "@prisma/client";
-
-import { prisma } from "@/lib/prisma";
+import { prisma, type Tx } from "@/lib/prisma";
 import { badRequest, conflict, notFound } from "@/lib/api";
 import { open, seal } from "@/lib/secret-box";
 import type {
@@ -155,7 +153,7 @@ type ParsedInput = {
  * their ids by name, so the caller can make one the default.
  */
 export async function addEnvironmentsToNewProject(
-  tx: Prisma.TransactionClient,
+  tx: Tx,
   projectId: string,
   inputs: ParsedInput[],
 ): Promise<Map<string, string>> {

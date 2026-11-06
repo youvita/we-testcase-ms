@@ -11,6 +11,7 @@ import {
   FileText,
   ListChecks,
   Server,
+  Trash2,
   XCircle,
 } from "lucide-react";
 
@@ -45,6 +46,7 @@ import { getProjectDashboard } from "@/services/dashboard.service";
 import { listModules } from "@/services/module.service";
 import { getProject } from "@/services/project.service";
 import { listReportEnvironments } from "@/services/report.service";
+import { countTrash } from "@/services/test-case.service";
 import { formatDate } from "@/utils/format";
 
 export async function generateMetadata({
@@ -80,10 +82,11 @@ export default async function ProjectOverviewPage({
   const project = await getProject(projectId).catch(() => null);
   if (!project) notFound();
 
-  const [dashboard, modules, reportEnvironments] = await Promise.all([
+  const [dashboard, modules, reportEnvironments, trashed] = await Promise.all([
     getProjectDashboard(projectId),
     listModules(projectId),
     listReportEnvironments(projectId),
+    countTrash(projectId),
   ]);
 
   const { stats } = dashboard;
@@ -177,6 +180,17 @@ export default async function ProjectOverviewPage({
             <Link href={`/projects/${projectId}/requirements`}>
               <FileText className="mr-2 size-4" />
               Requirements
+            </Link>
+          </Button>
+          <Button variant="outline" asChild>
+            <Link href={`/projects/${projectId}/test-cases/trash`}>
+              <Trash2 className="mr-2 size-4" />
+              Trash
+              {trashed > 0 && (
+                <span className="ml-2 rounded-full bg-muted px-1.5 text-xs font-semibold text-muted-foreground">
+                  {trashed}
+                </span>
+              )}
             </Link>
           </Button>
         </nav>

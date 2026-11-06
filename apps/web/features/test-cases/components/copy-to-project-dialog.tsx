@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { AlertTriangle, Copy, Loader2 } from "lucide-react";
+import { AlertTriangle, Copy, Loader2, Plus } from "lucide-react";
 import { toast } from "sonner";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -96,7 +97,11 @@ export function CopyToProjectDialog({
     if (!open || targets) return;
     api
       .get<CopyTarget[]>(`/api/projects/${projectId}/copy`)
-      .then(setTargets)
+      .then((list) => {
+        setTargets(list);
+        // Only one place it can go: choose it, rather than ask.
+        if (list.length === 1) setTargetId(list[0]!.id);
+      })
       .catch((error) => {
         setTargets([]);
         toast.error(errorMessage(error));
@@ -168,22 +173,32 @@ export function CopyToProjectDialog({
         <div className="space-y-5">
           <div className="space-y-2">
             <Label htmlFor="copy-target">Copy to</Label>
-            <Select value={targetId} onValueChange={setTargetId} disabled={!targets}>
-              <SelectTrigger id="copy-target">
-                <SelectValue placeholder={targets ? "Choose a project" : "Loading projects…"} />
-              </SelectTrigger>
-              <SelectContent>
-                {targets?.map((target) => (
-                  <SelectItem key={target.id} value={target.id}>
-                    {target.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            {targets?.length === 0 && (
-              <p className="text-xs text-muted-foreground">
-                There is no other project you can open. Create one first.
-              </p>
+            {targets?.length === 0 ? (
+              // An empty list would open onto nothing: say why, and offer the way out.
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-dashed p-3">
+                <p className="text-sm text-muted-foreground">
+                  There is no other project to copy to yet.
+                </p>
+                <Button size="sm" asChild>
+                  <Link href="/projects?new=1">
+                    <Plus className="mr-2 size-4" />
+                    Create project
+                  </Link>
+                </Button>
+              </div>
+            ) : (
+              <Select value={targetId} onValueChange={setTargetId} disabled={!targets}>
+                <SelectTrigger id="copy-target">
+                  <SelectValue placeholder={targets ? "Choose a project" : "Loading projects…"} />
+                </SelectTrigger>
+                <SelectContent>
+                  {targets?.map((target) => (
+                    <SelectItem key={target.id} value={target.id}>
+                      {target.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             )}
           </div>
 

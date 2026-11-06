@@ -211,6 +211,7 @@ model User {
   editedExecutions TestExecution[]   @relation("TestExecutionEditedBy")
   comments         Comment[]
   deletedComments  Comment[]         @relation("CommentDeletedBy")
+  settledAnswers   Comment[]         @relation("CommentSettledBy")
   questionsAsked   Comment[]         @relation("CommentQuestionTo")
   notifications    Notification[]    @relation("NotificationRecipient")
   notificationsBy  Notification[]    @relation("NotificationActor")
@@ -219,6 +220,7 @@ model User {
   poReplies        PoQuestionReply[]
   poResolved       PoQuestion[]      @relation("PoQuestionResolvedBy")
   fixStatusSet     TestCase[]        @relation("TestCaseFixStatusBy")
+  trashedCases     TestCase[]        @relation("TestCaseDeletedBy")
   fixStatusEvents  FixStatusEvent[]  @relation("FixStatusEventActor")
 
   claudeConnection       ClaudeConnection?
@@ -395,6 +397,14 @@ model TestCase {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  /// In the project's Trash: hidden everywhere, history kept, until someone
+  /// restores it or deletes it forever. lib/prisma.ts leaves trashed cases out
+  /// of every testCase query unless the query names `deletedAt` itself. The
+  /// TC ID stays taken meanwhile, so a restore can never clash.
+  deletedAt   DateTime?
+  deletedById String?
+  deletedBy   User?     @relation("TestCaseDeletedBy", fields: [deletedById], references: [id], onDelete: SetNull)
+
   moduleId  String
   module    Module  @relation(fields: [moduleId], references: [id], onDelete: Cascade)
   /// A group inside the module, e.g. "Create" under Customers. Free text:
@@ -422,6 +432,7 @@ model TestCase {
   @@index([projectId, testType])
   @@index([projectId, priority])
   @@index([projectId, fixStatus])
+  @@index([projectId, deletedAt])
 }
 
 /// One row per developer triage change.
@@ -480,6 +491,15 @@ model Comment {
   questionTo   User?     @relation("CommentQuestionTo", fields: [questionToId], references: [id], onDelete: SetNull)
   /// When a question was first answered; null while it waits.
   answeredAt   DateTime?
+
+  /// A question whose answer QA has dealt with: put into the case's text
+  /// (`settledChangedCase`), or found to need no change. A newer answer than
+  /// this asks again. The case's text is what testers, reports and the AI
+  /// read, so a confirmed answer belongs there, not only in the chat.
+  settledAt          DateTime?
+  settledById        String?
+  settledBy          User?     @relation("CommentSettledBy", fields: [settledById], references: [id], onDelete: SetNull)
+  settledChangedCase Boolean   @default(false)
 
   /// An answer's question.
   answerToId String?
@@ -625,6 +645,9 @@ model RequirementDoc {
   /// Goes up by one with each "Upload new version"; earlier text is kept in
   /// `versions`.
   version   Int                @default(1)
+  /// A feature's documents are kept together under one folder name (its FRDs
+  /// and PRD); null for none. Only for organising — nothing else reads it.
+  folder    String?
   createdAt DateTime           @default(now())
   updatedAt DateTime           @updatedAt
 
@@ -639,6 +662,7 @@ model RequirementDoc {
   versions     RequirementDocVersion[]
 
   @@index([projectId, createdAt])
+  @@index([projectId, folder])
 }
 
 /// The text of a document's earlier version, archived when a newer one was

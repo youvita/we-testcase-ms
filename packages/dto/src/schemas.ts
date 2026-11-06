@@ -207,6 +207,26 @@ export const testCaseSchema = z.object({
 
 export type TestCaseInput = z.input<typeof testCaseSchema>;
 
+/**
+ * QA deals with a PO's answer on a case: `update` puts it into the case's
+ * text; without it, the answer needed no change.
+ */
+export const settleAnswerSchema = z.object({
+  update: z
+    .object({
+      expectedResult: optionalText(4000),
+      openQuestions: optionalText(4000),
+    })
+    .optional(),
+});
+
+export type SettleAnswerInput = z.infer<typeof settleAnswerSchema>;
+
+/** Restore from, or delete forever out of, the Trash. No ids: the whole Trash. */
+export const trashActionSchema = z.object({
+  ids: z.array(z.string().min(1)).min(1).max(500).optional(),
+});
+
 export const testCaseBulkDeleteSchema = z.object({
   ids: z
     .array(z.string().min(1))
@@ -372,9 +392,15 @@ export const claudeConnectSchema = z.object({
 export const requirementDocKindSchema = z.enum(REQUIREMENT_DOC_KINDS);
 
 /** A document given as pasted text. Uploads carry the same fields as form data. */
+/** A feature's folder; blank means none. */
+const docFolder = trimmed(80)
+  .nullish()
+  .transform((value) => value || null);
+
 export const requirementDocTextSchema = z.object({
   title: trimmed(200).min(2, "Give the document a title"),
   kind: requirementDocKindSchema.default("PRD"),
+  folder: docFolder,
   content: z
     .string()
     .trim()
@@ -383,6 +409,11 @@ export const requirementDocTextSchema = z.object({
 });
 
 export type RequirementDocTextInput = z.input<typeof requirementDocTextSchema>;
+
+/** Move a document to another folder, or out of any. */
+export const requirementDocUpdateSchema = z.object({ folder: docFolder });
+
+export const requirementDocFolderSchema = docFolder;
 
 /** A new version of an existing document, pasted as text. */
 export const requirementDocVersionTextSchema = requirementDocTextSchema.pick({ content: true });

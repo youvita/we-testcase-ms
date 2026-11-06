@@ -1,7 +1,7 @@
 import * as XLSX from "xlsx";
 import type { Platform } from "@prisma/client";
 
-import { prisma } from "@/lib/prisma";
+import { includingTrash, prisma } from "@/lib/prisma";
 import { badRequest } from "@/lib/api";
 import {
   PLATFORMS,
@@ -65,20 +65,25 @@ function resolvePlatforms(rows: ParsedRow[], projectPlatforms: Platform[]) {
  * TC IDs are unique per project regardless of case, as they are within one
  * file: "tc-1" in a sheet is the case already stored as "TC-1". When older
  * data holds both spellings, the exact one wins.
+ *
+ * Cases in the Trash count: their IDs are still taken. Overwriting one brings
+ * it back, since the sheet says the case exists.
  */
 async function findExistingTcIds(
   projectId: string,
   tcIds: string[],
-): Promise<Map<string, string>> {
+): Promise<Map<string, { id: string; trashed: boolean }>> {
   const found = await prisma.testCase.findMany({
-    where: { projectId, tcId: { in: tcIds, mode: "insensitive" } },
-    select: { id: true, tcId: true },
+    where: { projectId, tcId: { in: tcIds, mode: "insensitive" }, ...includingTrash },
+    select: { id: true, tcId: true, deletedAt: true },
   });
   const exact = new Set(tcIds);
-  const byKey = new Map<string, string>();
+  const byKey = new Map<string, { id: string; trashed: boolean }>();
   for (const testCase of found) {
     const key = testCase.tcId.toLowerCase();
-    if (!byKey.has(key) || exact.has(testCase.tcId)) byKey.set(key, testCase.id);
+    if (!byKey.has(key) || exact.has(testCase.tcId)) {
+      byKey.set(key, { id: testCase.id, trashed: testCase.deletedAt !== null });
+    }
   }
   return byKey;
 }
@@ -376,14 +381,16 @@ export async function importTestCases(
       const moduleId = moduleIdByName.get(row.module);
       if (!moduleId) continue; // unreachable; keeps the type narrow
 
-      const existingId = existingByTcId.get(row.tcId.toLowerCase());
+      const existing = existingByTcId.get(row.tcId.toLowerCase());
 
-      if (existingId) {
+      if (existing) {
         if (mode === "skip") {
           errors.push({
             row: row.row,
             tcId: row.tcId,
-            reason: `TC ID "${row.tcId}" already exists in this project — skipped`,
+            reason: existing.trashed
+              ? `TC ID "${row.tcId}" belongs to a test case in the Trash — skipped`
+              : `TC ID "${row.tcId}" already exists in this project — skipped`,
           });
           continue;
         }
@@ -391,8 +398,11 @@ export async function importTestCases(
         // Deliberately does not write `status` or `lastExecutedAt`: re-importing
         // a sheet must never wipe recorded results.
         await tx.testCase.update({
-          where: { id: existingId },
+          where: { id: existing.id, ...includingTrash },
           data: {
+            // Out of the Trash, if it was there: the sheet says it exists.
+            deletedAt: null,
+            deletedById: null,
             moduleId,
             ...(row.subModule === null ? {} : { subModule: row.subModule || null }),
             title: row.title,

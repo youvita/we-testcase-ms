@@ -1,6 +1,6 @@
 import type { FixStatus, Prisma } from "@prisma/client";
 
-import { prisma } from "@/lib/prisma";
+import { includingTrash, prisma } from "@/lib/prisma";
 import { conflict, forbidden, notFound } from "@/lib/api";
 import { canMarkRetesting, canSetFixStatus } from "@/lib/permissions";
 import type { Role } from "@/lib/constants";
@@ -10,6 +10,7 @@ import type {
   TestCaseListItem,
   TestCaseWithDetails,
 } from "@/types";
+import type { TrashedTestCase } from "@wetestcase/dto";
 
 import { resolveProjectPlatform } from "./project.service";
 
@@ -287,12 +288,10 @@ export async function createTestCase(projectId: string, input: TestCaseInput) {
   // Unique regardless of case, as the importer treats them: "tc-1" and
   // "TC-1" would read as the same case to everyone looking at the list.
   const duplicate = await prisma.testCase.findFirst({
-    where: { projectId, tcId: { equals: tcId, mode: "insensitive" } },
-    select: { id: true },
+    where: { projectId, tcId: { equals: tcId, mode: "insensitive" }, ...includingTrash },
+    select: { deletedAt: true },
   });
-  if (duplicate) {
-    throw conflict(`TC ID "${tcId}" is already used in this project`);
-  }
+  if (duplicate) throw tcIdTaken(tcId, duplicate);
 
   return prisma.testCase.create({
     data: {
@@ -339,12 +338,11 @@ export async function updateTestCase(
       projectId: existing.projectId,
       tcId: { equals: tcId, mode: "insensitive" },
       NOT: { id: testCaseId },
+      ...includingTrash,
     },
-    select: { id: true },
+    select: { deletedAt: true },
   });
-  if (duplicate) {
-    throw conflict(`TC ID "${tcId}" is already used in this project`);
-  }
+  if (duplicate) throw tcIdTaken(tcId, duplicate);
 
   return prisma.testCase.update({
     where: { id: testCaseId },
@@ -364,17 +362,29 @@ export async function updateTestCase(
   });
 }
 
-export async function deleteTestCase(testCaseId: string) {
-  const existing = await prisma.testCase.findUnique({
+/**
+ * A TC ID is taken by any case in the project, one in the Trash included —
+ * otherwise restoring that case would clash with the new one.
+ */
+function tcIdTaken(tcId: string, holder: { deletedAt: Date | null }) {
+  return conflict(
+    holder.deletedAt
+      ? `TC ID "${tcId}" belongs to a test case in the Trash. Restore it, or delete it forever to reuse the ID.`
+      : `TC ID "${tcId}" is already used in this project`,
+  );
+}
+
+/** Move one test case to the project's Trash. */
+export async function deleteTestCase(testCaseId: string, userId: string) {
+  const { count } = await prisma.testCase.updateMany({
     where: { id: testCaseId },
-    select: { id: true },
+    data: { deletedAt: new Date(), deletedById: userId },
   });
-  if (!existing) throw notFound("Test case");
-  await prisma.testCase.delete({ where: { id: testCaseId } });
+  if (count === 0) throw notFound("Test case");
 }
 
 /**
- * Delete several test cases in one request.
+ * Move several test cases to the Trash in one request.
  *
  * Scoped to `projectId` so ids from another project cannot be reached by
  * pointing the request at a project the caller can see. Ids that no longer
@@ -384,16 +394,84 @@ export async function deleteTestCase(testCaseId: string) {
 export async function deleteTestCases(
   projectId: string,
   ids: string[],
+  userId: string,
 ): Promise<{ deleted: number; missing: number }> {
   const unique = [...new Set(ids)];
 
-  const { count } = await prisma.testCase.deleteMany({
+  const { count } = await prisma.testCase.updateMany({
     where: { projectId, id: { in: unique } },
+    data: { deletedAt: new Date(), deletedById: userId },
   });
 
   if (count === 0) throw notFound("Test cases");
 
   return { deleted: count, missing: unique.length - count };
+}
+
+const inTrash = { deletedAt: { not: null } } as const;
+
+/** The project's Trash, most recently deleted first. */
+export async function listTrash(projectId: string): Promise<TrashedTestCase[]> {
+  const rows = await prisma.testCase.findMany({
+    where: { projectId, ...inTrash },
+    orderBy: [{ deletedAt: "desc" }, { tcId: "asc" }],
+    select: {
+      id: true,
+      tcId: true,
+      title: true,
+      platform: true,
+      status: true,
+      subModule: true,
+      deletedAt: true,
+      module: { select: { name: true } },
+      deletedBy: { select: { name: true } },
+      _count: { select: { executions: true } },
+    },
+  });
+  return rows.map((row) => ({
+    id: row.id,
+    tcId: row.tcId,
+    title: row.title,
+    platform: row.platform,
+    status: row.status,
+    moduleName: row.module.name,
+    subModule: row.subModule,
+    deletedAt: row.deletedAt!.toISOString(),
+    deletedByName: row.deletedBy?.name ?? null,
+    executions: row._count.executions,
+  }));
+}
+
+export async function countTrash(projectId: string): Promise<number> {
+  return prisma.testCase.count({ where: { projectId, ...inTrash } });
+}
+
+/** Bring test cases back from the Trash, history and all. */
+export async function restoreTestCases(
+  projectId: string,
+  ids: string[],
+): Promise<{ restored: number }> {
+  const { count } = await prisma.testCase.updateMany({
+    where: { projectId, id: { in: [...new Set(ids)] }, ...inTrash },
+    data: { deletedAt: null, deletedById: null },
+  });
+  if (count === 0) throw notFound("Test cases in the Trash");
+  return { restored: count };
+}
+
+/**
+ * Delete test cases forever, with their history, comments and scripts. Only
+ * cases already in the Trash: nothing goes straight from the list to gone.
+ * Without ids, empties the project's Trash.
+ */
+export async function purgeTestCases(
+  projectId: string,
+  ids?: string[],
+): Promise<{ deleted: number }> {
+  const { count } = await prisma.testCase.deleteMany({
+    where: { projectId, ...inTrash, ...(ids ? { id: { in: [...new Set(ids)] } } : {}) },
+  });
+  return { deleted: count };
 }
 
 /** Put several test cases in one sub-module, or take them out of any. */

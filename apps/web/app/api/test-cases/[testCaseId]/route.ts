@@ -31,7 +31,8 @@ export const DELETE = route<Ctx>(
   async (_request, { params, user }) => {
     const { testCaseId } = await params;
     await assertTestCaseAccess(testCaseId, user);
-    await deleteTestCase(testCaseId);
+    // To the Trash; it can be restored from there.
+    await deleteTestCase(testCaseId, user.id);
     return ok({ deleted: true });
   },
 );

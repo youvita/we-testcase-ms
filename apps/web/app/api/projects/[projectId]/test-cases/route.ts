@@ -44,7 +44,7 @@ export const POST = route<Ctx>(
 );
 
 /**
- * Bulk delete. Takes the ids in the body rather than the query string so a
+ * Bulk delete, to the Trash. Takes the ids in the body rather than the query string so a
  * large selection cannot run into a URL length limit, and keeps the project in
  * the path so the service can scope the delete to it.
  */
@@ -54,7 +54,7 @@ export const DELETE = route<Ctx>(
     const { projectId } = await params;
     await assertProjectAccess(projectId, user);
     const { ids } = testCaseBulkDeleteSchema.parse(await readJson(request));
-    return ok(await deleteTestCases(projectId, ids));
+    return ok(await deleteTestCases(projectId, ids, user.id));
   },
 );
 

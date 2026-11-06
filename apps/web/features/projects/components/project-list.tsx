@@ -75,18 +75,21 @@ export function ProjectList({
   memberCandidates,
   canManage,
   canDelete,
+  startCreating = false,
 }: {
   projects: ProjectWithStats[];
   qaOwners: QaOwnerOption[];
   memberCandidates: MemberOption[];
   canManage: boolean;
   canDelete: boolean;
+  /** Open the New project form straight away (`/projects?new=1`). */
+  startCreating?: boolean;
 }) {
   const router = useRouter();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("ALL");
   const [view, setView] = useState<ProjectView>("card");
-  const [formOpen, setFormOpen] = useState(false);
+  const [formOpen, setFormOpen] = useState(startCreating);
   const [editing, setEditing] = useState<ProjectWithStats | undefined>();
   const [deleting, setDeleting] = useState<ProjectWithStats | null>(null);
 
@@ -375,7 +378,11 @@ export function ProjectList({
       {canManage && (
         <ProjectFormDialog
           open={formOpen}
-          onOpenChange={setFormOpen}
+          onOpenChange={(next) => {
+            setFormOpen(next);
+            // Drop `?new=1`, so a refresh does not open the form again.
+            if (!next && startCreating) router.replace("/projects", { scroll: false });
+          }}
           project={editing}
           qaOwners={qaOwners}
           memberCandidates={memberCandidates}

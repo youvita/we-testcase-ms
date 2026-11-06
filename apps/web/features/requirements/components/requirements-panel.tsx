@@ -86,6 +86,14 @@ import type { StartAi } from "./requirements-workspace";
 
 type Coverage = "all" | "uncovered" | "covered" | "questions" | "changes" | "removed";
 
+/** A document's section — the unit a feature is usually written as. */
+type Group = { key: string; section: string | null; docTitle: string; items: RequirementDto[] };
+
+const groupKey = (req: RequirementDto) => `${req.docId}\u0000${req.section ?? ""}`;
+
+/** Past this many, sections start collapsed so the page opens as an overview. */
+const COLLAPSE_FROM = 40;
+
 export function RequirementsPanel({
   projectId,
   docs,
@@ -115,7 +123,13 @@ export function RequirementsPanel({
 }) {
   const router = useRouter();
   const [search, setSearch] = useState("");
+  // "all", a document's id, or "folder:<name>" for a feature's documents.
   const [docFilter, setDocFilter] = useState("all");
+  const folderOf = useMemo(() => new Map(docs.map((doc) => [doc.id, doc.folder])), [docs]);
+  const folders = useMemo(
+    () => [...new Set(docs.map((doc) => doc.folder).filter((f): f is string => Boolean(f)))].sort((a, b) => a.localeCompare(b)),
+    [docs],
+  );
   const [coverage, setCoverage] = useState<Coverage>("all");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
@@ -129,7 +143,9 @@ export function RequirementsPanel({
       // Removed requirements only show when asked for.
       if ((coverage === "removed") !== (req.status === "REMOVED")) return false;
       if (coverage === "changes" && !needsAttention(req)) return false;
-      if (docFilter !== "all" && req.docId !== docFilter) return false;
+      if (docFilter.startsWith("folder:")) {
+        if (folderOf.get(req.docId) !== docFilter.slice("folder:".length)) return false;
+      } else if (docFilter !== "all" && req.docId !== docFilter) return false;
       if (coverage === "uncovered" && req.testCases.length > 0) return false;
       if (coverage === "covered" && req.testCases.length === 0) return false;
       if (coverage === "questions" && !req.openQuestions) return false;
@@ -138,9 +154,49 @@ export function RequirementsPanel({
         .filter(Boolean)
         .some((text) => text!.toLowerCase().includes(term));
     });
-  }, [requirements, search, docFilter, coverage]);
+  }, [requirements, search, docFilter, coverage, folderOf]);
 
   const paging = useClientPagination(visible, `${search}|${docFilter}|${coverage}`);
+
+  // Grouped by section when the documents have more than one; otherwise the
+  // flat, paged list.
+  const groups = useMemo(() => {
+    const byKey = new Map<string, Group>();
+    for (const req of visible) {
+      const key = groupKey(req);
+      let group = byKey.get(key);
+      if (!group) {
+        group = { key, section: req.section, docTitle: req.docTitle, items: [] };
+        byKey.set(key, group);
+      }
+      group.items.push(req);
+    }
+    return [...byKey.values()];
+  }, [visible]);
+  const grouped = groups.length > 1;
+
+  // Each section's progress counts all its requirements, whatever the filter.
+  const progress = useMemo(() => {
+    const byKey = new Map<string, { total: number; covered: number; questions: number }>();
+    for (const req of requirements) {
+      if (req.status === "REMOVED") continue;
+      const key = groupKey(req);
+      const counts = byKey.get(key) ?? { total: 0, covered: 0, questions: 0 };
+      counts.total += 1;
+      if (req.testCases.length > 0) counts.covered += 1;
+      if (req.openQuestions) counts.questions += 1;
+      byKey.set(key, counts);
+    }
+    return byKey;
+  }, [requirements]);
+
+  const [collapsed, setCollapsed] = useState<Set<string>>(() =>
+    requirements.length > COLLAPSE_FROM ? new Set(requirements.map(groupKey)) : new Set(),
+  );
+  // A search shows every match, collapsed section or not.
+  const searching = search.trim() !== "";
+  const isOpen = (key: string) => searching || !collapsed.has(key);
+  const allCollapsed = groups.every((group) => collapsed.has(group.key));
 
   const questionsFor = useMemo(() => {
     const byRequirement = new Map<string, PoQuestionDto[]>();
@@ -164,6 +220,11 @@ export function RequirementsPanel({
       setDocFilter("all");
       setCoverage(target.status === "REMOVED" ? "removed" : "all");
       setExpanded((current) => new Set(current).add(target.id));
+      setCollapsed((current) => {
+        const next = new Set(current);
+        next.delete(groupKey(target));
+        return next;
+      });
       setPendingFocus(target.id);
     }
   }
@@ -171,13 +232,15 @@ export function RequirementsPanel({
     if (!pendingFocus) return;
     const index = visible.findIndex((req) => req.id === pendingFocus);
     if (index === -1) return;
-    paging.setPage(Math.floor(index / paging.pageSize) + 1);
+    if (!grouped) paging.setPage(Math.floor(index / paging.pageSize) + 1);
     setPendingFocus(null);
     requestAnimationFrame(() =>
       document.getElementById(`requirement-${pendingFocus}`)?.scrollIntoView({ block: "center", behavior: "smooth" }),
     );
-  }, [pendingFocus, visible, paging]);
-  const shown = paging.pageItems;
+  }, [pendingFocus, visible, paging, grouped]);
+  const shown = grouped
+    ? groups.flatMap((group) => (isOpen(group.key) ? group.items : []))
+    : paging.pageItems;
 
   // Selection survives filtering, so it is counted against what still exists.
   const selectedIds = requirements
@@ -253,6 +316,11 @@ export function RequirementsPanel({
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All documents</SelectItem>
+                {folders.map((folder) => (
+                  <SelectItem key={`folder:${folder}`} value={`folder:${folder}`}>
+                    Folder: {folder}
+                  </SelectItem>
+                ))}
                 {docs.map((doc) => (
                   <SelectItem key={doc.id} value={doc.id}>
                     {doc.title}
@@ -274,6 +342,16 @@ export function RequirementsPanel({
               <SelectItem value="removed">Removed</SelectItem>
             </SelectContent>
           </Select>
+          {grouped && !searching && (
+            <Button
+              variant="ghost"
+              onClick={() =>
+                setCollapsed(allCollapsed ? new Set() : new Set(groups.map((group) => group.key)))
+              }
+            >
+              {allCollapsed ? "Expand all" : "Collapse all"}
+            </Button>
+          )}
         </div>
 
         {canManage && (
@@ -307,9 +385,9 @@ export function RequirementsPanel({
           <TableHeader>
             <TableRow>
               {canManage && (
-                <TableHead className="w-10">
+                <TableHead className="w-12 pl-4">
                   <Checkbox
-                    aria-label="Select all on this page"
+                    aria-label="Select all shown"
                     checked={allShownSelected}
                     onCheckedChange={(checked) => {
                       const next = new Set(selected);
@@ -322,7 +400,7 @@ export function RequirementsPanel({
                   />
                 </TableHead>
               )}
-              <TableHead className="w-8" />
+              <TableHead className={grouped ? "w-14" : "w-8"} />
               <TableHead className="w-[120px]">Code</TableHead>
               <TableHead>Requirement</TableHead>
               <TableHead className="w-[220px]">Test cases</TableHead>
@@ -337,122 +415,195 @@ export function RequirementsPanel({
                 </TableCell>
               </TableRow>
             )}
-            {shown.map((req) => {
-              const open = expanded.has(req.id);
+            {(grouped ? groups : [{ key: "", section: null, docTitle: "", items: shown }]).map((group) => {
+              const groupOpen = !grouped || isOpen(group.key);
+              const counts = progress.get(group.key);
+              const label = group.section ?? "No section";
               return (
-                <Fragment key={req.id}>
-                  <TableRow
-                    id={`requirement-${req.id}`}
-                    data-state={selected.has(req.id) ? "selected" : undefined}
-                  >
-                    {canManage && (
-                      <TableCell>
-                        <Checkbox
-                          aria-label={`Select ${req.code}`}
-                          checked={selected.has(req.id)}
-                          onCheckedChange={(checked) =>
-                            setSelected(toggle(selected, req.id, checked === true))
-                          }
-                        />
-                      </TableCell>
-                    )}
-                    <TableCell className="px-1">
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        className="size-7"
-                        aria-label={open ? "Hide details" : "Show details"}
-                        onClick={() => setExpanded(toggle(expanded, req.id, !open))}
-                      >
-                        {open ? <ChevronDown className="size-4" /> : <ChevronRight className="size-4" />}
-                      </Button>
-                    </TableCell>
-                    <TableCell className="font-mono text-xs">{req.code}</TableCell>
-                    <TableCell>
-                      <div className="flex items-start gap-2">
-                        <span
-                          className={cn(
-                            "font-medium",
-                            req.status === "REMOVED" && "text-muted-foreground line-through",
-                          )}
+                <Fragment key={group.key}>
+                  {grouped && (
+                    <TableRow className="bg-muted/40 hover:bg-muted/40">
+                      {canManage && (
+                        <TableCell className="pl-4">
+                          <Checkbox
+                            aria-label={`Select all in ${label}`}
+                            checked={group.items.every((req) => selected.has(req.id))}
+                            onCheckedChange={(checked) => {
+                              const next = new Set(selected);
+                              for (const req of group.items) {
+                                if (checked) next.add(req.id);
+                                else next.delete(req.id);
+                              }
+                              setSelected(next);
+                            }}
+                          />
+                        </TableCell>
+                      )}
+                      <TableCell colSpan={canManage ? 5 : 4} className="py-1.5 pl-1">
+                        <button
+                          type="button"
+                          className="flex w-full flex-wrap items-center gap-x-2 gap-y-0.5 text-left"
+                          aria-expanded={groupOpen}
+                          disabled={searching}
+                          onClick={() => setCollapsed(toggle(collapsed, group.key, groupOpen))}
                         >
-                          {req.title}
-                        </span>
-                        <ChangeBadge requirement={req} />
-                        {req.openQuestions && (
-                          <CircleHelp
-                            className="mt-0.5 size-4 shrink-0 text-status-blocked"
-                            aria-label="Has open questions"
-                          />
-                        )}
-                        <PoQuestionBadge questions={questionsFor(req.id)} />
-                      </div>
-                      <p className="text-xs text-muted-foreground">
-                        {[req.section, docs.length > 1 ? req.docTitle : null]
-                          .filter(Boolean)
-                          .join(" · ")}
-                      </p>
-                      {canManage && <ChangeReview requirement={req} />}
-                    </TableCell>
-                    <TableCell>
-                      <CoverageCell projectId={projectId} requirement={req} />
-                    </TableCell>
-                    {canManage && (
-                      <TableCell>
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button size="icon" variant="ghost" aria-label="Requirement actions">
-                              <MoreHorizontal className="size-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem onSelect={() => setEditing(req)}>
-                              <Pencil className="mr-2 size-4" />
-                              Edit
-                            </DropdownMenuItem>
-                            {req.status === "REMOVED" && (
-                              <DropdownMenuItem onSelect={() => void restore(req)}>
-                                <RotateCcw className="mr-2 size-4" />
-                                Restore
-                              </DropdownMenuItem>
+                          <span className="flex size-7 items-center justify-center">
+                            {groupOpen ? (
+                              <ChevronDown className="size-4 text-foreground" strokeWidth={2.5} />
+                            ) : (
+                              <ChevronRight className="size-4 text-foreground" strokeWidth={2.5} />
                             )}
-                            <DropdownMenuItem
-                              className="text-destructive focus:text-destructive"
-                              onSelect={() => setDeleting(req)}
-                            >
-                              <Trash2 className="mr-2 size-4" />
-                              Delete
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </TableCell>
-                    )}
-                  </TableRow>
-                  {open && (
-                    <TableRow className="bg-muted/30 hover:bg-muted/30">
-                      <TableCell colSpan={canManage ? 6 : 4} className="space-y-3 py-4 pl-14 text-sm">
-                        <ChangeDetail requirement={req} />
-                        <Detail label="Description" text={req.description} />
-                        <Detail label="Acceptance criteria" text={req.acceptanceCriteria} />
-                        <Detail
-                          label="Open questions — ask the product owner"
-                          text={req.openQuestions}
-                          className="text-status-blocked"
-                        />
-                        <PoQuestions questions={questionsFor(req.id)} po={po} />
-                        {po.canAsk && (
-                          <AskPoDialog
-                            ask={{ url: `/api/projects/${projectId}/po-questions`, extra: { requirementId: req.id } }}
-                            where="under this requirement"
-                            label={questionsFor(req.id).length ? "New question" : undefined}
-                            admins={po.admins}
-                            currentUserId={po.currentUserId}
-                            openQuestions={req.openQuestions}
-                          />
-                        )}
+                          </span>
+                          <span className={cn("font-medium", !group.section && "text-muted-foreground")}>
+                            {label}
+                          </span>
+                          {docs.length > 1 && docFilter === "all" && (
+                            <span className="text-xs text-muted-foreground">{group.docTitle}</span>
+                          )}
+                          <span className="ml-auto text-xs text-muted-foreground">
+                            {counts && counts.total > 0 && (
+                              <span className={cn(counts.covered === counts.total && "font-medium text-status-passed")}>
+                                {counts.covered}/{counts.total} covered
+                              </span>
+                            )}
+                            {counts && counts.questions > 0 && (
+                              <span className="text-status-blocked">
+                                {" · "}
+                                {counts.questions} with questions
+                              </span>
+                            )}
+                            {(coverage !== "all" || docFilter !== "all") && ` · ${group.items.length} shown`}
+                          </span>
+                        </button>
                       </TableCell>
                     </TableRow>
                   )}
+                {groupOpen && group.items.map((req) => {
+                  const open = expanded.has(req.id);
+                  return (
+                    <Fragment key={req.id}>
+                      <TableRow
+                        id={`requirement-${req.id}`}
+                        data-state={selected.has(req.id) ? "selected" : undefined}
+                      >
+                        {canManage && (
+                          <TableCell className="pl-4">
+                            <Checkbox
+                              aria-label={`Select ${req.code}`}
+                              checked={selected.has(req.id)}
+                              onCheckedChange={(checked) =>
+                                setSelected(toggle(selected, req.id, checked === true))
+                              }
+                            />
+                          </TableCell>
+                        )}
+                        {/* Under a section, a requirement's arrow sits one step in
+                            and lighter, so it reads as inside the section's. */}
+                        <TableCell className={cn("px-1", grouped && "pl-7")}>
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            className={cn("size-7", grouped && "size-6 text-muted-foreground")}
+                            aria-label={open ? "Hide details" : "Show details"}
+                            onClick={() => setExpanded(toggle(expanded, req.id, !open))}
+                          >
+                            {open ? (
+                              <ChevronDown className={grouped ? "size-3.5" : "size-4"} />
+                            ) : (
+                              <ChevronRight className={grouped ? "size-3.5" : "size-4"} />
+                            )}
+                          </Button>
+                        </TableCell>
+                        <TableCell className="font-mono text-xs">{req.code}</TableCell>
+                        <TableCell>
+                          <div className="flex items-start gap-2">
+                            <span
+                              className={cn(
+                                "font-medium",
+                                req.status === "REMOVED" && "text-muted-foreground line-through",
+                              )}
+                            >
+                              {req.title}
+                            </span>
+                            <ChangeBadge requirement={req} />
+                            {req.openQuestions && (
+                              <CircleHelp
+                                className="mt-0.5 size-4 shrink-0 text-status-blocked"
+                                aria-label="Has open questions"
+                              />
+                            )}
+                            <PoQuestionBadge questions={questionsFor(req.id)} />
+                          </div>
+                          <p className="text-xs text-muted-foreground">
+                            {/* Under a section heading, both are already said. */}
+                        {(grouped ? [] : [req.section, docs.length > 1 ? req.docTitle : null])
+                              .filter(Boolean)
+                              .join(" · ")}
+                          </p>
+                          {canManage && <ChangeReview requirement={req} />}
+                        </TableCell>
+                        <TableCell>
+                          <CoverageCell projectId={projectId} requirement={req} />
+                        </TableCell>
+                        {canManage && (
+                          <TableCell>
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button size="icon" variant="ghost" aria-label="Requirement actions">
+                                  <MoreHorizontal className="size-4" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                <DropdownMenuItem onSelect={() => setEditing(req)}>
+                                  <Pencil className="mr-2 size-4" />
+                                  Edit
+                                </DropdownMenuItem>
+                                {req.status === "REMOVED" && (
+                                  <DropdownMenuItem onSelect={() => void restore(req)}>
+                                    <RotateCcw className="mr-2 size-4" />
+                                    Restore
+                                  </DropdownMenuItem>
+                                )}
+                                <DropdownMenuItem
+                                  className="text-destructive focus:text-destructive"
+                                  onSelect={() => setDeleting(req)}
+                                >
+                                  <Trash2 className="mr-2 size-4" />
+                                  Delete
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </TableCell>
+                        )}
+                      </TableRow>
+                      {open && (
+                        <TableRow className="bg-muted/30 hover:bg-muted/30">
+                          <TableCell colSpan={canManage ? 6 : 4} className={cn("space-y-3 py-4 text-sm", grouped ? "pl-20" : "pl-14")}>
+                            <ChangeDetail requirement={req} />
+                            <Detail label="Description" text={req.description} />
+                            <Detail label="Acceptance criteria" text={req.acceptanceCriteria} />
+                            <Detail
+                              label="Open questions — ask the product owner"
+                              text={req.openQuestions}
+                              className="text-status-blocked"
+                            />
+                            <PoQuestions questions={questionsFor(req.id)} po={po} />
+                            {po.canAsk && (
+                              <AskPoDialog
+                                ask={{ url: `/api/projects/${projectId}/po-questions`, extra: { requirementId: req.id } }}
+                                where="under this requirement"
+                                label={questionsFor(req.id).length ? "New question" : undefined}
+                                admins={po.admins}
+                                currentUserId={po.currentUserId}
+                                openQuestions={req.openQuestions}
+                              />
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      )}
+                    </Fragment>
+                  );
+                })}
                 </Fragment>
               );
             })}
@@ -460,7 +611,7 @@ export function RequirementsPanel({
         </Table>
       </Card>
 
-      {visible.length > 0 && (
+      {visible.length > 0 && !grouped && (
         <PaginationControls
           page={paging.page}
           pageSize={paging.pageSize}
@@ -646,16 +797,23 @@ function GenerateDialog({
               )}
             </div>
             <div className="space-y-2">
-              <Label>Depth</Label>
+              <Label>How many cases</Label>
               <Select value={depth} onValueChange={(value) => setDepth(value as GenerationDepth)}>
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="essential">Essential — 1–3 per requirement</SelectItem>
-                  <SelectItem value="thorough">Thorough — 3–8 per requirement</SelectItem>
+                {/* Short labels: the list is no wider than its field, and the
+                    hint below says the rest. */}
+                <SelectContent className="max-w-[var(--radix-select-trigger-width)]">
+                  <SelectItem value="essential">Main checks · 1–3 cases</SelectItem>
+                  <SelectItem value="thorough">Full coverage · 3–8 cases</SelectItem>
                 </SelectContent>
               </Select>
+              <p className="text-xs text-muted-foreground">
+                {depth === "essential"
+                  ? "Per requirement: the main success path and the most important error. Best for most requirements."
+                  : "Per requirement: adds wrong input, limits, roles and status changes. For risky ones: payments, permissions, security, complex forms."}
+              </p>
             </div>
           </div>
           <div className="space-y-2">

@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { useRouter } from "next/navigation";
-import { CornerDownRight, Loader2, MessageSquare, Send, Trash2 } from "lucide-react";
+import { CornerDownRight, FilePenLine, HelpCircle, Loader2, MessageSquare, Send, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -20,7 +20,10 @@ import { ROLE_LABELS, toRole } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 import { api, errorMessage } from "@/utils/api-client";
 import { formatDateTime, initials } from "@/utils/format";
+import { answersToApply } from "@/utils/po-answers";
 import type { CommentWithAuthor } from "@/types";
+
+import { ApplyAnswerDialog, type CaseText } from "./apply-answer-dialog";
 
 /**
  * QA ↔ developer discussion on a test case.
@@ -37,6 +40,7 @@ export function CommentThread({
   canComment,
   canModerate,
   canAnswer = false,
+  caseText,
 }: {
   testCaseId: string;
   comments: CommentWithAuthor[];
@@ -45,6 +49,11 @@ export function CommentThread({
   canModerate: boolean;
   /** An admin — a PO — who can answer questions. */
   canAnswer?: boolean;
+  /**
+   * The case's expected result and open questions, for those who edit cases:
+   * then each new PO answer asks to be put into them.
+   */
+  caseText?: CaseText;
 }) {
   const router = useRouter();
   const [body, setBody] = useState("");
@@ -54,6 +63,24 @@ export function CommentThread({
   const [answer, setAnswer] = useState("");
   const [sendingAnswer, setSendingAnswer] = useState(false);
   const byId = new Map(comments.map((comment) => [comment.id, comment]));
+  // Question id → its latest answer, while the answer is not yet in the case.
+  const toApply = caseText ? answersToApply(comments) : new Map<string, string>();
+  const promptAfter = new Map([...toApply].map(([questionId, answerId]) => [answerId, questionId]));
+  const [applying, setApplying] = useState<string | null>(null);
+  const [settling, setSettling] = useState<string | null>(null);
+  const applyingQuestion = applying ? byId.get(applying) : undefined;
+
+  async function handleNoChange(questionId: string) {
+    setSettling(questionId);
+    try {
+      await api.post(`/api/comments/${questionId}/settle`, {});
+      router.refresh();
+    } catch (error) {
+      toast.error(errorMessage(error));
+    } finally {
+      setSettling(null);
+    }
+  }
 
   async function handleAnswer(questionId: string) {
     const trimmed = answer.trim();
@@ -125,16 +152,10 @@ export function CommentThread({
             {comments.map((comment) => {
               const withdrawn = Boolean(comment.deletedAt);
               const question = comment.kind === "QUESTION";
-              const answerTo = comment.answerToId ? byId.get(comment.answerToId) : undefined;
+              const promptFor = promptAfter.get(comment.id);
               return (
-                <li
-                  key={comment.id}
-                  className={cn(
-                    "flex items-start gap-3",
-                    question && "rounded-md border-l-2 border-status-blocked bg-status-blocked/5 py-2 pl-2 pr-1",
-                    comment.answerToId && "ml-6",
-                  )}
-                >
+                <Fragment key={comment.id}>
+                <li className={cn("flex items-start gap-3", comment.answerToId && "ml-9")}>
                   <Avatar className="size-7 shrink-0">
                     {comment.author.image && (
                       <AvatarImage src={comment.author.image} alt="" />
@@ -145,48 +166,17 @@ export function CommentThread({
                   </Avatar>
 
                   <div className="min-w-0 flex-1 space-y-1">
-                    <div className="flex flex-wrap items-baseline gap-x-2">
-                      <span className="text-sm font-medium">
-                        {comment.author.name}
-                      </span>
-                      {/* The role is what tells QA whether a reply is coming from
-                        engineering, so it is worth the space. */}
-                      <span className="rounded-full bg-muted px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground">
-                        {ROLE_LABELS[toRole(comment.author.role)]}
-                      </span>
-                      <span className="text-xs text-muted-foreground">
-                        {formatDateTime(comment.createdAt)}
-                      </span>
-                      {question && (
-                        <span className="inline-flex items-center gap-1.5 text-xs">
-                          <span className="font-medium text-status-blocked">
-                            Question for {comment.questionTo?.name ?? "the PO"}
-                          </span>
-                          <span
-                            className={cn(
-                              "rounded-full px-1.5 py-0.5 text-[11px] font-medium",
-                              comment.answeredAt
-                                ? "bg-status-passed/10 text-status-passed"
-                                : "bg-status-blocked/10 text-status-blocked",
-                            )}
-                          >
-                            {comment.answeredAt ? "Answered" : "Waiting for an answer"}
-                          </span>
-                        </span>
-                      )}
-                      {comment.kind === "ANSWER" && (
-                        <span className="inline-flex items-center gap-1 text-xs font-medium text-status-passed">
-                          <CornerDownRight className="size-3" aria-hidden />
-                          Answer{answerTo ? ` to ${answerTo.author.name}` : ""}
-                        </span>
-                      )}
-                      {comment.kind === "COMMENT" && comment.answerToId && (
-                        <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
-                          <CornerDownRight className="size-3" aria-hidden />
-                          Follow-up
-                        </span>
-                      )}
-                    </div>
+                    {/* One plain line: who, their role (it tells QA whether a
+                        reply comes from the PO or engineering), when. */}
+                    <p className="text-xs text-muted-foreground">
+                      <span className="text-sm font-medium text-foreground">{comment.author.name}</span>
+                      {" · "}
+                      {ROLE_LABELS[toRole(comment.author.role)]}
+                      {" · "}
+                      {formatDateTime(comment.createdAt)}
+                      {comment.kind === "ANSWER" && " · Answer"}
+                      {comment.kind === "COMMENT" && comment.answerToId && " · Follow-up"}
+                    </p>
                     {withdrawn ? (
                       // A tombstone, not a gap: replies below this one still need
                       // something to point at.
@@ -198,6 +188,28 @@ export function CommentThread({
                       </p>
                     ) : (
                       <p className="preserve-lines text-sm">{comment.body}</p>
+                    )}
+                    {question && !withdrawn && (
+                      // Where the question stands, in one quiet line; only a
+                      // question still waiting is coloured.
+                      <p className="flex flex-wrap items-center gap-x-1.5 text-xs text-muted-foreground">
+                        <HelpCircle className="size-3.5" aria-hidden />
+                        Question for {comment.questionTo?.name ?? "the PO"}
+                        {" · "}
+                        {comment.answeredAt ? (
+                          "Answered"
+                        ) : (
+                          <span className="font-medium text-status-blocked">Waiting for an answer</span>
+                        )}
+                        {comment.settledAt && !toApply.has(comment.id) && (
+                          <>
+                            {" · "}
+                            <span title={comment.settledBy ? `By ${comment.settledBy.name}` : undefined}>
+                              {comment.settledChangedCase ? "Added to the case" : "No change to the case"}
+                            </span>
+                          </>
+                        )}
+                      </p>
                     )}
                     {question && !withdrawn && canAnswer && answering !== comment.id && (
                       <Button
@@ -262,9 +274,46 @@ export function CommentThread({
                       </Button>
                     )}
                 </li>
+                {promptFor && (
+                  // After the PO's latest answer: the confirmed rule belongs in
+                  // the case, which is what testers, reports and the AI read.
+                  <li className="ml-9 flex flex-wrap items-center gap-2 rounded-md border px-3 py-2">
+                    <FilePenLine className="size-4 shrink-0 text-muted-foreground" aria-hidden />
+                    <span className="mr-auto text-sm">
+                      The PO answered. Update the expected result?
+                    </span>
+                    <Button size="sm" className="h-7" onClick={() => setApplying(promptFor)}>
+                      Update expected result
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-7"
+                      disabled={settling === promptFor}
+                      onClick={() => void handleNoChange(promptFor)}
+                    >
+                      {settling === promptFor && <Loader2 className="mr-1.5 size-3.5 animate-spin" />}
+                      No change needed
+                    </Button>
+                  </li>
+                )}
+                </Fragment>
               );
             })}
           </ol>
+        )}
+
+        {caseText && applyingQuestion && (
+          <ApplyAnswerDialog
+            open
+            onOpenChange={(open) => !open && setApplying(null)}
+            questionId={applyingQuestion.id}
+            question={applyingQuestion.body}
+            answers={comments
+              .filter((c) => c.kind === "ANSWER" && c.answerToId === applyingQuestion.id && !c.deletedAt)
+              .map((c) => ({ author: c.author.name, body: c.body }))}
+            caseText={caseText}
+          />
         )}
 
         {canComment && (

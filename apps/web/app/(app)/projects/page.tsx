@@ -15,9 +15,15 @@ import {
 
 export const metadata: Metadata = { title: "Projects" };
 
-export default async function ProjectsPage() {
+export default async function ProjectsPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
   const user = await requireUser();
   const canManage = canManageProjects(user.role);
+  // `?new=1` opens the New project form, for links like "Create project".
+  const startCreating = canManage && (await searchParams).new === "1";
 
   const [projects, qaOwners, memberCandidates] =
     await Promise.all([
@@ -48,6 +54,7 @@ export default async function ProjectsPage() {
         memberCandidates={memberCandidates}
         canManage={canManage}
         canDelete={user.role === ROLES.ADMIN}
+        startCreating={startCreating}
       />
     </div>
   );

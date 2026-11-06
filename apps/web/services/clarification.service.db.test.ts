@@ -12,7 +12,10 @@ import {
   markNotificationsRead,
   replyToPoQuestion,
   resolvePoQuestion,
+  settleAnswer,
 } from "./clarification.service";
+import { answersToApply } from "@/utils/po-answers";
+
 import { listComments } from "./comment.service";
 import { reviewDrafts } from "./test-case-draft.service";
 
@@ -250,5 +253,56 @@ describe("the conversation under a question", () => {
     await replyToPoQuestion(question.id, as(qa), "Anyone?");
     expect((await listNotifications(po.id)).unread).toBe(1);
     expect((await listNotifications(otherAdmin.id)).unread).toBe(1);
+  });
+});
+
+describe("putting a PO answer into the case", () => {
+  it("asks once the PO answers, and updates the case's text", async () => {
+    const { qa, testCase, po } = await setUp();
+    const question = await caseQuestion(testCase.id, qa.id, "Error message?");
+    expect(answersToApply(await listComments(testCase.id)).size).toBe(0);
+
+    await answerQuestion(question.id, as(po), "'Invalid client id or client secret'.");
+    expect([...answersToApply(await listComments(testCase.id)).keys()]).toEqual([question.id]);
+
+    await settleAnswer(question.id, qa, {
+      update: { expectedResult: "400, 'Invalid client id or client secret'.", openQuestions: undefined },
+    });
+
+    const updated = await prisma.testCase.findUniqueOrThrow({ where: { id: testCase.id } });
+    expect(updated).toMatchObject({
+      expectedResult: "400, 'Invalid client id or client secret'.",
+      openQuestions: null,
+    });
+    const [asked] = await listComments(testCase.id);
+    expect(asked).toMatchObject({ settledChangedCase: true, settledBy: { id: qa.id } });
+    expect(answersToApply(await listComments(testCase.id)).size).toBe(0);
+  });
+
+  it("can need no change, and asks again when the PO answers again", async () => {
+    const { qa, testCase, po } = await setUp();
+    await prisma.testCase.update({ where: { id: testCase.id }, data: { expectedResult: "Kept" } });
+    const question = await caseQuestion(testCase.id, qa.id, "Limit?");
+    await answerQuestion(question.id, as(po), "As written.");
+
+    await settleAnswer(question.id, qa, {});
+
+    expect((await prisma.testCase.findUniqueOrThrow({ where: { id: testCase.id } })).expectedResult).toBe("Kept");
+    expect(answersToApply(await listComments(testCase.id)).size).toBe(0);
+
+    await answerQuestion(question.id, as(po), "Actually, 50 characters.");
+    expect(answersToApply(await listComments(testCase.id)).size).toBe(1);
+  });
+
+  it("waits for an answer, and leaves a case in the Trash alone", async () => {
+    const { qa, testCase, po } = await setUp();
+    const question = await caseQuestion(testCase.id, qa.id, "Limit?");
+    await expect(settleAnswer(question.id, qa, {})).rejects.toThrow(/not answered/);
+
+    await answerQuestion(question.id, as(po), "50.");
+    await prisma.testCase.update({ where: { id: testCase.id }, data: { deletedAt: new Date() } });
+    await expect(
+      settleAnswer(question.id, qa, { update: { expectedResult: "50.", openQuestions: undefined } }),
+    ).rejects.toThrow();
   });
 });
