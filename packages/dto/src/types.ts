@@ -284,6 +284,11 @@ export type RunVariableDto = {
   /** Null for a secret — the value stays on the server. */
   value: string | null;
   secret: boolean;
+  /**
+   * Nothing is stored — e.g. a secret blanked when the environment was copied
+   * to another project. Scripts would read "" for it.
+   */
+  empty: boolean;
 };
 
 export type RunEnvironmentDto = {

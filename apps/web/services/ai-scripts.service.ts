@@ -94,7 +94,16 @@ function describeCase(testCase: CaseForPrompt) {
 
 function describeEnvironment(env: EnvironmentOutline) {
   const vars = env.variables.length
-    ? env.variables.map((v) => `- vars.${v.key}${v.secret ? " (secret)" : ""}`).join("\n")
+    ? env.variables
+        .map(
+          (v) =>
+            `- vars.${v.key}${v.secret ? " (secret)" : ""}${
+              v.empty
+                ? ' — HAS NO VALUE in this environment; it reads as "". If the test fails on it, say QA must fill it in on the Environments page'
+                : ""
+            }`,
+        )
+        .join("\n")
     : "(none — if the test needs an account, use a vars.NAME you suggest and say so in notes)";
   return `Environment "${env.name}"
 Web base URL: ${env.webBaseUrl ?? "(none)"}

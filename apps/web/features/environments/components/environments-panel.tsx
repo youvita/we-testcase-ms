@@ -164,9 +164,19 @@ export function EnvironmentsPanel({
                   {env.variables.length > 0 && (
                     <div className="flex flex-wrap gap-1 pt-1">
                       {env.variables.map((v) => (
-                        <Badge key={v.key} variant="outline" className="gap-1 font-mono">
+                        <Badge
+                          key={v.key}
+                          variant="outline"
+                          className={
+                            v.secret && v.empty
+                              ? "gap-1 border-destructive font-mono text-destructive"
+                              : "gap-1 font-mono"
+                          }
+                          title={v.secret && v.empty ? `${v.key} has no value — edit to fill it in` : undefined}
+                        >
                           {v.secret && <KeyRound className="size-3" />}
                           {v.key}
+                          {v.secret && v.empty && <span className="font-sans">· no value</span>}
                         </Badge>
                       ))}
                     </div>
@@ -241,7 +251,9 @@ export function EnvironmentDialog({
         key: v.key,
         value: v.value ?? "",
         secret: v.secret,
-        stored: true,
+        // A blank secret (e.g. from a copied environment) has nothing to
+        // keep: it must be typed in, not left "unchanged".
+        stored: !(v.secret && v.empty),
       })) ?? [],
     );
   }
@@ -251,6 +263,11 @@ export function EnvironmentDialog({
   }
 
   async function handleSave() {
+    const blankSecret = variables.find((v) => v.key.trim() && v.secret && !v.stored && v.value === "");
+    if (blankSecret) {
+      toast.error(`Give ${blankSecret.key.trim().toUpperCase()} a value`);
+      return;
+    }
     setSaving(true);
     try {
       const body = {
@@ -384,7 +401,14 @@ export function EnvironmentDialog({
                       aria-label="Value"
                       type={row.secret ? "password" : "text"}
                       autoComplete="off"
-                      placeholder={row.secret && row.stored ? "•••••• (unchanged)" : "value"}
+                      placeholder={
+                        row.secret && row.stored
+                          ? "•••••• (unchanged)"
+                          : row.secret && row.key.trim()
+                            ? "No value — enter one"
+                            : "value"
+                      }
+                      className={row.secret && !row.stored && row.value === "" && row.key.trim() ? "border-destructive" : undefined}
                       value={row.value}
                       onChange={(e) => update(index, { value: e.target.value })}
                     />

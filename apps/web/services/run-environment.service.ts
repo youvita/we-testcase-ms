@@ -59,6 +59,7 @@ function toDto(
         key: v.key,
         value: v.secret ? null : v.value,
         secret: v.secret,
+        empty: v.value === "",
       }),
     ),
   };
@@ -109,6 +110,11 @@ export async function setDefaultRunEnvironment(environmentId: string) {
 /**
  * Merge submitted variables with what is stored. A secret submitted with a
  * null value keeps its stored value; one that was never stored cannot.
+ *
+ * A secret must end up with a value. A blank one is never intended — it is
+ * what a copied environment holds until someone fills it in — and a script
+ * reading it gets "", which the system under test reports as wrong
+ * credentials rather than missing ones.
  */
 function mergeVariables(
   submitted: RunEnvironmentInput["variables"],
@@ -117,10 +123,13 @@ function mergeVariables(
   const previous = new Map(stored.map((v) => [v.key, v]));
   return (submitted ?? []).map((v) => {
     if (v.value !== null) {
+      if (v.secret && v.value === "") throw badRequest(`Give ${v.key} a value`);
       return { key: v.key, value: v.value, secret: v.secret ?? false };
     }
     const kept = previous.get(v.key);
-    if (!kept) throw badRequest(`Give ${v.key} a value`);
+    if (!kept || ((v.secret ?? kept.secret) && kept.value === "")) {
+      throw badRequest(`Give ${v.key} a value`);
+    }
     return { key: v.key, value: kept.value, secret: v.secret ?? kept.secret };
   });
 }
@@ -289,7 +298,11 @@ export async function getEnvironmentOutline(environmentId: string, projectId: st
     webBaseUrl: row.webBaseUrl,
     apiBaseUrl: row.apiBaseUrl,
     startPath: row.startPath ?? "/",
-    variables: readVariables(row.variablesSealed).map((v) => ({ key: v.key, secret: v.secret })),
+    variables: readVariables(row.variablesSealed).map((v) => ({
+      key: v.key,
+      secret: v.secret,
+      empty: v.value === "",
+    })),
   };
 }
 
