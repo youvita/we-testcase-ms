@@ -13,7 +13,7 @@ import { PlatformBadge } from "@/components/shared/priority-badge";
 import { withBasePath } from "@/lib/base-path";
 import { cn } from "@/lib/utils";
 import { ClaudeConnectionDialog } from "@/features/ai/components/claude-connection-dialog";
-import type { AiJobDto, TestRunDetailDto, TestRunItemDto } from "@wetestcase/dto";
+import type { AiJobDto, ApiCall, TestRunDetailDto, TestRunItemDto } from "@wetestcase/dto";
 import { ApiError, api, errorMessage } from "@/utils/api-client";
 import { formatBytes, formatDateTime } from "@/utils/format";
 
@@ -263,6 +263,7 @@ function RunItemRow({
   const screenshots = item.artifacts.filter((a) => a.kind === "screenshot");
   const video = item.artifacts.find((a) => a.kind === "video");
   const trace = item.artifacts.find((a) => a.kind === "trace");
+  const apiCalls = item.artifacts.find((a) => a.kind === "requests");
   const hasDetail = Boolean(item.error || item.log || item.artifacts.length || item.code);
 
   return (
@@ -361,6 +362,8 @@ function RunItemRow({
               </Button>
             )
           )}
+
+          {apiCalls && <ApiCallsList url={artifactUrl(apiCalls.index)} />}
 
           {screenshots.length > 0 && (
             <div className="flex flex-wrap gap-2">
@@ -461,5 +464,84 @@ function SnapshotDetails({ url }: { url: string }) {
         {text ?? "Loading…"}
       </pre>
     </details>
+  );
+}
+
+/** Every API call the script made, each opening to its request and response. */
+function ApiCallsList({ url }: { url: string }) {
+  const [calls, setCalls] = useState<ApiCall[] | null>(null);
+  const [failed, setFailed] = useState(false);
+  useEffect(() => {
+    let live = true;
+    fetch(url)
+      .then((response) => (response.ok ? response.json() : Promise.reject(new Error(String(response.status)))))
+      .then((data: unknown) => live && setCalls(Array.isArray(data) ? (data as ApiCall[]) : []))
+      .catch(() => live && setFailed(true));
+    return () => {
+      live = false;
+    };
+  }, [url]);
+
+  return (
+    <div className="rounded-md border">
+      <p className="border-b bg-muted/40 px-3 py-1.5 text-xs font-medium">
+        API calls{calls ? ` (${calls.length})` : ""}
+      </p>
+      {failed ? (
+        <p className="px-3 py-2 text-xs text-muted-foreground">Could not load the API calls.</p>
+      ) : calls === null ? (
+        <p className="px-3 py-2 text-xs text-muted-foreground">Loading…</p>
+      ) : (
+        <ul className="divide-y">
+          {calls.map((call, index) => (
+            <li key={index}>
+              <details open={calls.length === 1}>
+                <summary className="flex cursor-pointer items-center gap-3 px-3 py-1.5 font-mono text-xs">
+                  <span
+                    className={cn(
+                      "w-10 shrink-0 font-semibold",
+                      call.status === null || call.status >= 500
+                        ? "text-status-failed"
+                        : call.status >= 400
+                          ? "text-status-blocked"
+                          : "text-status-passed",
+                    )}
+                  >
+                    {call.status ?? "—"}
+                  </span>
+                  <span className="w-12 shrink-0 text-muted-foreground">{call.method}</span>
+                  <span className="min-w-0 flex-1 truncate" title={call.url}>{call.url}</span>
+                  <span className="shrink-0 text-muted-foreground">{formatDuration(call.durationMs)}</span>
+                </summary>
+                <div className="space-y-2 px-3 pb-3">
+                  {call.status === null && call.statusText && (
+                    <p className="text-xs text-status-failed">No response: {call.statusText}</p>
+                  )}
+                  {call.requestBody !== null && (
+                    <div>
+                      <p className="mb-1 text-xs text-muted-foreground">Request body</p>
+                      <pre className="max-h-60 overflow-auto whitespace-pre-wrap break-all rounded-md bg-muted p-3 font-mono text-xs">
+                        {call.requestBody}
+                      </pre>
+                    </div>
+                  )}
+                  {call.status !== null && (
+                    <div>
+                      <p className="mb-1 text-xs text-muted-foreground">
+                        Response {call.status} {call.statusText}
+                        {call.responseType ? ` · ${call.responseType}` : ""}
+                      </p>
+                      <pre className="max-h-80 overflow-auto whitespace-pre-wrap break-all rounded-md bg-muted p-3 font-mono text-xs">
+                        {call.responseBody ?? "(empty)"}
+                      </pre>
+                    </div>
+                  )}
+                </div>
+              </details>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
   );
 }

@@ -572,6 +572,20 @@ const ARTIFACT_TYPES: Record<RunArtifactKind, { mimeType: string; ext: string; m
       },
     },
   ],
+  // Every API call the script made, with bodies, as JSON.
+  requests: [
+    {
+      mimeType: "application/json",
+      ext: ".json",
+      magic: (b) => {
+        try {
+          return b.length < 2_000_000 && Array.isArray(JSON.parse(b.toString("utf8")));
+        } catch {
+          return false;
+        }
+      },
+    },
+  ],
   // Plain text, so anything goes except binary — a NUL byte means it is not
   // the outline the runner writes.
   snapshot: [

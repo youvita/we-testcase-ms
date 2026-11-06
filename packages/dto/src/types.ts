@@ -358,7 +358,23 @@ export type TestRunItemDto = {
  * every field and button with its role and name. Claude reads it to find
  * what is actually on the page.
  */
-export type RunArtifactKind = "screenshot" | "video" | "trace" | "snapshot" | "network";
+export type RunArtifactKind = "screenshot" | "video" | "trace" | "snapshot" | "network" | "requests";
+
+/**
+ * One call a script made through \`request\`, as the runner recorded it in the
+ * "requests" artifact. Secret values are masked and bodies cut short.
+ */
+export type ApiCall = {
+  method: string;
+  url: string;
+  /** Null when there was no response (refused, timed out). */
+  status: number | null;
+  statusText: string;
+  durationMs: number;
+  requestBody: string | null;
+  responseType: string | null;
+  responseBody: string | null;
+};
 
 /**
  * A request that went wrong during a test — an HTTP error status, or no

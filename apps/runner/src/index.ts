@@ -158,6 +158,55 @@ const noteFailure = (method, url, status, statusText) => {
 };
 const worthNoting = (type) => type === "document" || type === "xhr" || type === "fetch";
 
+// Every call the script makes through \`request\`, with what it sent and what
+// came back — the run page shows them, so QA sees an API's answer without
+// opening the trace. Secrets masked, bodies cut short.
+const apiCalls = [];
+const clip = (text, max = 6000) =>
+  text.length > max ? text.slice(0, max) + "\\n… (" + (text.length - max) + " more characters)" : text;
+const describeRequestBody = (options) => {
+  if (!options) return null;
+  if (options.multipart) return "(multipart form)";
+  const value = options.form ?? options.data;
+  if (value === undefined || value === null) return null;
+  try {
+    if (Buffer.isBuffer(value)) return "(" + value.length + " bytes)";
+    const text =
+      typeof value === "string"
+        ? value
+        : options.form
+          ? new URLSearchParams(value).toString()
+          : JSON.stringify(value, null, 2);
+    return clip(mask(text));
+  } catch {
+    return "(could not be shown)";
+  }
+};
+const describeResponseBody = async (response) => {
+  try {
+    const type = String(response.headers()["content-type"] ?? "");
+    const bytes = await response.body();
+    if (bytes.length === 0) return null;
+    if (type && !/json|text|xml|html|javascript|x-www-form-urlencoded/i.test(type)) {
+      return "(" + bytes.length + " bytes of " + type.split(";")[0] + ")";
+    }
+    let text = bytes.toString("utf8");
+    if (/json/i.test(type) || /^\\s*[[{]/.test(text)) {
+      try {
+        text = JSON.stringify(JSON.parse(text), null, 2);
+      } catch {
+        // Not valid JSON after all: show it as it came.
+      }
+    }
+    return clip(mask(text));
+  } catch {
+    return null;
+  }
+};
+const noteCall = (call) => {
+  if (apiCalls.length < 50) apiCalls.push(call);
+};
+
 const test = base.extend({
   page: async ({ page }, use) => {
     const goto = page.goto.bind(page);
@@ -216,17 +265,47 @@ ${
 `
 }  },
   request: async ({ request }, use) => {
+    // Playwright's get/post/… call \`this.fetch\` themselves, so wrapping both
+    // would see every call twice. All of them go straight to the original
+    // fetch instead, which is what get/post/… do with the method set.
+    const fetchOriginal = request.fetch.bind(request);
     for (const method of ["get", "post", "put", "patch", "delete", "head", "fetch"]) {
-      const send = request[method].bind(request);
+      const send =
+        method === "fetch"
+          ? fetchOriginal
+          : (url, options) => fetchOriginal(url, { ...options, method: method.toUpperCase() });
       request[method] = async (url, options) => {
         const target = join(requestRoot, url);
         const verb = method === "fetch" ? String(options?.method ?? "GET").toUpperCase() : method.toUpperCase();
+        const startedAt = Date.now();
+        const requestBody = describeRequestBody(options);
         try {
           const response = await send(target, options);
           if (response.status() >= 400) noteFailure(verb, response.url(), response.status(), response.statusText());
+          noteCall({
+            method: verb,
+            url: mask(String(response.url()).slice(0, 500)),
+            status: response.status(),
+            statusText: mask(String(response.statusText() ?? "")),
+            durationMs: Date.now() - startedAt,
+            requestBody,
+            responseType: String(response.headers()["content-type"] ?? "").split(";")[0] || null,
+            responseBody: await describeResponseBody(response),
+          });
           return response;
         } catch (error) {
-          noteFailure(verb, typeof target === "string" ? target : "(request)", null, String(error?.message ?? error).split("\\n")[0]);
+          const reason = String(error?.message ?? error).split("\\n")[0];
+          noteFailure(verb, typeof target === "string" ? target : "(request)", null, reason);
+          noteCall({
+            method: verb,
+            url: mask(String(typeof target === "string" ? target : "(request)").slice(0, 500)),
+            status: null,
+            statusText: mask(reason),
+            durationMs: Date.now() - startedAt,
+            requestBody,
+            responseType: null,
+            responseBody: null,
+          });
           throw error;
         }
       };
@@ -241,6 +320,12 @@ test.afterEach(async ({}, testInfo) => {
   if (failedRequests.length) {
     await testInfo.attach("network-errors", {
       body: JSON.stringify(failedRequests),
+      contentType: "application/json",
+    });
+  }
+  if (apiCalls.length) {
+    await testInfo.attach("api-calls", {
+      body: JSON.stringify(apiCalls),
       contentType: "application/json",
     });
   }
@@ -403,12 +488,13 @@ function itemResult(result: ReportResult): RunnerItemResult {
   };
 }
 
-const ARTIFACT_FIELDS: Record<string, "screenshot" | "video" | "trace" | "snapshot" | "network"> = {
+const ARTIFACT_FIELDS: Record<string, "screenshot" | "video" | "trace" | "snapshot" | "network" | "requests"> = {
   screenshot: "screenshot",
   video: "video",
   trace: "trace",
   "page-snapshot": "snapshot",
   "network-errors": "network",
+  "api-calls": "requests",
 };
 
 /**
