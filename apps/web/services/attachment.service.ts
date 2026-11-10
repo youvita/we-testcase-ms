@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { mkdir, open, readFile, stat, unlink, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, open, readFile, stat, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import { prisma } from "@/lib/prisma";
@@ -158,6 +158,43 @@ export async function saveAttachment(
       mimeType: sniffed,
     },
   });
+}
+
+/**
+ * Attach an automated run's screenshots and video to the result it recorded,
+ * so the case's history shows them like a tester's own.
+ *
+ * Copied, not shared: deleting an attachment deletes its file, and that must
+ * never take the run's own evidence with it. A file gone from disk is skipped.
+ */
+export async function attachRunEvidence(
+  executionId: string,
+  projectId: string,
+  files: { path: string; fileName: string; mimeType: string; size: number }[],
+) {
+  let attached = 0;
+  for (const file of files) {
+    if (!ALLOWED_UPLOAD_MIME_TYPES.includes(file.mimeType as never)) continue;
+    const relativePath = path.join(projectId, executionId, `${randomUUID()}${EXTENSION_BY_MIME[file.mimeType] ?? ".bin"}`);
+    const target = resolveStoredPath(relativePath);
+    try {
+      await mkdir(path.dirname(target), { recursive: true });
+      await copyFile(resolveStoredPath(file.path), target);
+    } catch {
+      continue;
+    }
+    await prisma.attachment.create({
+      data: {
+        executionId,
+        fileName: safeDisplayName(file.fileName),
+        filePath: relativePath,
+        fileSize: file.size,
+        mimeType: file.mimeType,
+      },
+    });
+    attached += 1;
+  }
+  return attached;
 }
 
 /**

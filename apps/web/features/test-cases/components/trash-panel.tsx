@@ -1,5 +1,9 @@
 "use client";
 
+import { PaginationControls } from "@/components/shared/pagination-controls";
+import { useClientPagination } from "@/hooks/use-client-pagination";
+import { SCROLL_BOX } from "@/components/ui/table";
+import { cn } from "@/lib/utils";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { RotateCcw, Trash2 } from "lucide-react";
@@ -33,6 +37,7 @@ export function TrashPanel({
 }) {
   const router = useRouter();
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const paging = useClientPagination(items);
   const [busy, setBusy] = useState(false);
   /** What "Delete forever" applies to: the selection, or the whole Trash. */
   const [purging, setPurging] = useState<"selected" | "all" | null>(null);
@@ -148,7 +153,8 @@ export function TrashPanel({
             Select all
           </label>
         )}
-        {items.map((item) => (
+        <div className={cn("divide-y overflow-y-auto", SCROLL_BOX)}>
+        {paging.pageItems.map((item) => (
           <div key={item.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-3">
             {canManage && (
               <Checkbox
@@ -184,7 +190,20 @@ export function TrashPanel({
             )}
           </div>
         ))}
+        </div>
       </Card>
+
+      {items.length > 0 && (
+        <PaginationControls
+          page={paging.page}
+          pageSize={paging.pageSize}
+          total={paging.total}
+          totalPages={paging.totalPages}
+          onPageChange={paging.setPage}
+          onPageSizeChange={paging.setPageSize}
+        />
+      )}
+
 
       <ConfirmDialog
         open={purging !== null}

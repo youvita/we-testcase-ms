@@ -1,5 +1,7 @@
 "use client";
 
+import { PaginationControls } from "@/components/shared/pagination-controls";
+import { useClientPagination } from "@/hooks/use-client-pagination";
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -11,6 +13,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { PlatformBadge } from "@/components/shared/priority-badge";
 import { withBasePath } from "@/lib/base-path";
+import { SCROLL_BOX } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
 import { ClaudeConnectionDialog } from "@/features/ai/components/claude-connection-dialog";
 import type { AiJobDto, ApiCall, TestRunDetailDto, TestRunItemDto } from "@wetestcase/dto";
@@ -29,10 +32,13 @@ export function RunDetail({
   projectId,
   run: initial,
   canManage,
+  focusItemId,
 }: {
   projectId: string;
   run: TestRunDetailDto;
   canManage: boolean;
+  /** A case's result to show: its page, opened and scrolled to. */
+  focusItemId?: string;
 }) {
   const router = useRouter();
   const [run, setRun] = useState(initial);
@@ -40,6 +46,20 @@ export function RunDetail({
   /** Triage jobs in flight, by run item. */
   const [triaging, setTriaging] = useState<Record<string, string>>({});
   const [connectOpen, setConnectOpen] = useState(false);
+  const paging = useClientPagination(run.items);
+
+  // Opened from a test case's history: go to that case's page and scroll to it.
+  const [focused, setFocused] = useState(false);
+  useEffect(() => {
+    if (focused || !focusItemId) return;
+    const index = run.items.findIndex((item) => item.id === focusItemId);
+    if (index === -1) return;
+    setFocused(true);
+    paging.setPage(Math.floor(index / paging.pageSize) + 1);
+    requestAnimationFrame(() =>
+      document.getElementById(`run-item-${focusItemId}`)?.scrollIntoView({ block: "center", behavior: "smooth" }),
+    );
+  }, [focused, focusItemId, run.items, paging]);
   const retryRef = useRef<(() => void) | null>(null);
   const active = isRunActive(run.status);
 
@@ -205,9 +225,9 @@ export function RunDetail({
         </CardContent>
       </Card>
 
-      <Card>
-        <CardContent className="divide-y p-0">
-          {run.items.map((item) => (
+      <Card className="overflow-hidden">
+        <CardContent className={cn("divide-y overflow-y-auto p-0", SCROLL_BOX)}>
+          {paging.pageItems.map((item) => (
             <RunItemRow
               key={item.id}
               projectId={projectId}
@@ -216,10 +236,22 @@ export function RunDetail({
               canManage={canManage}
               triaging={Boolean(triaging[item.id])}
               onExplain={() => void explain([item.id])}
+              focused={item.id === focusItemId}
             />
           ))}
         </CardContent>
       </Card>
+
+      {run.items.length > 0 && (
+        <PaginationControls
+          page={paging.page}
+          pageSize={paging.pageSize}
+          total={paging.total}
+          totalPages={paging.totalPages}
+          onPageChange={paging.setPage}
+          onPageSizeChange={paging.setPageSize}
+        />
+      )}
 
       <ClaudeConnectionDialog
         open={connectOpen}
@@ -244,6 +276,7 @@ function RunItemRow({
   canManage,
   triaging,
   onExplain,
+  focused = false,
 }: {
   projectId: string;
   environment: { id: string; name: string } | null;
@@ -251,9 +284,11 @@ function RunItemRow({
   canManage: boolean;
   triaging: boolean;
   onExplain: () => void;
+  /** The case someone came here from: open and marked. */
+  focused?: boolean;
 }) {
   // Failures open by default — they are what someone came to look at.
-  const [open, setOpen] = useState(item.status === "FAILED" || item.status === "ERROR");
+  const [open, setOpen] = useState(focused || item.status === "FAILED" || item.status === "ERROR");
   const artifactUrl = (index: number) => withBasePath(`/api/run-items/${item.id}/artifacts/${index}`);
   // An exploration visits pages before any case exists for them.
   const testCase = item.testCase;
@@ -267,7 +302,7 @@ function RunItemRow({
   const hasDetail = Boolean(item.error || item.log || item.artifacts.length || item.code);
 
   return (
-    <div className="px-4 py-3">
+    <div id={`run-item-${item.id}`} className={cn("scroll-mt-24 px-4 py-3", focused && "bg-primary/5 ring-1 ring-inset ring-primary/30")}>
       <div className="flex items-center gap-3">
         <button
           type="button"

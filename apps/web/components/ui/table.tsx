@@ -2,11 +2,29 @@ import * as React from "react";
 
 import { cn } from "@/lib/utils";
 
+/**
+ * A long table or list scrolls inside its card instead of stretching the page:
+ * the page's own buttons, filters and page controls stay where they are.
+ */
+export const SCROLL_BOX = "max-h-[min(65vh,42rem)]";
+
+/**
+ * Keeps a scrolling table's header row in view, with its bottom line. Give it
+ * the background of the box it is in (bg-card, bg-background).
+ */
+export const STICKY_HEADER = "sticky top-0 z-10 shadow-[inset_0_-1px_0_hsl(var(--border))]";
+
 const Table = React.forwardRef<
   HTMLTableElement,
-  React.ComponentPropsWithoutRef<"table">
->(({ className, ...props }, ref) => (
-  <div className="relative w-full overflow-auto">
+  React.ComponentPropsWithoutRef<"table"> & {
+    /**
+     * For the scrolling box around the table — e.g. a max height, so a long
+     * table scrolls inside itself instead of stretching the page.
+     */
+    containerClassName?: string;
+  }
+>(({ className, containerClassName, ...props }, ref) => (
+  <div className={cn("relative w-full overflow-auto", containerClassName)}>
     <table
       ref={ref}
       className={cn("w-full caption-bottom text-sm", className)}

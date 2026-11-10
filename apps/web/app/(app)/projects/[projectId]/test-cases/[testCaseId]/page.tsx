@@ -1,3 +1,4 @@
+import { PLATFORM_LABELS } from "@/lib/constants";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -343,6 +344,14 @@ export default async function TestCaseDetailPage({
               executions={testCase.executions}
               currentUserId={user.id}
               canModerate={isAdmin(user.role)}
+              bugReportCase={{
+                tcId: testCase.tcId,
+                title: testCase.title,
+                platform: PLATFORM_LABELS[testCase.platform],
+                preconditions: testCase.preconditions,
+                steps: testCase.steps,
+                expectedResult: testCase.expectedResult,
+              }}
             />
           </>
         }

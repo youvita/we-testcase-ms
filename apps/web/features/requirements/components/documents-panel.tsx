@@ -60,6 +60,7 @@ import {
   type RequirementDocKind,
   type RequirementDocVersionDto,
 } from "@wetestcase/dto";
+import { SCROLL_BOX } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
 import { useClientPagination } from "@/hooks/use-client-pagination";
 import { api, downloadFile, errorMessage } from "@/utils/api-client";
@@ -109,7 +110,6 @@ export function DocumentsPanel({
     });
   }, [docs, search, kindFilter, readFilter]);
 
-  const paging = useClientPagination(visible, `${search}|${kindFilter}|${readFilter}`);
 
   // The project's feature folders, for picking one.
   const folders = useMemo(
@@ -119,20 +119,39 @@ export function DocumentsPanel({
   // Once any document is in a folder, the list is by folder — each feature's
   // documents together, with when the feature last changed. Otherwise flat.
   const grouped = folders.length > 0;
+  // Paged in folder order, so a folder's documents stay together; "No folder" last.
+  const ordered = useMemo(() => {
+    if (!grouped) return visible;
+    const rank = (doc: RequirementDocDto) => (doc.folder ? `0${doc.folder.toLowerCase()}` : "1");
+    return [...visible].sort((a, b) => rank(a).localeCompare(rank(b)));
+  }, [visible, grouped]);
+  const paging = useClientPagination(ordered, `${search}|${kindFilter}|${readFilter}`);
+  // A folder's count and last update cover all its documents, not just this page's.
+  const folderStats = useMemo(() => {
+    const stats = new Map<string, { count: number; updatedAt: string }>();
+    for (const doc of visible) {
+      const key = doc.folder ?? "";
+      const current = stats.get(key) ?? { count: 0, updatedAt: "" };
+      stats.set(key, {
+        count: current.count + 1,
+        updatedAt: doc.versionAt > current.updatedAt ? doc.versionAt : current.updatedAt,
+      });
+    }
+    return stats;
+  }, [visible]);
   const groups = useMemo(() => {
     const byFolder = new Map<string, RequirementDocDto[]>();
-    for (const doc of visible) {
+    for (const doc of paging.pageItems) {
       const key = doc.folder ?? "";
       byFolder.set(key, [...(byFolder.get(key) ?? []), doc]);
     }
-    return [...byFolder.entries()]
-      .sort(([a], [b]) => (a === "" ? 1 : b === "" ? -1 : a.localeCompare(b)))
-      .map(([folder, items]) => ({
-        folder,
-        items,
-        updatedAt: items.reduce((latest, doc) => (doc.versionAt > latest ? doc.versionAt : latest), ""),
-      }));
-  }, [visible]);
+    return [...byFolder.entries()].map(([folder, items]) => ({
+      folder,
+      items,
+      count: folderStats.get(folder)?.count ?? items.length,
+      updatedAt: folderStats.get(folder)?.updatedAt ?? "",
+    }));
+  }, [paging.pageItems, folderStats]);
   const searching = search.trim() !== "";
 
   function extract(docId: string) {
@@ -312,8 +331,8 @@ export function DocumentsPanel({
           }
         />
       ) : (
-        <Card>
-          <CardContent className="divide-y p-0">
+        <Card className="overflow-hidden">
+          <CardContent className={cn("divide-y overflow-y-auto p-0", SCROLL_BOX)}>
             {visible.length === 0 && (
               <p className="py-10 text-center text-sm text-muted-foreground">
                 No documents match these filters.
@@ -343,7 +362,7 @@ export function DocumentsPanel({
                           {group.folder || "No folder"}
                         </span>
                         <span className="ml-auto text-xs text-muted-foreground">
-                          {group.items.length} document{group.items.length === 1 ? "" : "s"} · updated{" "}
+                          {group.count} document{group.count === 1 ? "" : "s"} · updated{" "}
                           {formatRelative(group.updatedAt)}
                         </span>
                       </button>
@@ -356,7 +375,7 @@ export function DocumentsPanel({
         </Card>
       )}
 
-      {visible.length > 0 && !grouped && (
+      {visible.length > 0 && (
         <PaginationControls
           page={paging.page}
           pageSize={paging.pageSize}

@@ -8,10 +8,11 @@ import {
   ArrowUp,
   Bot,
   ChevronsUpDown,
-  FolderTree,
+  ClipboardCopy,
   ClipboardList,
   Copy,
   Download,
+  FolderTree,
   MoreHorizontal,
   Pencil,
   Play,
@@ -35,6 +36,8 @@ import {
   TableCell,
   TableHead,
   TableHeader,
+  SCROLL_BOX,
+  STICKY_HEADER,
   TableRow,
 } from "@/components/ui/table";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
@@ -51,6 +54,7 @@ import { cn } from "@/lib/utils";
 import { useQueryParams } from "@/hooks/use-query-params";
 import { api, errorMessage } from "@/utils/api-client";
 import { formatRelative } from "@/utils/format";
+import { copyBugReportFor } from "@/utils/copy-bug-report";
 import type { Paginated, Platform, SubModuleOption, TestCaseListItem } from "@/types";
 import { BulkWriteDialog } from "@/features/automation/components/bulk-write-dialog";
 import { NewRunDialog } from "@/features/automation/components/new-run-dialog";
@@ -339,11 +343,11 @@ export function TestCaseTable({
       )}
 
       <div className="rounded-lg border bg-background">
-        <Table>
-          <TableHeader>
+        <Table containerClassName={SCROLL_BOX}>
+          <TableHeader className={cn(STICKY_HEADER, "bg-background")}>
             <TableRow>
               {canManage && (
-                <TableHead className="w-[44px]">
+                <TableHead className="w-12 pl-4">
                   <Checkbox
                     checked={
                       allSelected
@@ -435,7 +439,7 @@ export function TestCaseTable({
                 }
               >
                 {canManage && (
-                  <TableCell onClick={(event) => event.stopPropagation()}>
+                  <TableCell className="pl-4" onClick={(event) => event.stopPropagation()}>
                     <Checkbox
                       checked={selectedIds.has(testCase.id)}
                       onCheckedChange={(checked) =>
@@ -526,7 +530,7 @@ export function TestCaseTable({
                 </TableCell>
 
                 <TableCell onClick={(event) => event.stopPropagation()}>
-                  {canManage && (
+                  {(canManage || hasBugToReport(testCase)) && (
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
                         <Button
@@ -539,6 +543,13 @@ export function TestCaseTable({
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
+                        {hasBugToReport(testCase) && (
+                          <DropdownMenuItem onSelect={() => void copyBugReportFor(testCase.id)}>
+                            <ClipboardCopy className="mr-2 size-4" />
+                            Copy bug report
+                          </DropdownMenuItem>
+                        )}
+                        {canManage && (
                         <DropdownMenuItem
                           onSelect={() => {
                             setEditing(testCase);
@@ -548,12 +559,14 @@ export function TestCaseTable({
                           <Pencil className="mr-2 size-4" />
                           Edit
                         </DropdownMenuItem>
-                        {testCase.script && (
+                        )}
+                        {canManage && testCase.script && (
                           <DropdownMenuItem onSelect={() => void downloadCaseScript(testCase.id)}>
                             <Download className="mr-2 size-4" />
                             Download script
                           </DropdownMenuItem>
                         )}
+                        {canManage && (
                         <DropdownMenuItem
                           className="text-destructive focus:text-destructive"
                           onSelect={() => setDeleting(testCase)}
@@ -561,6 +574,7 @@ export function TestCaseTable({
                           <Trash2 className="mr-2 size-4" />
                           Delete
                         </DropdownMenuItem>
+                        )}
                       </DropdownMenuContent>
                     </DropdownMenu>
                   )}
@@ -697,4 +711,9 @@ export function TestCaseTable({
       />
     </div>
   );
+}
+
+/** Its latest result failed or was blocked: worth a bug report. */
+function hasBugToReport(testCase: TestCaseListItem): boolean {
+  return testCase.status === "FAILED" || testCase.status === "BLOCKED";
 }

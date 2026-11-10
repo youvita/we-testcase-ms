@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Bot, History, Pencil } from "lucide-react";
+import { Bot, ClipboardCopy, History, Pencil } from "lucide-react";
+import { toast } from "sonner";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Card, CardContent } from "@/components/ui/card";
@@ -10,6 +11,7 @@ import { CollapsibleCardHeader } from "@/components/shared/collapsible-card-head
 import { EmptyState } from "@/components/shared/empty-state";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { formatDateTime, initials } from "@/utils/format";
+import { bugReportText, type BugReportInput } from "@/utils/bug-report";
 import type { ExecutionWithDetails } from "@/types";
 
 import { AttachmentGallery } from "./attachment-gallery";
@@ -32,9 +34,12 @@ export function ExecutionHistory({
   executions,
   currentUserId,
   canModerate = false,
+  bugReportCase,
 }: {
   /** Needed to link automated results to their run. */
   projectId?: string;
+  /** The case, for "Copy bug report" on a failed or blocked result. */
+  bugReportCase?: BugReportInput["testCase"];
   executions: ExecutionWithDetails[];
   currentUserId?: string;
   canModerate?: boolean;
@@ -78,6 +83,7 @@ export function ExecutionHistory({
                   key={execution.id}
                   projectId={projectId}
                   execution={execution}
+                  bugReportCase={bugReportCase}
                   isLatest={index === 0}
                   editable={
                     Boolean(editor) &&
@@ -97,12 +103,14 @@ export function ExecutionHistory({
 function ExecutionEntry({
   projectId,
   execution,
+  bugReportCase,
   isLatest,
   editable,
   onEdit,
 }: {
   projectId?: string;
   execution: ExecutionWithDetails;
+  bugReportCase?: BugReportInput["testCase"];
   isLatest: boolean;
   editable: boolean;
   onEdit: () => void;
@@ -112,6 +120,24 @@ function ExecutionEntry({
     // asking to change it.
     if (window.getSelection()?.toString()) return;
     onEdit();
+  }
+
+  const reportable =
+    bugReportCase && (execution.status === "FAILED" || execution.status === "BLOCKED");
+
+  async function copyBugReport(event: React.MouseEvent) {
+    event.stopPropagation();
+    if (!bugReportCase) return;
+    const text = bugReportText({
+      testCase: bugReportCase,
+      execution: { environmentName: execution.environmentName ?? null, actualResult: execution.actualResult },
+    });
+    try {
+      await navigator.clipboard.writeText(text);
+      toast.success("Bug report copied", { description: "Paste it into the tracker or chat." });
+    } catch {
+      toast.error("Could not copy to the clipboard");
+    }
   }
 
   return (
@@ -154,7 +180,7 @@ function ExecutionEntry({
                   {" \u00b7 "}
                   {projectId ? (
                     <Link
-                      href={`/projects/${projectId}/automation/runs/${execution.runItem.run.id}`}
+                      href={`/projects/${projectId}/automation/runs/${execution.runItem.run.id}?item=${execution.runItem.id}`}
                       className="inline-flex items-center gap-1 text-primary hover:underline"
                       onClick={(event) => event.stopPropagation()}
                     >
@@ -174,6 +200,17 @@ function ExecutionEntry({
         </div>
 
         <div className="flex items-center gap-2">
+          {reportable && (
+            <button
+              type="button"
+              onClick={(event) => void copyBugReport(event)}
+              className="inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+              title="Copy as a bug report: environment, steps, expected and actual result"
+            >
+              <ClipboardCopy className="size-3.5" aria-hidden />
+              Copy bug report
+            </button>
+          )}
           {editable && (
             <Pencil
               className="size-3.5 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100"

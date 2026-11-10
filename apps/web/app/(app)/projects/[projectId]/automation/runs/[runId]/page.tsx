@@ -15,11 +15,15 @@ export const metadata: Metadata = { title: "Run" };
 
 export default async function RunPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ projectId: string; runId: string }>;
+  /** `?item=` — a case's result to open, from its test case's history. */
+  searchParams: Promise<{ item?: string }>;
 }) {
   const user = await requireUser();
   const { projectId, runId } = await params;
+  const { item: focusItemId } = await searchParams;
   await requireProjectAccess(projectId, user);
 
   const [project, run] = await Promise.all([
@@ -64,7 +68,12 @@ export default async function RunPage({
             : undefined
         }
       />
-      <RunDetail projectId={projectId} run={run} canManage={canManageTestCases(user.role)} />
+      <RunDetail
+        projectId={projectId}
+        run={run}
+        canManage={canManageTestCases(user.role)}
+        focusItemId={focusItemId}
+      />
     </div>
   );
 }

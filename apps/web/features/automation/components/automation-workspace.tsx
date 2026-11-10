@@ -14,8 +14,11 @@ import {
   TableCell,
   TableHead,
   TableHeader,
+  SCROLL_BOX,
+  STICKY_HEADER,
   TableRow,
 } from "@/components/ui/table";
+import { cn } from "@/lib/utils";
 import { EmptyState } from "@/components/shared/empty-state";
 import { PaginationControls } from "@/components/shared/pagination-controls";
 import { api, errorMessage } from "@/utils/api-client";
@@ -148,8 +151,10 @@ export function AutomationWorkspace({
         />
       ) : (
         <Card className="overflow-hidden">
-          <Table>
-            <TableHeader>
+          {/* The runs scroll inside the card, under a header that stays put,
+              so the page — buttons, pages — stays where it is. */}
+          <Table containerClassName={SCROLL_BOX}>
+            <TableHeader className={cn(STICKY_HEADER, "bg-card")}>
               <TableRow>
                 <TableHead className="w-20">Run</TableHead>
                 <TableHead className="w-28">Status</TableHead>

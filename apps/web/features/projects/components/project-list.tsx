@@ -1,5 +1,7 @@
 "use client";
 
+import { PaginationControls } from "@/components/shared/pagination-controls";
+import { useClientPagination } from "@/hooks/use-client-pagination";
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -46,6 +48,8 @@ import {
   TableCell,
   TableHead,
   TableHeader,
+  SCROLL_BOX,
+  STICKY_HEADER,
   TableRow,
 } from "@/components/ui/table";
 import { PROJECT_STATUSES, PROJECT_STATUS_LABELS } from "@/lib/constants";
@@ -109,6 +113,7 @@ export function ProjectList({
       );
     });
   }, [projects, search, statusFilter]);
+  const paging = useClientPagination(filtered, `${search}|${statusFilter}`);
 
   async function handleDelete() {
     if (!deleting) return;
@@ -194,7 +199,7 @@ export function ProjectList({
         />
       ) : view === "card" ? (
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {filtered.map((project) => (
+          {paging.pageItems.map((project) => (
             <Card
               key={project.id}
               className="group relative flex flex-col transition-colors hover:border-primary/50 hover:bg-muted/30"
@@ -278,8 +283,8 @@ export function ProjectList({
         </div>
       ) : (
         <Card className="overflow-hidden">
-          <Table>
-            <TableHeader>
+          <Table containerClassName={SCROLL_BOX}>
+            <TableHeader className={cn(STICKY_HEADER, "bg-card")}>
               <TableRow>
                 <TableHead>Project</TableHead>
                 <TableHead className="w-[240px]">Progress</TableHead>
@@ -292,7 +297,7 @@ export function ProjectList({
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filtered.map((project) => (
+              {paging.pageItems.map((project) => (
                 // Whole-row hit area, like the cards have. A stretched link
                 // can't do it here: `position: relative` on a <tr> is not a
                 // reliable containing block, so the overlay escapes the row
@@ -373,6 +378,17 @@ export function ProjectList({
             </TableBody>
           </Table>
         </Card>
+      )}
+
+      {filtered.length > 0 && (
+        <PaginationControls
+          page={paging.page}
+          pageSize={paging.pageSize}
+          total={paging.total}
+          totalPages={paging.totalPages}
+          onPageChange={paging.setPage}
+          onPageSizeChange={paging.setPageSize}
+        />
       )}
 
       {canManage && (

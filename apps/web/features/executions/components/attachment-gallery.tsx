@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { FileVideo, ImageIcon } from "lucide-react";
+import { Download, FileVideo, ImageIcon } from "lucide-react";
 
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { isVideoMimeType } from "@/lib/constants";
@@ -22,6 +22,8 @@ export function AttachmentGallery({
   attachments: Attachment[];
 }) {
   const [active, setActive] = useState<Attachment | null>(null);
+  // The id of a video this browser could not play.
+  const [unplayable, setUnplayable] = useState<string | null>(null);
 
   if (attachments.length === 0) return null;
 
@@ -64,13 +66,28 @@ export function AttachmentGallery({
           {active && (
             <div className="overflow-auto">
               {isVideoMimeType(active.mimeType) ? (
-                <video
-                  src={withBasePath(`/api/attachments/${active.id}/file`)}
-                  controls
-                  autoPlay
-                  playsInline
-                  className="mx-auto max-h-[75vh] w-auto rounded-md"
-                />
+                unplayable === active.id ? (
+                  <div className="space-y-2 rounded-md border border-dashed px-4 py-8 text-center text-sm">
+                    <p>This browser cannot play this video.</p>
+                    <p className="text-muted-foreground">
+                      Videos from automated runs are WebM. Update the browser or try another one, or download it.
+                    </p>
+                  </div>
+                ) : (
+                  <video
+                    key={active.id}
+                    src={withBasePath(`/api/attachments/${active.id}/file`)}
+                    controls
+                    playsInline
+                    // A run's WebM does not state its length up front: with only
+                    // its start loaded the player shows 0:00 on black and looks
+                    // broken. Load it whole (they are small) — and no autoplay,
+                    // which browsers block anyway and leave it looking stuck.
+                    preload="auto"
+                    onError={() => setUnplayable(active.id)}
+                    className="mx-auto max-h-[75vh] w-auto rounded-md bg-black"
+                  />
+                )
               ) : (
                 /* eslint-disable-next-line @next/next/no-img-element */
                 <img
@@ -82,8 +99,16 @@ export function AttachmentGallery({
             </div>
           )}
           {active && (
-            <p className="text-xs text-muted-foreground">
+            <p className="flex items-center gap-3 text-xs text-muted-foreground">
               {formatBytes(active.fileSize)} · {active.mimeType}
+              <a
+                href={withBasePath(`/api/attachments/${active.id}/file`)}
+                download={active.fileName}
+                className="inline-flex items-center gap-1 text-primary hover:underline"
+              >
+                <Download className="size-3.5" aria-hidden />
+                Download
+              </a>
             </p>
           )}
         </DialogContent>

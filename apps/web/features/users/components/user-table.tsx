@@ -1,5 +1,7 @@
 "use client";
 
+import { PaginationControls } from "@/components/shared/pagination-controls";
+import { useClientPagination } from "@/hooks/use-client-pagination";
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
@@ -33,6 +35,8 @@ import {
   TableCell,
   TableHead,
   TableHeader,
+  SCROLL_BOX,
+  STICKY_HEADER,
   TableRow,
 } from "@/components/ui/table";
 import { ROLE_VALUES, ROLES, type Role } from "@/lib/constants";
@@ -92,6 +96,7 @@ export function UserTable({
         user.email.toLowerCase().includes(term),
     );
   }, [users, search]);
+  const paging = useClientPagination(filtered, search);
 
   async function toggleActive(user: PublicUser) {
     setPendingId(user.id);
@@ -149,9 +154,9 @@ export function UserTable({
           description={`Nothing matched “${search.trim()}”. Try a different name or email.`}
         />
       ) : (
-        <div className="overflow-x-auto rounded-lg border bg-background">
-          <Table>
-            <TableHeader>
+        <div className="overflow-hidden rounded-lg border bg-background">
+          <Table containerClassName={SCROLL_BOX}>
+            <TableHeader className={cn(STICKY_HEADER, "bg-background")}>
               <TableRow>
                 <TableHead>User</TableHead>
                 <TableHead>Role</TableHead>
@@ -163,7 +168,7 @@ export function UserTable({
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filtered.map((user) => {
+              {paging.pageItems.map((user) => {
                 const isSelf = user.id === currentUserId;
                 const isPending = pendingId === user.id;
 
@@ -290,6 +295,17 @@ export function UserTable({
             </TableBody>
           </Table>
         </div>
+      )}
+
+      {filtered.length > 0 && (
+        <PaginationControls
+          page={paging.page}
+          pageSize={paging.pageSize}
+          total={paging.total}
+          totalPages={paging.totalPages}
+          onPageChange={paging.setPage}
+          onPageSizeChange={paging.setPageSize}
+        />
       )}
 
       {editing && (

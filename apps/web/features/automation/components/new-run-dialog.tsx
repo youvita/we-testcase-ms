@@ -162,7 +162,7 @@ export function NewRunDialog({
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">Every automated case</SelectItem>
-                    <SelectItem value="failed">Automated cases that are failing</SelectItem>
+                    <SelectItem value="failed">Automated cases that are failing or blocked</SelectItem>
                     {modules.length > 0 && <SelectItem value="module">Chosen modules</SelectItem>}
                   </SelectContent>
                 </Select>

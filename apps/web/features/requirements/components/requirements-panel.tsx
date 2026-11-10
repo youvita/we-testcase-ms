@@ -51,6 +51,8 @@ import {
   TableCell,
   TableHead,
   TableHeader,
+  SCROLL_BOX,
+  STICKY_HEADER,
   TableRow,
 } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
@@ -165,11 +167,11 @@ export function RequirementsPanel({
 
   const paging = useClientPagination(visible, `${search}|${docFilter}|${coverage}`);
 
-  // Grouped by section when the documents have more than one; otherwise the
-  // flat, paged list.
-  const groups = useMemo(() => {
+  // Always paged. With more than one section, a page's rows are grouped under
+  // their sections (counts and progress still cover the whole section).
+  const groupsOf = (items: RequirementDto[]) => {
     const byKey = new Map<string, Group>();
-    for (const req of visible) {
+    for (const req of items) {
       const key = groupKey(req);
       let group = byKey.get(key);
       if (!group) {
@@ -179,8 +181,10 @@ export function RequirementsPanel({
       group.items.push(req);
     }
     return [...byKey.values()];
-  }, [visible]);
-  const grouped = groups.length > 1;
+  };
+  const allGroups = useMemo(() => groupsOf(visible), [visible]);
+  const groups = useMemo(() => groupsOf(paging.pageItems), [paging.pageItems]);
+  const grouped = allGroups.length > 1;
 
   // Each section's progress counts all its requirements, whatever the filter.
   const progress = useMemo(() => {
@@ -207,7 +211,7 @@ export function RequirementsPanel({
   // A search shows every match, collapsed section or not.
   const searching = search.trim() !== "";
   const isOpen = (key: string) => searching || !collapsed.has(key);
-  const allCollapsed = groups.every((group) => collapsed.has(group.key));
+  const allCollapsed = allGroups.every((group) => collapsed.has(group.key));
 
   const questionsFor = useMemo(() => {
     const byRequirement = new Map<string, PoQuestionDto[]>();
@@ -243,12 +247,12 @@ export function RequirementsPanel({
     if (!pendingFocus) return;
     const index = visible.findIndex((req) => req.id === pendingFocus);
     if (index === -1) return;
-    if (!grouped) paging.setPage(Math.floor(index / paging.pageSize) + 1);
+    paging.setPage(Math.floor(index / paging.pageSize) + 1);
     setPendingFocus(null);
     requestAnimationFrame(() =>
       document.getElementById(`requirement-${pendingFocus}`)?.scrollIntoView({ block: "center", behavior: "smooth" }),
     );
-  }, [pendingFocus, visible, paging, grouped]);
+  }, [pendingFocus, visible, paging]);
   const shown = grouped
     ? groups.flatMap((group) => (isOpen(group.key) ? group.items : []))
     : paging.pageItems;
@@ -383,7 +387,7 @@ export function RequirementsPanel({
             <Button
               variant="ghost"
               onClick={() =>
-                setCollapsed(allCollapsed ? new Set() : new Set(groups.map((group) => group.key)))
+                setCollapsed(allCollapsed ? new Set() : new Set(allGroups.map((group) => group.key)))
               }
             >
               {allCollapsed ? "Expand all" : "Collapse all"}
@@ -430,8 +434,8 @@ export function RequirementsPanel({
       )}
 
       <Card className="overflow-hidden">
-        <Table>
-          <TableHeader>
+        <Table containerClassName={SCROLL_BOX}>
+          <TableHeader className={cn(STICKY_HEADER, "bg-card")}>
             <TableRow>
               {canManage && (
                 <TableHead className="w-12 pl-4">
@@ -687,7 +691,7 @@ export function RequirementsPanel({
         </Table>
       </Card>
 
-      {visible.length > 0 && !grouped && (
+      {visible.length > 0 && (
         <PaginationControls
           page={paging.page}
           pageSize={paging.pageSize}

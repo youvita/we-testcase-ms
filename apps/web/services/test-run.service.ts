@@ -8,6 +8,7 @@ import { prisma } from "@/lib/prisma";
 import { badRequest, conflict, HttpError, notFound } from "@/lib/api";
 import { PLATFORM_LABELS } from "@/lib/constants";
 import { dropFrame } from "@/lib/live-frames";
+import { summariseFailure } from "@/utils/playwright-failure";
 import {
   AUTOMATABLE_PLATFORMS,
   RUN_SPEEDS,
@@ -23,7 +24,7 @@ import {
   type Paginated,
 } from "@wetestcase/dto";
 
-import { resolveStoredPath } from "./attachment.service";
+import { attachRunEvidence, resolveStoredPath } from "./attachment.service";
 import { verifyIfRanCurrentScript } from "./automation-script.service";
 import { recordExecution } from "./execution.service";
 import { resolveEnvironmentForRunner } from "./run-environment.service";
@@ -114,7 +115,8 @@ export async function createTestRun(
       projectId,
       script: { isNot: null },
       platform: { in: [...AUTOMATABLE_PLATFORMS] },
-      ...(input.scope === "failed" ? { status: "FAILED" } : {}),
+      // Failing: failed, or blocked before its steps — both need running again.
+      ...(input.scope === "failed" ? { status: { in: ["FAILED", "BLOCKED"] } } : {}),
       ...(input.scope === "module"
         ? {
             OR: [
@@ -131,7 +133,7 @@ export async function createTestRun(
   if (cases.length === 0) {
     throw badRequest(
       input.scope === "failed"
-        ? "No failed test case in this project has a script."
+        ? "No failing or blocked test case in this project has a script."
         : "None of these test cases has an automation script yet.",
     );
   }
@@ -654,6 +656,12 @@ export async function reportItemResult(
     await verifyIfRanCurrentScript(item.testCaseId, item.code);
   }
 
+  // A failure in the case's history reads like a tester wrote it: what went
+  // wrong and at which step. One before step 1 — signing in, getting to the
+  // start — means the case never ran its steps: blocked, not failed.
+  const failure =
+    result.status === "FAILED" && result.error ? summariseFailure(result.error, item.code) : null;
+
   // A draft script's failure says nothing reliable about the product — the
   // script may be what is wrong — so it is not recorded. Its pass is: the
   // product did what the case expects, and the script just proved itself.
@@ -661,18 +669,28 @@ export async function reportItemResult(
     result.status === "PASSED"
       ? ("PASSED" as const)
       : result.status === "FAILED" && !item.draft
-        ? ("FAILED" as const)
+        ? failure?.beforeSteps
+          ? ("BLOCKED" as const)
+          : ("FAILED" as const)
         : null;
 
   let executionId: string | null = null;
   if (item.testCaseId && item.run.recordResults && recordAs) {
     const execution = await recordExecution(item.testCaseId, item.run.createdById, {
       status: recordAs,
-      actualResult: recordAs === "FAILED" ? (result.error?.slice(0, 4000) ?? null) : null,
+      // In plain words; the full error, log and script are on the run's page,
+      // which the history entry links to.
+      actualResult: recordAs === "PASSED" ? null : (failure?.actualResult ?? "The script failed."),
       comment: `Automated — Run #${item.run.number} on ${item.run.environmentName}`,
       environmentName: item.run.environmentName,
     });
     executionId = execution.id;
+    // Its screenshots and video, in the case's history like a tester's own.
+    await attachRunEvidence(
+      execution.id,
+      item.run.projectId,
+      artifacts.filter((artifact) => artifact.kind === "screenshot" || artifact.kind === "video"),
+    );
   }
 
   dropFrame(itemId);
