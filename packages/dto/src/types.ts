@@ -221,6 +221,9 @@ export type RequirementDto = {
   testCases: { id: string; tcId: string; status: ExecutionStatus }[];
   /** Pending AI drafts that would cover this requirement. */
   pendingDraftCount: number;
+  /** When the PO (an admin) confirmed its text, and who; null while not. */
+  verifiedAt: string | null;
+  verifiedBy: { id: string; name: string } | null;
 };
 
 
@@ -282,7 +285,8 @@ export type TestCaseDraftDto = {
   testType: TestType;
   priority: Priority;
   platform: Platform;
-  requirements: { id: string; code: string; title: string }[];
+  /** `verified`: the PO confirmed it; a draft becomes a case only once all are. */
+  requirements: { id: string; code: string; title: string; verified: boolean }[];
   createdAt: string;
 };
 

@@ -410,6 +410,14 @@ export const requirementDocTextSchema = z.object({
 
 export type RequirementDocTextInput = z.input<typeof requirementDocTextSchema>;
 
+/** The PO confirming requirements — or taking that back. */
+export const requirementVerifySchema = z.object({
+  ids: z.array(z.string().min(1)).min(1, "Select at least one requirement").max(2000),
+  verified: z.boolean().default(true),
+});
+
+export type RequirementVerifyInput = z.infer<typeof requirementVerifySchema>;
+
 /** Move a document to another folder, or out of any. */
 export const requirementDocUpdateSchema = z.object({ folder: docFolder });
 

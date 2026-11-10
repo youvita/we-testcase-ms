@@ -46,13 +46,21 @@ export function canComment(role: Role | string | undefined | null) {
   return isAdmin(role) || isQA(role) || isDeveloper(role);
 }
 
-/** Ask the PO to clarify a case — QA, and admins asking another admin. */
+/**
+ * Ask the PO to clarify a requirement or draft — QA only. Admins are the POs
+ * here: they answer questions rather than ask them (they can still reply).
+ */
 export function canAskPo(role: Role | string | undefined | null) {
-  return isAdmin(role) || isQA(role);
+  return isQA(role);
 }
 
 /** Answer such a question. POs are admins. */
 export function canAnswerPo(role: Role | string | undefined | null) {
+  return isAdmin(role);
+}
+
+/** The PO confirms requirements before their drafts can become test cases. */
+export function canVerifyRequirements(role: Role | string | undefined | null) {
   return isAdmin(role);
 }
 

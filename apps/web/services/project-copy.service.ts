@@ -214,6 +214,8 @@ async function planRequirements(
           section: true,
           position: true,
           status: true,
+          verifiedAt: true,
+          verifiedById: true,
         },
       },
     },
@@ -437,6 +439,9 @@ export async function copyToProject(
                 section: source.section,
                 position: source.position,
                 status: source.status,
+                // The same text the PO verified in the source project.
+                verifiedAt: source.verifiedAt,
+                verifiedById: source.verifiedById,
               })),
               select: { id: true, code: true },
             })

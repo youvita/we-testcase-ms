@@ -204,24 +204,25 @@ model User {
   sessions Session[]
   accounts Account[]
 
-  ownedProjects    Project[]         @relation("ProjectQaOwner")
-  createdProjects  Project[]         @relation("ProjectCreatedBy")
-  projectRoles     ProjectMember[]   @relation("ProjectMemberUser")
-  executions       TestExecution[]
-  editedExecutions TestExecution[]   @relation("TestExecutionEditedBy")
-  comments         Comment[]
-  deletedComments  Comment[]         @relation("CommentDeletedBy")
-  settledAnswers   Comment[]         @relation("CommentSettledBy")
-  questionsAsked   Comment[]         @relation("CommentQuestionTo")
-  notifications    Notification[]    @relation("NotificationRecipient")
-  notificationsBy  Notification[]    @relation("NotificationActor")
-  poQuestions      PoQuestion[]      @relation("PoQuestionAsker")
-  poQuestionsTo    PoQuestion[]      @relation("PoQuestionTo")
-  poReplies        PoQuestionReply[]
-  poResolved       PoQuestion[]      @relation("PoQuestionResolvedBy")
-  fixStatusSet     TestCase[]        @relation("TestCaseFixStatusBy")
-  trashedCases     TestCase[]        @relation("TestCaseDeletedBy")
-  fixStatusEvents  FixStatusEvent[]  @relation("FixStatusEventActor")
+  ownedProjects        Project[]         @relation("ProjectQaOwner")
+  createdProjects      Project[]         @relation("ProjectCreatedBy")
+  projectRoles         ProjectMember[]   @relation("ProjectMemberUser")
+  executions           TestExecution[]
+  editedExecutions     TestExecution[]   @relation("TestExecutionEditedBy")
+  comments             Comment[]
+  deletedComments      Comment[]         @relation("CommentDeletedBy")
+  settledAnswers       Comment[]         @relation("CommentSettledBy")
+  questionsAsked       Comment[]         @relation("CommentQuestionTo")
+  notifications        Notification[]    @relation("NotificationRecipient")
+  notificationsBy      Notification[]    @relation("NotificationActor")
+  poQuestions          PoQuestion[]      @relation("PoQuestionAsker")
+  poQuestionsTo        PoQuestion[]      @relation("PoQuestionTo")
+  poReplies            PoQuestionReply[]
+  poResolved           PoQuestion[]      @relation("PoQuestionResolvedBy")
+  fixStatusSet         TestCase[]        @relation("TestCaseFixStatusBy")
+  trashedCases         TestCase[]        @relation("TestCaseDeletedBy")
+  verifiedRequirements Requirement[]     @relation("RequirementVerifiedBy")
+  fixStatusEvents      FixStatusEvent[]  @relation("FixStatusEventActor")
 
   claudeConnection       ClaudeConnection?
   requirementDocs        RequirementDoc[]
@@ -727,6 +728,12 @@ model Requirement {
   possibleMatchId String?
   possibleMatch   Requirement?  @relation("RequirementPossibleMatch", fields: [possibleMatchId], references: [id], onDelete: SetNull)
   possibleMatchOf Requirement[] @relation("RequirementPossibleMatch")
+
+  /// The PO (an admin) confirmed this text is right. Drafts for it can only
+  /// become test cases once it is; a change to its text clears it.
+  verifiedAt   DateTime?
+  verifiedById String?
+  verifiedBy   User?     @relation("RequirementVerifiedBy", fields: [verifiedById], references: [id], onDelete: SetNull)
 
   testCases TestCaseRequirement[]
 

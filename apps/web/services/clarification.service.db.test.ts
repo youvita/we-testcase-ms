@@ -34,7 +34,8 @@ async function setUp() {
     data: { projectId: project.id, createdById: qa.id, title: "API", content: "x", charCount: 1 },
   });
   const requirement = await prisma.requirement.create({
-    data: { projectId: project.id, docId: doc.id, code: "POST /auth/token", title: "Token" },
+    // Verified by the PO, so its drafts can be accepted.
+    data: { projectId: project.id, docId: doc.id, code: "POST /auth/token", title: "Token", verifiedAt: new Date() },
   });
   const draft = await prisma.testCaseDraft.create({
     data: { projectId: project.id, moduleName: "Auth", title: "Token is issued", requirementIds: [requirement.id] },

@@ -48,6 +48,7 @@ export function RequirementsWorkspace({
   jobs: initialJobs,
   platforms,
   canManage,
+  canVerify = false,
   environments,
   signInCases,
   openExplore = false,
@@ -62,6 +63,8 @@ export function RequirementsWorkspace({
   jobs: AiJobDto[];
   platforms: Platform[];
   canManage: boolean;
+  /** An admin — the PO — who verifies requirements. */
+  canVerify?: boolean;
   environments: RunEnvironmentDto[];
   signInCases: SignInCase[];
   /** Arrived with ?explore=1: open "Explore the app" straight away. */
@@ -203,6 +206,7 @@ export function RequirementsWorkspace({
             requirements={requirements}
             platforms={platforms}
             canManage={canManage}
+            canVerify={canVerify}
             generating={generating}
             startAi={startAi}
             onOpenDocuments={() => setTab("documents")}

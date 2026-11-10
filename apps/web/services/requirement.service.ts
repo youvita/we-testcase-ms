@@ -263,6 +263,7 @@ export async function listRequirements(
       include: {
         doc: { select: { title: true, version: true } },
         possibleMatch: { select: { id: true, code: true, title: true } },
+        verifiedBy: { select: { id: true, name: true } },
         testCases: {
           where: { testCase: { deletedAt: null } },
           select: {
@@ -305,6 +306,8 @@ export async function listRequirements(
       possibleMatch: row.possibleMatch,
       testCases: row.testCases.map((link) => link.testCase),
       pendingDraftCount: pendingByRequirement.get(row.id) ?? 0,
+      verifiedAt: row.verifiedAt?.toISOString() ?? null,
+      verifiedBy: row.verifiedBy,
     };
   });
 }
@@ -353,24 +356,48 @@ export async function updateRequirement(
 ) {
   const existing = await prisma.requirement.findUnique({
     where: { id: requirementId },
-    select: { docId: true },
+    select: { docId: true, ...SNAPSHOT_SELECT },
   });
   if (!existing) throw notFound("Requirement");
 
   const code = input.code.trim();
   await assertCodeFree(existing.docId, code, requirementId);
 
+  const next = {
+    code,
+    title: input.title.trim(),
+    description: input.description ?? null,
+    acceptanceCriteria: input.acceptanceCriteria ?? null,
+    section: input.section ?? null,
+  };
+  // What it says changed: the PO confirms the new text. Open questions are
+  // QA's notes, not the requirement, so editing them alone keeps it verified.
+  const changed = code !== existing.code || !sameRequirementText(existing, next);
   return prisma.requirement.update({
     where: { id: requirementId },
     data: {
-      code,
-      title: input.title.trim(),
-      description: input.description ?? null,
-      acceptanceCriteria: input.acceptanceCriteria ?? null,
+      ...next,
       openQuestions: input.openQuestions ?? null,
-      section: input.section ?? null,
+      ...(changed ? { verifiedAt: null, verifiedById: null } : {}),
     },
   });
+}
+
+/**
+ * The PO (an admin) confirms requirements are right — or takes it back. Only
+ * requirements still in force; a removed one has nothing to confirm.
+ */
+export async function verifyRequirements(
+  projectId: string,
+  userId: string,
+  ids: string[],
+  verified: boolean,
+) {
+  const { count } = await prisma.requirement.updateMany({
+    where: { projectId, id: { in: ids }, status: "ACTIVE" },
+    data: verified ? { verifiedAt: new Date(), verifiedById: userId } : { verifiedAt: null, verifiedById: null },
+  });
+  return { updated: count };
 }
 
 export async function deleteRequirement(requirementId: string) {
@@ -459,6 +486,8 @@ export async function reviewRequirement(
             change: sameRequirementText(earlier, row) && earlier.code === row.code ? "UNCHANGED" : "CHANGED",
             changedInVersion: row.changedInVersion,
             previous: snapshotOf(earlier),
+            // New text needs the PO again; the same text keeps what they confirmed.
+            ...(sameRequirementText(earlier, row) && earlier.code === row.code ? {} : { verifiedAt: null, verifiedById: null }),
           },
         });
       });
@@ -634,6 +663,8 @@ export async function startRequirementReading(docId: string) {
         change,
         changedInVersion: version,
         ...(keepEarlierFinding ? {} : { previous: differs ? before : Prisma.DbNull }),
+        // Its text changed: the PO confirms the new one.
+        ...(differs ? { verifiedAt: null, verifiedById: null } : {}),
       },
     });
     if (change === "ADDED") tally.added += 1;

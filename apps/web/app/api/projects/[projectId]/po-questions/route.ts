@@ -13,9 +13,12 @@ export const GET = route<Ctx>({}, async (_request, { params, user }) => {
   return ok(await listPoQuestions(projectId));
 });
 
-/** Ask the PO — one admin, or every admin — about a requirement or a draft. */
+/**
+ * Ask the PO — one admin, or every admin — about a requirement or a draft.
+ * QA asks; admins are the POs who answer.
+ */
 export const POST = route<Ctx>(
-  { roles: [ROLES.ADMIN, ROLES.QA] },
+  { roles: [ROLES.QA] },
   async (request, { params, user }) => {
     const { projectId } = await params;
     await assertProjectAccess(projectId, user);

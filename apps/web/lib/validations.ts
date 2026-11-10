@@ -36,6 +36,7 @@ export {
   requirementDocTextSchema,
   requirementDocVersionTextSchema,
   requirementDocUpdateSchema,
+  requirementVerifySchema,
   requirementDocFolderSchema,
   requirementReviewSchema,
   requirementSchema,

@@ -4,6 +4,7 @@ import { Fragment, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
+  BadgeCheck,
   ChevronDown,
   ChevronRight,
   CircleHelp,
@@ -72,6 +73,8 @@ import {
   type RequirementDto,
 } from "@wetestcase/dto";
 import { api, errorMessage } from "@/utils/api-client";
+import { formatDateTime } from "@/utils/format";
+import { OPEN_QUESTIONS_FOR_PO, OPEN_QUESTIONS_FOR_QA } from "@/components/shared/open-questions";
 
 import {
   ChangeBadge,
@@ -84,7 +87,7 @@ import { AskPoDialog } from "@/features/comments/components/ask-po-dialog";
 import { PoQuestionBadge, PoQuestions, type PoContext } from "./po-questions";
 import type { StartAi } from "./requirements-workspace";
 
-type Coverage = "all" | "uncovered" | "covered" | "questions" | "changes" | "removed";
+type Coverage = "all" | "unverified" | "uncovered" | "covered" | "questions" | "changes" | "removed";
 
 /** A document's section — the unit a feature is usually written as. */
 type Group = { key: string; section: string | null; docTitle: string; items: RequirementDto[] };
@@ -100,6 +103,7 @@ export function RequirementsPanel({
   requirements,
   platforms,
   canManage,
+  canVerify = false,
   generating,
   startAi,
   onOpenDocuments,
@@ -112,6 +116,8 @@ export function RequirementsPanel({
   requirements: RequirementDto[];
   platforms: Platform[];
   canManage: boolean;
+  /** An admin — the PO — who confirms requirements are right. */
+  canVerify?: boolean;
   generating: boolean;
   startAi: StartAi;
   onOpenDocuments: () => void;
@@ -149,6 +155,7 @@ export function RequirementsPanel({
       if (coverage === "uncovered" && req.testCases.length > 0) return false;
       if (coverage === "covered" && req.testCases.length === 0) return false;
       if (coverage === "questions" && !req.openQuestions) return false;
+      if (coverage === "unverified" && req.verifiedAt) return false;
       if (!term) return true;
       return [req.code, req.title, req.description, req.section]
         .filter(Boolean)
@@ -177,14 +184,18 @@ export function RequirementsPanel({
 
   // Each section's progress counts all its requirements, whatever the filter.
   const progress = useMemo(() => {
-    const byKey = new Map<string, { total: number; covered: number; questions: number }>();
+    const byKey = new Map<
+      string,
+      { total: number; covered: number; questions: number; unverified: string[] }
+    >();
     for (const req of requirements) {
       if (req.status === "REMOVED") continue;
       const key = groupKey(req);
-      const counts = byKey.get(key) ?? { total: 0, covered: 0, questions: 0 };
+      const counts = byKey.get(key) ?? { total: 0, covered: 0, questions: 0, unverified: [] };
       counts.total += 1;
       if (req.testCases.length > 0) counts.covered += 1;
       if (req.openQuestions) counts.questions += 1;
+      if (!req.verifiedAt) counts.unverified.push(req.id);
       byKey.set(key, counts);
     }
     return byKey;
@@ -255,6 +266,31 @@ export function RequirementsPanel({
     else next.delete(id);
     return next;
   }
+
+  const [verifying, setVerifying] = useState(false);
+  async function verify(ids: string[], verified = true) {
+    if (ids.length === 0) return;
+    setVerifying(true);
+    try {
+      const { updated } = await api.post<{ updated: number }>(`/api/projects/${projectId}/requirements/verify`, {
+        ids,
+        verified,
+      });
+      toast.success(
+        verified
+          ? `Verified ${updated} requirement${updated === 1 ? "" : "s"} — their drafts can be accepted`
+          : "Marked not verified",
+      );
+      router.refresh();
+    } catch (error) {
+      toast.error(errorMessage(error));
+    } finally {
+      setVerifying(false);
+    }
+  }
+  const selectedUnverified = requirements
+    .filter((req) => selected.has(req.id) && req.status === "ACTIVE" && !req.verifiedAt)
+    .map((req) => req.id);
 
   async function restore(req: RequirementDto) {
     try {
@@ -339,6 +375,7 @@ export function RequirementsPanel({
               <SelectItem value="covered">Covered</SelectItem>
               <SelectItem value="questions">With open questions</SelectItem>
               <SelectItem value="changes">Changed in new version</SelectItem>
+              <SelectItem value="unverified">Not verified by the PO</SelectItem>
               <SelectItem value="removed">Removed</SelectItem>
             </SelectContent>
           </Select>
@@ -356,6 +393,18 @@ export function RequirementsPanel({
 
         {canManage && (
           <div className="flex flex-wrap gap-2">
+            {canVerify && (
+              <Button
+                variant="outline"
+                disabled={selectedUnverified.length === 0 || verifying}
+                onClick={() => void verify(selectedUnverified)}
+                title="Confirm the selected requirements are right"
+              >
+                {verifying ? <Loader2 className="mr-2 size-4 animate-spin" /> : <BadgeCheck className="mr-2 size-4" />}
+                Verify
+                {selectedUnverified.length > 0 && ` (${selectedUnverified.length})`}
+              </Button>
+            )}
             <Button variant="outline" onClick={() => setEditing("new")}>
               <Plus className="mr-2 size-4" />
               Add
@@ -440,9 +489,10 @@ export function RequirementsPanel({
                         </TableCell>
                       )}
                       <TableCell colSpan={canManage ? 5 : 4} className="py-1.5 pl-1">
+                        <div className="flex items-center gap-2">
                         <button
                           type="button"
-                          className="flex w-full flex-wrap items-center gap-x-2 gap-y-0.5 text-left"
+                          className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-0.5 text-left"
                           aria-expanded={groupOpen}
                           disabled={searching}
                           onClick={() => setCollapsed(toggle(collapsed, group.key, groupOpen))}
@@ -472,9 +522,28 @@ export function RequirementsPanel({
                                 {counts.questions} with questions
                               </span>
                             )}
+                            {counts && counts.unverified.length > 0 && (
+                              <span className="text-status-blocked">
+                                {" · "}
+                                {counts.unverified.length} not verified
+                              </span>
+                            )}
                             {(coverage !== "all" || docFilter !== "all") && ` · ${group.items.length} shown`}
                           </span>
                         </button>
+                        {canVerify && counts && counts.unverified.length > 0 && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-7 shrink-0"
+                            disabled={verifying}
+                            onClick={() => void verify(counts.unverified)}
+                          >
+                            <BadgeCheck className="mr-1.5 size-3.5" />
+                            Verify section
+                          </Button>
+                        )}
+                        </div>
                       </TableCell>
                     </TableRow>
                   )}
@@ -526,6 +595,7 @@ export function RequirementsPanel({
                               {req.title}
                             </span>
                             <ChangeBadge requirement={req} />
+                            {req.status === "ACTIVE" && <VerifiedMark requirement={req} />}
                             {req.openQuestions && (
                               <CircleHelp
                                 className="mt-0.5 size-4 shrink-0 text-status-blocked"
@@ -554,6 +624,12 @@ export function RequirementsPanel({
                                 </Button>
                               </DropdownMenuTrigger>
                               <DropdownMenuContent align="end">
+                                {canVerify && req.status === "ACTIVE" && (
+                                  <DropdownMenuItem onSelect={() => void verify([req.id], !req.verifiedAt)}>
+                                    <BadgeCheck className="mr-2 size-4" />
+                                    {req.verifiedAt ? "Mark not verified" : "Verify"}
+                                  </DropdownMenuItem>
+                                )}
                                 <DropdownMenuItem onSelect={() => setEditing(req)}>
                                   <Pencil className="mr-2 size-4" />
                                   Edit
@@ -583,7 +659,7 @@ export function RequirementsPanel({
                             <Detail label="Description" text={req.description} />
                             <Detail label="Acceptance criteria" text={req.acceptanceCriteria} />
                             <Detail
-                              label="Open questions — ask the product owner"
+                              label={po.canAnswer ? OPEN_QUESTIONS_FOR_PO : OPEN_QUESTIONS_FOR_QA}
                               text={req.openQuestions}
                               className="text-status-blocked"
                             />
@@ -1012,5 +1088,31 @@ function RequirementFormDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+/**
+ * Whether the PO confirmed the requirement: a quiet tick when they did, an
+ * amber "Not verified" while its drafts wait for them.
+ */
+function VerifiedMark({ requirement }: { requirement: RequirementDto }) {
+  if (requirement.verifiedAt) {
+    return (
+      <span
+        className="inline-flex shrink-0 items-center gap-0.5 text-xs text-status-passed"
+        title={`Verified${requirement.verifiedBy ? ` by ${requirement.verifiedBy.name}` : ""} on ${formatDateTime(requirement.verifiedAt)}`}
+      >
+        <BadgeCheck className="size-3.5" aria-hidden />
+        Verified
+      </span>
+    );
+  }
+  return (
+    <span
+      className="inline-flex shrink-0 items-center rounded border border-status-blocked/40 px-1 text-xs text-status-blocked"
+      title="The PO has not confirmed this requirement yet. Its drafts become test cases once they do."
+    >
+      Not verified
+    </span>
   );
 }

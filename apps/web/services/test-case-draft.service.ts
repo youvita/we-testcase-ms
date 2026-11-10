@@ -33,7 +33,7 @@ export async function listPendingDrafts(
   const requirementIds = Array.from(new Set(drafts.flatMap((d) => d.requirementIds)));
   const requirements = await prisma.requirement.findMany({
     where: { id: { in: requirementIds } },
-    select: { id: true, code: true, title: true },
+    select: { id: true, code: true, title: true, verifiedAt: true },
   });
   const byId = new Map(requirements.map((req) => [req.id, req]));
 
@@ -54,7 +54,7 @@ export async function listPendingDrafts(
     platform: draft.platform,
     requirements: draft.requirementIds.flatMap((id) => {
       const req = byId.get(id);
-      return req ? [req] : [];
+      return req ? [{ id: req.id, code: req.code, title: req.title, verified: req.verifiedAt !== null }] : [];
     }),
     createdAt: draft.createdAt.toISOString(),
   }));
@@ -176,6 +176,20 @@ export async function reviewDrafts(
   if (offPlatform.length > 0) {
     throw badRequest(
       `${offPlatform.length} selected draft${offPlatform.length === 1 ? " is" : "s are"} for a platform this project no longer has. Edit ${offPlatform.length === 1 ? "it" : "them"} first.`,
+    );
+  }
+
+  // A case is only as right as its requirement: until the PO has verified
+  // every requirement a draft is for, it stays a draft.
+  const waiting = await prisma.requirement.findMany({
+    where: { projectId, id: { in: drafts.flatMap((d) => d.requirementIds) }, verifiedAt: null },
+    select: { code: true },
+    orderBy: { code: "asc" },
+  });
+  if (waiting.length > 0) {
+    const codes = waiting.map((req) => req.code);
+    throw badRequest(
+      `Waiting for the PO to verify ${codes.slice(0, 5).join(", ")}${codes.length > 5 ? ` and ${codes.length - 5} more` : ""}. Drafts for a requirement become test cases once it is verified.`,
     );
   }
 

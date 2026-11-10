@@ -12,7 +12,7 @@ import { Breadcrumbs } from "@/components/layout/breadcrumbs";
 import { PageHeader } from "@/components/shared/page-header";
 import { StatCard } from "@/components/shared/stat-card";
 import { RequirementsWorkspace } from "@/features/requirements/components/requirements-workspace";
-import { canAnswerPo, canAskPo, canManageTestCases } from "@/lib/permissions";
+import { canAnswerPo, canAskPo, canManageTestCases, canVerifyRequirements } from "@/lib/permissions";
 import { requireProjectAccess } from "@/lib/project-access";
 import { requireUser } from "@/lib/session";
 import { listJobs } from "@/services/ai-job.service";
@@ -61,6 +61,7 @@ export default async function RequirementsPage({
   const inForce = requirements.filter((req) => req.status === "ACTIVE");
   const covered = inForce.filter((req) => req.testCases.length > 0).length;
   const withQuestions = inForce.filter((req) => req.openQuestions).length;
+  const unverified = inForce.filter((req) => !req.verifiedAt).length;
   const coverage = inForce.length
     ? Math.round((covered / inForce.length) * 100)
     : 0;
@@ -85,7 +86,7 @@ export default async function RequirementsPage({
           label="Requirements"
           value={inForce.length}
           icon={FileText}
-          hint={`${docs.length} document${docs.length === 1 ? "" : "s"}`}
+          hint={`${docs.length} document${docs.length === 1 ? "" : "s"}${unverified > 0 ? ` · ${unverified} not verified by the PO` : ""}`}
         />
         <StatCard
           label="Covered by tests"
@@ -117,6 +118,7 @@ export default async function RequirementsPage({
         jobs={jobs}
         platforms={project.platforms}
         canManage={canManageTestCases(user.role)}
+        canVerify={canVerifyRequirements(user.role)}
         environments={environments}
         signInCases={signInCases}
         openExplore={explore === "1" && canManageTestCases(user.role)}

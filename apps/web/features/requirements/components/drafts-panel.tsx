@@ -60,6 +60,7 @@ import type {
   TestCaseDraftDto,
   TestCaseDraftInput,
 } from "@wetestcase/dto";
+import { cn } from "@/lib/utils";
 import { api, errorMessage } from "@/utils/api-client";
 import { useClientPagination } from "@/hooks/use-client-pagination";
 
@@ -208,6 +209,9 @@ export function DraftsPanel({
   // Only what is on screen: a bulk accept never reaches drafts the filter or
   // another page hides.
   const selectedIds = shown.filter((d) => selected.has(d.id)).map((d) => d.id);
+  // Drafts whose requirements the PO has not verified wait; Accept skips them.
+  const acceptableIds = shown.filter((d) => selected.has(d.id) && !waitingForPo(d)).map((d) => d.id);
+  const waitingSelected = selectedIds.length - acceptableIds.length;
 
   function toggle(set: Set<string>, ids: string[], on: boolean) {
     const next = new Set(set);
@@ -332,7 +336,12 @@ export function DraftsPanel({
                 ? `Select all ${shown.length} on this page`
                 : `Select all ${shown.length}`}
           </label>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            {waitingSelected > 0 && (
+              <span className="text-xs text-status-blocked">
+                {waitingSelected} waiting for the PO to verify {waitingSelected === 1 ? "its requirement" : "their requirements"}
+              </span>
+            )}
             <Button
               variant="outline"
               size="sm"
@@ -344,11 +353,12 @@ export function DraftsPanel({
             </Button>
             <Button
               size="sm"
-              disabled={selectedIds.length === 0 || busy !== null}
-              onClick={() => void review("accept", selectedIds)}
+              disabled={acceptableIds.length === 0 || busy !== null}
+              onClick={() => void review("accept", acceptableIds)}
             >
               {busy === "accept" ? <Loader2 className="mr-2 size-4 animate-spin" /> : <Check className="mr-2 size-4" />}
               Accept as test cases
+              {waitingSelected > 0 && acceptableIds.length > 0 && ` (${acceptableIds.length})`}
             </Button>
           </div>
         </div>
@@ -422,10 +432,18 @@ export function DraftsPanel({
                           )}
                           <PoQuestionBadge questions={questionsFor(draft.id)} />
                           {draft.requirements.map((req) => (
-                            <Badge key={req.id} variant="outline" className="font-mono" title={req.title}>
+                            <Badge
+                              key={req.id}
+                              variant="outline"
+                              className={cn("font-mono", !req.verified && "border-status-blocked/50 text-status-blocked")}
+                              title={req.verified ? req.title : `${req.title} — not verified by the PO yet`}
+                            >
                               {req.code}
                             </Badge>
                           ))}
+                          {waitingForPo(draft) && (
+                            <span className="text-xs font-medium text-status-blocked">Waiting for PO</span>
+                          )}
                         </span>
                       </span>
                     </button>
@@ -447,8 +465,9 @@ export function DraftsPanel({
                           size="icon"
                           variant="ghost"
                           aria-label="Accept draft"
+                          title={waitingForPo(draft) ? "Waiting for the PO to verify its requirement" : undefined}
                           className="text-status-passed"
-                          disabled={busy !== null}
+                          disabled={busy !== null || waitingForPo(draft)}
                           onClick={() => void review("accept", [draft.id])}
                         >
                           <Check className="size-4" />
@@ -499,6 +518,11 @@ export function DraftsPanel({
 const ALL = "__all";
 const NO_REQUIREMENT = "__none";
 
+/** A requirement it is for is not verified by the PO yet, so it cannot be accepted. */
+function waitingForPo(draft: TestCaseDraftDto): boolean {
+  return draft.requirements.some((req) => !req.verified);
+}
+
 /** The draft came from this requirement — or from none, or `ALL` for any. */
 function inRequirement(draft: TestCaseDraftDto, filter: string): boolean {
   if (filter === ALL) return true;
@@ -533,7 +557,11 @@ function DraftQuestions({
   ) : null;
   return (
     <div className="ml-7 mt-3 space-y-2">
-      {draft.openQuestions ? <OpenQuestions text={draft.openQuestions} action={ask} /> : ask}
+      {draft.openQuestions ? (
+        <OpenQuestions text={draft.openQuestions} action={ask} forPo={po.canAnswer} />
+      ) : (
+        ask
+      )}
       <PoQuestions questions={questions} po={po} />
     </div>
   );
