@@ -21,7 +21,14 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import type { AiJobDto, GenerationDepth, RunEnvironmentDto } from "@wetestcase/dto";
+import {
+  AI_MODELS,
+  AI_MODEL_LABELS,
+  type AiJobDto,
+  type AiModel,
+  type GenerationDepth,
+  type RunEnvironmentDto,
+} from "@wetestcase/dto";
 import { api } from "@/utils/api-client";
 
 import type { StartAi } from "./requirements-workspace";
@@ -57,6 +64,7 @@ export function ExploreAppDialog({
   const [pathsEdited, setPathsEdited] = useState<string | null>(null);
   const [signIn, setSignIn] = useState(NO_SIGN_IN);
   const [depth, setDepth] = useState<GenerationDepth>("essential");
+  const [model, setModel] = useState<AiModel>("sonnet");
   const [instructions, setInstructions] = useState("");
   const [busy, setBusy] = useState(false);
   const signInCase = signInCases.find((c) => c.id === signIn);
@@ -81,6 +89,7 @@ export function ExploreAppDialog({
           paths: pathList,
           setupTestCaseId: signIn === NO_SIGN_IN ? null : signIn,
           depth,
+          model,
           instructions,
         }),
       );
@@ -175,6 +184,21 @@ export function ExploreAppDialog({
                     ? "About 4–8 cases per page: the main flows and the most important errors. Best to start with."
                     : "Every field's validation, limits, states and navigation. Many more drafts to review."}
                 </p>
+              </div>
+              <div className="space-y-2">
+                <Label>AI model</Label>
+                <Select value={model} onValueChange={(value) => setModel(value as AiModel)}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {AI_MODELS.map((option) => (
+                      <SelectItem key={option} value={option}>
+                        {AI_MODEL_LABELS[option].label} — {AI_MODEL_LABELS[option].hint}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="explore-notes">Focus (optional)</Label>

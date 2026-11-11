@@ -9,6 +9,7 @@ import {
   PRIORITIES,
   TEST_TYPES,
   type AiJobDto,
+  type AiModel,
   type ExploreAppResult,
   type GenerationDepth,
 } from "@wetestcase/dto";
@@ -99,6 +100,8 @@ type ExplorationInput = {
   setupTestCaseId?: string;
   depth: GenerationDepth;
   instructions?: string;
+  /** The AI model to use; the server's default when absent. */
+  model?: AiModel;
 };
 
 /**
@@ -232,7 +235,13 @@ ${p.outline.replace(/^URL: .*\nTitle: .*\n\n/, "").slice(0, OUTLINE_CHARS)}
 )
 .join("\n\n")}`;
 
-    const reply = await askClaude({ token, system: EXPLORE_SYSTEM, images, prompt });
+    const reply = await askClaude({
+      token,
+      model: input.model,
+      system: EXPLORE_SYSTEM,
+      images,
+      prompt,
+    });
     const cases = parseItems(reply, "testCases", draftReplySchema);
     const json = parseJsonReply(reply) as { observations?: unknown };
     result.observations = observationsSchema.parse(json.observations);

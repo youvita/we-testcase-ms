@@ -699,6 +699,8 @@ export const exploreAppSchema = z.object({
   setupTestCaseId: z.string().nullish().transform((v) => v || undefined),
   depth: z.enum(GENERATION_DEPTHS).default("essential"),
   instructions: optionalText(2000),
+  /** Blank means the server's default model. */
+  model: z.enum(AI_MODELS).optional(),
 });
 
 export type ExploreAppInput = z.input<typeof exploreAppSchema>;
