@@ -281,10 +281,11 @@ requirements, coverage, changes in a new version and what the PO has not
 verified yet, and *Collapse all* leaves just the folders.
 
 Coverage (which requirements have tests, and their latest results) is on the
-requirements page; each test case lists the requirements it verifies. The test
-case list marks cases *From requirements* or *From exploring*, and its
-**Source** filter (under More filters) picks them apart from cases written by
-hand or imported.
+requirements page; each test case lists the requirements it verifies. On the test
+case list, the **Source** filter (under More filters) picks out cases from
+requirements or from exploring, apart from those written by hand or imported,
+and a row's ⋯ → **Quick view** shows the case's text, requirements and latest
+result in a side panel, stepping through the page with ← →.
 
 **No document? Explore the app.** *Explore the app* (on the test case list,
 or in Review drafts) suggests cases from the application

@@ -10,10 +10,9 @@ import {
   ChevronsUpDown,
   ClipboardCopy,
   ClipboardList,
-  Compass,
   Copy,
   Download,
-  FileText,
+  Eye,
   FolderTree,
   MoreHorizontal,
   Pencil,
@@ -73,6 +72,7 @@ import {
 } from "./test-case-form-dialog";
 import { CopyToProjectDialog } from "./copy-to-project-dialog";
 import { SubModuleDialog } from "./sub-module-dialog";
+import { TestCaseQuickView } from "./test-case-quick-view";
 
 type SortKey = "tcId" | "testType" | "priority" | "module" | "updatedAt";
 
@@ -131,6 +131,7 @@ export function TestCaseTable({
   const [editing, setEditing] = useState<TestCaseListItem | null>(null);
   const [formOpen, setFormOpen] = useState(false);
   const [deleting, setDeleting] = useState<TestCaseListItem | null>(null);
+  const [quickViewId, setQuickViewId] = useState<string | null>(null);
   const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
   const [subModuleOpen, setSubModuleOpen] = useState(false);
 
@@ -534,54 +535,56 @@ export function TestCaseTable({
                 </TableCell>
 
                 <TableCell onClick={(event) => event.stopPropagation()}>
-                  {(canManage || hasBugToReport(testCase)) && (
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="size-8"
-                          aria-label={`Actions for ${testCase.tcId}`}
-                        >
-                          <MoreHorizontal className="size-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        {hasBugToReport(testCase) && (
-                          <DropdownMenuItem onSelect={() => void copyBugReportFor(testCase.id)}>
-                            <ClipboardCopy className="mr-2 size-4" />
-                            Copy bug report
-                          </DropdownMenuItem>
-                        )}
-                        {canManage && (
-                        <DropdownMenuItem
-                          onSelect={() => {
-                            setEditing(testCase);
-                            setFormOpen(true);
-                          }}
-                        >
-                          <Pencil className="mr-2 size-4" />
-                          Edit
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="size-8"
+                        aria-label={`Actions for ${testCase.tcId}`}
+                      >
+                        <MoreHorizontal className="size-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem onSelect={() => setQuickViewId(testCase.id)}>
+                        <Eye className="mr-2 size-4" />
+                        Quick view
+                      </DropdownMenuItem>
+                      {hasBugToReport(testCase) && (
+                        <DropdownMenuItem onSelect={() => void copyBugReportFor(testCase.id)}>
+                          <ClipboardCopy className="mr-2 size-4" />
+                          Copy bug report
                         </DropdownMenuItem>
-                        )}
-                        {canManage && testCase.script && (
-                          <DropdownMenuItem onSelect={() => void downloadCaseScript(testCase.id)}>
-                            <Download className="mr-2 size-4" />
-                            Download script
-                          </DropdownMenuItem>
-                        )}
-                        {canManage && (
-                        <DropdownMenuItem
-                          className="text-destructive focus:text-destructive"
-                          onSelect={() => setDeleting(testCase)}
-                        >
-                          <Trash2 className="mr-2 size-4" />
-                          Delete
+                      )}
+                      {canManage && (
+                      <DropdownMenuItem
+                        onSelect={() => {
+                          setEditing(testCase);
+                          setFormOpen(true);
+                        }}
+                      >
+                        <Pencil className="mr-2 size-4" />
+                        Edit
+                      </DropdownMenuItem>
+                      )}
+                      {canManage && testCase.script && (
+                        <DropdownMenuItem onSelect={() => void downloadCaseScript(testCase.id)}>
+                          <Download className="mr-2 size-4" />
+                          Download script
                         </DropdownMenuItem>
-                        )}
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  )}
+                      )}
+                      {canManage && (
+                      <DropdownMenuItem
+                        className="text-destructive focus:text-destructive"
+                        onSelect={() => setDeleting(testCase)}
+                      >
+                        <Trash2 className="mr-2 size-4" />
+                        Delete
+                      </DropdownMenuItem>
+                      )}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                 </TableCell>
               </TableRow>
             ))}
@@ -598,6 +601,19 @@ export function TestCaseTable({
         onPageChange={(next) => setParams({ page: next })}
         onPageSizeChange={(size) => setParams({ pageSize: size, page: 1 })}
       />
+
+      <TestCaseQuickView
+          projectId={projectId}
+          items={page.items}
+          openId={quickViewId}
+          onOpenChange={setQuickViewId}
+          canManage={canManage}
+          onEdit={(testCase) => {
+            setQuickViewId(null);
+            setEditing(testCase);
+            setFormOpen(true);
+          }}
+        />
 
       {canManage && (
         <TestCaseFormDialog
@@ -722,23 +738,11 @@ function hasBugToReport(testCase: TestCaseListItem): boolean {
   return testCase.status === "FAILED" || testCase.status === "BLOCKED";
 }
 
-/** Under the title: where the case came from, and whether a requirement it verifies changed. */
+/** Under the title: a requirement it verifies changed since it was written. */
 function CaseMarkers({ testCase }: { testCase: TestCaseListItem }) {
-  if (testCase.source === "manual" && !testCase.requirementChanged) return null;
+  if (!testCase.requirementChanged) return null;
   return (
     <span className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs">
-      {testCase.source === "requirements" && (
-        <span className="inline-flex items-center gap-1 text-muted-foreground" title="AI draft from a requirement">
-          <FileText className="size-3" aria-hidden />
-          From requirements
-        </span>
-      )}
-      {testCase.source === "explore" && (
-        <span className="inline-flex items-center gap-1 text-muted-foreground" title="AI draft from exploring the app">
-          <Compass className="size-3" aria-hidden />
-          From exploring
-        </span>
-      )}
       {testCase.requirementChanged && (
         <span
           className="inline-flex items-center gap-1 font-medium text-status-blocked"
