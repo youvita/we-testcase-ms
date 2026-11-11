@@ -256,7 +256,7 @@ defineJob("EXTRACT_REQUIREMENTS", async (job) => {
     select: { id: true, projectId: true, title: true, kind: true, content: true },
   });
   if (!doc) throw notFound("Document");
-  return async ({ token, progress }) => {
+  return async ({ token, progress, throwIfCancelled, signal }) => {
     const parts = splitDocument(doc.content, EXTRACT_PART_CHARS);
     await progress(0, parts.length);
 
@@ -270,6 +270,7 @@ defineJob("EXTRACT_REQUIREMENTS", async (job) => {
     for (const [index, text] of parts.entries()) {
       const reply = await askClaude({
         token,
+        signal,
         system: EXTRACT_SYSTEM,
         prompt: extractPrompt({
           title: doc.title,
@@ -297,6 +298,8 @@ defineJob("EXTRACT_REQUIREMENTS", async (job) => {
           return true;
         });
 
+      // Cancelled: earlier parts stay saved; this one is not.
+      throwIfCancelled();
       for (const item of items) await reading.save(item, position++);
       found += items.length;
       taken.push(...items.map((item) => item.code));
@@ -533,7 +536,7 @@ defineJob("GENERATE_TEST_CASES", async (job) => {
   });
   if (!project) throw notFound("Project");
 
-  return async ({ jobId, token, progress }) => {
+  return async ({ jobId, token, progress, throwIfCancelled, signal }) => {
     const batchSize = BATCH_SIZE[input.depth];
     // Read once: the PRD does not change while the job runs.
     const background = await productBackground(projectId);
@@ -574,6 +577,7 @@ defineJob("GENERATE_TEST_CASES", async (job) => {
 
       const reply = await askClaude({
         token,
+        signal,
         model: input.model,
         system: GENERATE_SYSTEM,
         prompt: generatePrompt({
@@ -590,6 +594,8 @@ defineJob("GENERATE_TEST_CASES", async (job) => {
       const idByCode = new Map(requirements.map((req) => [req.code, req.id]));
       const cases = parseItems(reply, "testCases", draftReplySchema);
 
+      // Cancelled: earlier batches' drafts stay for review; this one is not saved.
+      throwIfCancelled();
       await prisma.testCaseDraft.createMany({
         data: cases.map((testCase) => {
           const linked = testCase.requirementCodes

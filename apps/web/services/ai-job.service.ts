@@ -35,6 +35,8 @@ export type JobContext = {
   setResult: (result: Prisma.InputJsonValue) => Promise<void>;
   /** Stop here if someone cancelled the job. Call it before each long step. */
   throwIfCancelled: () => void;
+  /** Aborted when the job is cancelled: pass it to askClaude, so a long answer is not waited for. */
+  signal: AbortSignal;
 };
 
 /** Thrown at a checkpoint of a job that was cancelled while it ran. */
@@ -63,6 +65,8 @@ type Runtime = {
   active: Set<string>;
   /** Running jobs asked to stop; they do at their next checkpoint. */
   cancelled: Set<string>;
+  /** Each running job's abort, which cuts short the AI request it waits on. */
+  aborts: Map<string, AbortController>;
   /** The tail of each user's queue. */
   queues: Map<string, Promise<void>>;
   builders: Map<AiJobKind, JobBuilder>;
@@ -74,11 +78,13 @@ type Runtime = {
 const runtime: Runtime = ((globalThis as { __aiJobs?: Runtime }).__aiJobs ??= {
   active: new Set(),
   cancelled: new Set(),
+  aborts: new Map(),
   queues: new Map(),
   builders: new Map(),
 });
 // A runtime from before cancelling existed, kept across a dev hot reload.
 runtime.cancelled ??= new Set();
+runtime.aborts ??= new Map();
 runtime.builders ??= new Map();
 
 /** Register how jobs of a kind are built. Each service does so for its own. */
@@ -198,9 +204,12 @@ async function run(jobId: string) {
     const throwIfCancelled = () => {
       if (runtime.cancelled.has(jobId)) throw new JobCancelled();
     };
+    const abort = new AbortController();
+    runtime.aborts.set(jobId, abort);
     const summary = await work({
       jobId,
       token,
+      signal: abort.signal,
       // Guarded on RUNNING: a cancelled job's row says so and stays that way.
       progress: async (done, total) => {
         throwIfCancelled();
@@ -239,6 +248,7 @@ async function run(jobId: string) {
   } finally {
     runtime.active.delete(jobId);
     runtime.cancelled.delete(jobId);
+    runtime.aborts.delete(jobId);
   }
 }
 
@@ -256,6 +266,8 @@ export async function cancelJob(jobId: string, byName: string): Promise<AiJobDto
       where: { id: jobId, status: { in: ["QUEUED", "RUNNING"] } },
       data: { status: "FAILED", error: `Cancelled by ${byName}.`, finishedAt: new Date() },
     });
+    // After the row says cancelled, so the job's own catch sees it was.
+    runtime.aborts.get(jobId)?.abort();
   }
   return getJob(jobId);
 }

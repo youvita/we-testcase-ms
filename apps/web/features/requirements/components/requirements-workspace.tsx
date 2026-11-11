@@ -172,6 +172,23 @@ export function RequirementsWorkspace({
     [startAi],
   );
 
+  /** Stop a queued or running job. What it saved before stopping stays. */
+  const cancelJob = useCallback(
+    async (job: AiJobDto) => {
+      try {
+        const cancelled = await api.post<AiJobDto>(`/api/ai-jobs/${job.id}/cancel`);
+        // Off the active list at once, so the poll does not report it as a failure.
+        setJobs((previous) => previous.map((j) => (j.id === cancelled.id ? cancelled : j)));
+        toast.message(`${job.kind === "EXPLORE_APP" ? "Exploring" : "The AI job"} was cancelled`);
+        // Earlier batches or parts may have been saved before it stopped.
+        router.refresh();
+      } catch (error) {
+        toast.error(errorMessage(error));
+      }
+    },
+    [router],
+  );
+
   const activeDocIds = new Set(
     jobs.filter((job) => isActive(job) && job.docId).map((job) => job.docId!),
   );
@@ -181,7 +198,12 @@ export function RequirementsWorkspace({
 
   return (
     <div className="space-y-4">
-      <AiJobList projectId={projectId} jobs={jobs} onRetry={canManage ? retryJob : undefined} />
+      <AiJobList
+        projectId={projectId}
+        jobs={jobs}
+        onRetry={canManage ? retryJob : undefined}
+        onCancel={canManage ? cancelJob : undefined}
+      />
 
       <Tabs value={tab} onValueChange={setTab}>
         <TabsList>

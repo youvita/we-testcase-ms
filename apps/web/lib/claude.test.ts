@@ -33,6 +33,20 @@ describe("askClaude reaching the bridge", () => {
     expect(fetch).toHaveBeenCalledTimes(3);
   });
 
+  it("stops at once when its job is cancelled, without retrying", async () => {
+    const abort = new AbortController();
+    const fetch = vi.fn((_url: string, init: RequestInit) => {
+      abort.abort();
+      return Promise.reject(Object.assign(new Error("aborted"), { name: "AbortError", cause: init.signal }));
+    });
+    vi.stubGlobal("fetch", fetch);
+
+    await expect(
+      askClaude({ token: "sk-ant-oat-x", system: "s", prompt: "p", signal: abort.signal }),
+    ).rejects.toMatchObject({ name: "AbortError" });
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
   it("gives up once the waits run out", async () => {
     const fetch = vi.fn().mockRejectedValue(refused());
     vi.stubGlobal("fetch", fetch);

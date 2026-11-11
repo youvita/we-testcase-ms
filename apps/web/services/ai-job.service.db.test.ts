@@ -4,7 +4,7 @@ import { badRequest } from "@/lib/api";
 import { prisma } from "@/lib/prisma";
 import { createProject, resetDatabase } from "@/test/db";
 
-import { defineJob, enqueueJob, getJob, resumeJobs, type JobWork } from "./ai-job.service";
+import { cancelJob, defineJob, enqueueJob, getJob, resumeJobs, type JobWork } from "./ai-job.service";
 
 vi.mock("./claude-connection.service", () => ({
   requireClaudeToken: async () => "test-token",
@@ -183,5 +183,47 @@ describe("after a restart", () => {
 
     expect(polled.status).not.toBe("FAILED");
     expect((await settled(job.id)).status).toBe("SUCCEEDED");
+  });
+});
+
+describe("cancelJob", () => {
+  it("stops a running job at once, cutting short what it waits on, and saves nothing after", async () => {
+    const { project, owner } = await createProject();
+    let started!: () => void;
+    const running = new Promise<void>((resolve) => (started = resolve));
+    let saved = false;
+    work = async ({ signal, throwIfCancelled }) => {
+      started();
+      // Like a long AI answer: only the job's abort ends it.
+      await new Promise((_resolve, reject) => signal.addEventListener("abort", () => reject(new Error("aborted"))));
+      throwIfCancelled();
+      saved = true;
+      return "done";
+    };
+
+    const job = await enqueueJob({ projectId: project.id, kind: "TRIAGE_FAILURE", userId: owner.id, input: { label: "a" } });
+    await running;
+    const cancelled = await cancelJob(job.id, "Alice");
+
+    expect(cancelled).toMatchObject({ status: "FAILED", error: "Cancelled by Alice." });
+    const final = await settled(job.id);
+    expect(final).toMatchObject({ status: "FAILED", error: "Cancelled by Alice." });
+    expect(saved).toBe(false);
+  });
+
+  it("keeps a queued job from starting", async () => {
+    const { project, owner } = await createProject();
+    let release!: () => void;
+    work = () => new Promise((resolve) => (release = () => resolve("done")));
+
+    const first = await enqueueJob({ projectId: project.id, kind: "TRIAGE_FAILURE", userId: owner.id, input: { label: "first" } });
+    const second = await enqueueJob({ projectId: project.id, kind: "TRIAGE_FAILURE", userId: owner.id, input: { label: "second" } });
+    await vi.waitFor(() => expect(ran).toEqual(["first"]));
+    await cancelJob(second.id, "Alice");
+    release();
+
+    expect(await settled(first.id)).toMatchObject({ status: "SUCCEEDED" });
+    expect(await settled(second.id)).toMatchObject({ status: "FAILED", error: "Cancelled by Alice." });
+    expect(ran).toEqual(["first"]);
   });
 });

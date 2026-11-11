@@ -216,9 +216,10 @@ export async function generateCaseFrd(
 defineJob("GENERATE_FRD", async (job) => {
   const input = job.input as { testCaseId: string; model?: AiModel };
   const tc = await loadCase(input.testCaseId);
-  return async ({ token, progress }) => {
+  return async ({ token, progress, throwIfCancelled, signal }) => {
     await progress(0, 1);
-    const reply = await askClaude({ token, model: input.model, system: FRD_SYSTEM, prompt: frdPrompt(tc) });
+    const reply = await askClaude({ token, signal, model: input.model, system: FRD_SYSTEM, prompt: frdPrompt(tc) });
+    throwIfCancelled();
     await saveFrd(tc, job.createdById, readAiFrd(reply, tc), "ai");
     await progress(1, 1);
     return `Wrote the FRD for ${tc.tcId}`;

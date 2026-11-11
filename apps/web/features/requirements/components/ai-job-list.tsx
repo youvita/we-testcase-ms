@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { CheckCircle2, Clock, History, Loader2, RotateCcw, X, XCircle } from "lucide-react";
+import { Ban, CheckCircle2, Clock, History, Loader2, RotateCcw, Square, X, XCircle } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -45,13 +45,17 @@ export function AiJobList({
   projectId,
   jobs,
   onRetry,
+  onCancel,
 }: {
   projectId: string;
   jobs: AiJobDto[];
   /** Start a failed job again with the same request; absent for viewers. */
   onRetry?: (job: AiJobDto) => Promise<void>;
+  /** Stop a queued or running job; absent for viewers. */
+  onCancel?: (job: AiJobDto) => Promise<void>;
 }) {
   const [retrying, setRetrying] = useState<string | null>(null);
+  const [cancelling, setCancelling] = useState<string | null>(null);
   const [dismissed, setDismissed] = useDismissed(projectId);
   const [showHistory, setShowHistory] = useState(false);
   const [history, setHistory] = useState<AiJobDto[] | null>(null);
@@ -89,6 +93,16 @@ export function AiJobList({
       await onRetry(job);
     } finally {
       setRetrying(null);
+    }
+  }
+
+  async function cancel(job: AiJobDto) {
+    if (!onCancel) return;
+    setCancelling(job.id);
+    try {
+      await onCancel(job);
+    } finally {
+      setCancelling(null);
     }
   }
 
@@ -134,6 +148,8 @@ export function AiJobList({
             canRetry={job.status === "FAILED" && !!onRetry && !isSuperseded(job, all)}
             retrying={retrying}
             onRetry={() => void retry(job)}
+            cancelling={cancelling === job.id}
+            onCancel={onCancel && isActive(job) ? () => void cancel(job) : undefined}
             onDismiss={
               showHistory || isActive(job)
                 ? undefined
@@ -165,6 +181,8 @@ function JobRow({
   canRetry,
   retrying,
   onRetry,
+  cancelling,
+  onCancel,
   onDismiss,
 }: {
   job: AiJobDto;
@@ -173,11 +191,15 @@ function JobRow({
   canRetry: boolean;
   retrying: string | null;
   onRetry: () => void;
+  cancelling: boolean;
+  /** Stop it; only while it is queued or running. */
+  onCancel?: () => void;
   onDismiss?: () => void;
 }) {
+  const stopped = isCancelled(job);
   return (
     <div className="flex items-start gap-3 px-4 py-3 text-sm">
-      <JobIcon status={job.status} />
+      {stopped ? <Ban className="mt-0.5 size-4 shrink-0 text-muted-foreground" /> : <JobIcon status={job.status} />}
       <div className="min-w-0 flex-1 space-y-1">
         <div className="flex flex-wrap items-baseline justify-between gap-x-3">
           <span className="font-medium">{KIND_LABELS[job.kind]}</span>
@@ -208,7 +230,7 @@ function JobRow({
           <Observations result={job.result as ExploreAppResult | null} />
         )}
         {job.status === "FAILED" && job.error && (
-          <p className={fixed ? "text-muted-foreground" : "text-status-failed"}>{job.error}</p>
+          <p className={fixed || stopped ? "text-muted-foreground" : "text-status-failed"}>{job.error}</p>
         )}
         {fixed && <p className="text-xs text-status-passed">Fixed — a later run succeeded.</p>}
         {canRetry && !fixed && (
@@ -218,10 +240,23 @@ function JobRow({
             ) : (
               <RotateCcw className="mr-2 size-4" />
             )}
-            {isSubscriptionError(job.error) ? "Reconnect and try again" : "Try again"}
+            {isSubscriptionError(job.error) ? "Reconnect and try again" : stopped ? "Start again" : "Try again"}
           </Button>
         )}
       </div>
+      {onCancel && (
+        <Button
+          size="sm"
+          variant="outline"
+          className="-my-1 h-7 shrink-0"
+          disabled={cancelling}
+          title="Stop this AI job. Anything it already saved stays."
+          onClick={onCancel}
+        >
+          {cancelling ? <Loader2 className="mr-1.5 size-3.5 animate-spin" /> : <Square className="mr-1.5 size-3.5" />}
+          Cancel
+        </Button>
+      )}
       {onDismiss && (
         <Button
           size="icon"
@@ -240,6 +275,11 @@ function JobRow({
 
 function isActive(job: AiJobDto): boolean {
   return job.status === "QUEUED" || job.status === "RUNNING";
+}
+
+/** Stopped by a person (or before it started), not failed. See cancelJob and stopQueuedJobs. */
+function isCancelled(job: AiJobDto): boolean {
+  return job.status === "FAILED" && /^(Cancelled by |Stopped before it started)/.test(job.error ?? "");
 }
 
 /** Both lists, one row per job, newest first. */

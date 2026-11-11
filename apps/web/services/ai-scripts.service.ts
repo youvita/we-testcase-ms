@@ -487,7 +487,7 @@ defineJob("WRITE_SCRIPT", async (job) => {
   const { testCaseId, ...input } = job.input as ScriptWritingInput & { testCaseId: string };
   const { testCase, env, startPath, earlier } = await loadScriptWriting(testCaseId, input);
   const userId = job.createdById;
-  return async ({ token, progress, setResult, throwIfCancelled }) => {
+  return async ({ token, progress, setResult, throwIfCancelled, signal }) => {
     const isWeb = testCase.platform === "WEB";
     // One step before the tries: the start-page look, or picking up the
     // earlier script.
@@ -579,6 +579,7 @@ defineJob("WRITE_SCRIPT", async (job) => {
       throwIfCancelled();
       const reply = await askClaude({
         token,
+        signal,
         model: input.model,
         system: WRITE_SYSTEM,
         images: evidence.screenshot ? [evidence.screenshot] : undefined,
@@ -910,13 +911,14 @@ export async function startTriage(itemId: string, user: SessionUser): Promise<Ai
 
 defineJob("TRIAGE_FAILURE", async (job) => {
   const { item, testCase } = await loadTriageItem((job.input as { runItemId: string }).runItemId);
-  return async ({ token, progress }) => {
+  return async ({ token, progress, throwIfCancelled, signal }) => {
     await progress(0, 1);
     const evidence = await readItemEvidence(item.id);
     const references = await findReferenceScripts(testCase);
     const apiSpec = await findApiSpecSections(testCase);
     const reply = await askClaude({
       token,
+      signal,
       system: TRIAGE_SYSTEM,
       images: evidence.screenshot ? [evidence.screenshot] : undefined,
       prompt: `${withApiSpec(apiSpec)}${withReferences(references)}${describeCase(testCase)}
@@ -946,6 +948,7 @@ ${describePage(evidence.snapshot, "at the end of the test")}`,
       bugReport: parsed.data.category === "product_bug" ? parsed.data.bugReport : null,
       references: references.map(asReference),
     };
+    throwIfCancelled();
     await prisma.testRunItem.update({
       where: { id: item.id },
       data: { triage, triagedAt: new Date() },

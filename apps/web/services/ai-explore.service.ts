@@ -155,7 +155,7 @@ defineJob("EXPLORE_APP", async (job) => {
   const input = job.input as ExplorationInput;
   const projectId = job.projectId;
   const { project, env, setup, paths } = await loadExploration(projectId, input);
-  return async ({ jobId, token, progress, setResult }) => {
+  return async ({ jobId, token, progress, setResult, throwIfCancelled, signal }) => {
     await progress(0, 2);
     const result: ExploreAppResult = { pages: [], drafted: 0, observations: [], runId: null };
 
@@ -237,6 +237,7 @@ ${p.outline.replace(/^URL: .*\nTitle: .*\n\n/, "").slice(0, OUTLINE_CHARS)}
 
     const reply = await askClaude({
       token,
+      signal,
       model: input.model,
       system: EXPLORE_SYSTEM,
       images,
@@ -246,6 +247,7 @@ ${p.outline.replace(/^URL: .*\nTitle: .*\n\n/, "").slice(0, OUTLINE_CHARS)}
     const json = parseJsonReply(reply) as { observations?: unknown };
     result.observations = observationsSchema.parse(json.observations);
 
+    throwIfCancelled();
     await prisma.testCaseDraft.createMany({
       data: cases.map((c) => ({
         projectId,

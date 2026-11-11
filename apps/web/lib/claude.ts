@@ -62,6 +62,8 @@ export async function askClaude(options: {
   images?: ClaudeImage[];
   model?: string;
   maxTokens?: number;
+  /** Aborts the request — the job it is for was cancelled. */
+  signal?: AbortSignal;
 }): Promise<string> {
   const base = process.env.CLAUDE_BRIDGE_URL?.trim().replace(/\/$/, "");
   if (!base) {
@@ -103,9 +105,13 @@ export async function askClaude(options: {
     try {
       response = await fetch(`${base}/v1/messages`, {
         ...request,
-        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+        signal: options.signal
+          ? AbortSignal.any([AbortSignal.timeout(REQUEST_TIMEOUT_MS), options.signal])
+          : AbortSignal.timeout(REQUEST_TIMEOUT_MS),
       });
     } catch (error) {
+      // Cancelled: nothing to retry, and no message for anyone.
+      if (options.signal?.aborted) throw error;
       if (error instanceof Error && error.name === "TimeoutError") {
         throw new AiError("The AI took too long to answer.");
       }

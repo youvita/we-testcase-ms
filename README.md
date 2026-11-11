@@ -295,6 +295,13 @@ pending, plus a few observations that are not test cases. Suggestions land in
 Review drafts like any other. Like the other AI jobs, it lets you pick the
 model (Sonnet by default, Opus, Haiku).
 
+**Stopping AI work.** A queued or running job on the Requirements page has a
+**Cancel** button. It stops at once, even mid-answer, and the browser visits
+of an exploration stop with it. What it saved before stopping stays: drafts
+from earlier batches wait in Review drafts, and requirements from earlier
+parts of a document are kept (read the document again for the rest). The job
+shows as cancelled, with *Start again*.
+
 **Whose Claude.** AI runs on each person's own Claude Pro/Max subscription —
 there is no shared key. Each person installs the Claude CLI once
 (`npm install -g @anthropic-ai/claude-code`), runs `claude setup-token`, signs in

@@ -8,8 +8,9 @@ import { cancelTestRun } from "@/services/test-run.service";
 type Ctx = { params: Promise<{ jobId: string }> };
 
 /**
- * Cancel an AI job — and, for one writing a script, the script check it is
- * waiting on, so the runner does not carry on for nothing.
+ * Cancel an AI job — and the runner work it is waiting on (a script check
+ * while writing a script, the page visits while exploring), so the runner
+ * does not carry on for nothing.
  */
 export const POST = route<Ctx>(
   { roles: [ROLES.ADMIN, ROLES.QA] },
@@ -17,7 +18,8 @@ export const POST = route<Ctx>(
     const { jobId } = await params;
     await assertAiJobAccess(jobId, user);
     const job = await cancelJob(jobId, user.name);
-    const runId = (job.result as { currentRunId?: string | null } | null)?.currentRunId;
+    const result = job.result as { currentRunId?: string | null; runId?: string | null } | null;
+    const runId = result?.currentRunId ?? (job.kind === "EXPLORE_APP" ? result?.runId : null);
     if (runId) {
       await prisma.testRun
         .findUnique({ where: { id: runId }, select: { status: true } })
