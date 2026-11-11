@@ -264,7 +264,7 @@ export function ProjectList({
 
                 <div className="flex items-center justify-between border-t pt-3 text-xs text-muted-foreground">
                   <span className="truncate">
-                    QA: {project.productOwner?.name ?? "Unassigned"}
+                    PO: {project.productOwner?.name ?? "Unassigned"}
                   </span>
                   <span className="shrink-0">
                     {project.moduleCount} module

@@ -2,7 +2,7 @@
 
 import { Fragment, useState } from "react";
 import { useRouter } from "next/navigation";
-import { CornerDownRight, FilePenLine, HelpCircle, Loader2, MessageSquare, Send, Trash2 } from "lucide-react";
+import { CornerDownRight, HelpCircle, Loader2, MessageSquare, Send, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -25,7 +25,8 @@ import type { CommentWithAuthor } from "@/types";
 
 import type { PoContext } from "@/features/requirements/components/po-questions";
 
-import { ApplyAnswerDialog, type CaseText } from "./apply-answer-dialog";
+import type { CaseText } from "./apply-answer-dialog";
+import { CaseUpdatePrompt } from "./case-update-prompt";
 import { RequirementQuestionItem, type RequirementQuestionGroup } from "./requirement-questions";
 
 /**
@@ -100,6 +101,8 @@ export function CommentThread({
       ? items.map(({ requirement, question }) => (
           <RequirementQuestionItem
             key={question.id}
+            testCaseId={testCaseId}
+            caseText={caseText}
             projectId={projectId}
             requirement={requirement}
             question={question}
@@ -111,19 +114,17 @@ export function CommentThread({
   // Question id → its latest answer, while the answer is not yet in the case.
   const toApply = caseText ? answersToApply(comments) : new Map<string, string>();
   const promptAfter = new Map([...toApply].map(([questionId, answerId]) => [answerId, questionId]));
-  const [applying, setApplying] = useState<string | null>(null);
-  const [settling, setSettling] = useState<string | null>(null);
-  const applyingQuestion = applying ? byId.get(applying) : undefined;
+  const answersTo = (questionId: string) =>
+    comments
+      .filter((c) => c.kind === "ANSWER" && c.answerToId === questionId && !c.deletedAt)
+      .map((c) => ({ author: c.author.name, body: c.body }));
 
   async function handleNoChange(questionId: string) {
-    setSettling(questionId);
     try {
       await api.post(`/api/comments/${questionId}/settle`, {});
       router.refresh();
     } catch (error) {
       toast.error(errorMessage(error));
-    } finally {
-      setSettling(null);
     }
   }
 
@@ -326,47 +327,23 @@ export function CommentThread({
                       </Button>
                     )}
                 </li>
-                {promptFor && (
+                {promptFor && caseText && byId.get(promptFor) && (
                   // After the PO's latest answer: the confirmed rule belongs in
                   // the case, which is what testers, reports and the AI read.
-                  <li className="ml-9 flex flex-wrap items-center gap-2 rounded-md border px-3 py-2">
-                    <FilePenLine className="size-4 shrink-0 text-muted-foreground" aria-hidden />
-                    <span className="mr-auto text-sm">
-                      The PO answered. Update the expected result?
-                    </span>
-                    <Button size="sm" className="h-7" onClick={() => setApplying(promptFor)}>
-                      Update expected result
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      className="h-7"
-                      disabled={settling === promptFor}
-                      onClick={() => void handleNoChange(promptFor)}
-                    >
-                      {settling === promptFor && <Loader2 className="mr-1.5 size-3.5 animate-spin" />}
-                      No change needed
-                    </Button>
-                  </li>
+                  <CaseUpdatePrompt
+                    testCaseId={testCaseId}
+                    source={{ kind: "comment", questionId: promptFor }}
+                    question={byId.get(promptFor)!.body}
+                    answers={answersTo(promptFor)}
+                    caseText={caseText}
+                    onNoChange={() => handleNoChange(promptFor)}
+                  />
                 )}
                 </Fragment>
               );
             })}
             {renderAsked(askedLast)}
           </ol>
-        )}
-
-        {caseText && applyingQuestion && (
-          <ApplyAnswerDialog
-            open
-            onOpenChange={(open) => !open && setApplying(null)}
-            questionId={applyingQuestion.id}
-            question={applyingQuestion.body}
-            answers={comments
-              .filter((c) => c.kind === "ANSWER" && c.answerToId === applyingQuestion.id && !c.deletedAt)
-              .map((c) => ({ author: c.author.name, body: c.body }))}
-            caseText={caseText}
-          />
         )}
 
         {canComment && (

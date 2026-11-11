@@ -483,6 +483,18 @@ export type ExploreAppResult = {
   runId: string | null;
 };
 
+/** What a SUGGEST_CASE_UPDATE job leaves in `AiJobDto.result`. */
+export type CaseUpdateSuggestion = {
+  preconditions: string;
+  steps: string;
+  expectedResult: string;
+  openQuestions: string;
+  /** One line: what changed, and why, from the answer. */
+  summary: string;
+  /** Behaviour the answer adds that this case cannot cover, for a new case. */
+  newCaseIdea: string | null;
+};
+
 /** What a WRITE_SCRIPT job leaves in `AiJobDto.result`. */
 export type ScriptWritingResult = {
   testCaseId: string;

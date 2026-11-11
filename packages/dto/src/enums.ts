@@ -151,6 +151,7 @@ export const AI_JOB_KINDS = [
   "TRIAGE_FAILURE",
   "EXPLORE_APP",
   "GENERATE_FRD",
+  "SUGGEST_CASE_UPDATE",
 ] as const;
 export type AiJobKind = (typeof AI_JOB_KINDS)[number];
 

@@ -10,7 +10,7 @@ import type {
   TestCaseListItem,
   TestCaseWithDetails,
 } from "@/types";
-import type { TestCaseSource, TrashedTestCase } from "@wetestcase/dto";
+import type { CaseTextInput, TestCaseSource, TrashedTestCase } from "@wetestcase/dto";
 
 import { resolveProjectPlatform } from "./project.service";
 
@@ -306,6 +306,32 @@ export async function setFixStatus(
     });
 
     return updated;
+  });
+}
+
+/**
+ * Put what the PO confirmed into a case's text — from an answer on a
+ * requirement it verifies, where there is no question on the case to settle.
+ * As with any edit, it no longer waits on a changed requirement.
+ */
+export async function updateCaseText(testCaseId: string, input: CaseTextInput) {
+  const testCase = await prisma.testCase.findUnique({ where: { id: testCaseId }, select: { id: true } });
+  if (!testCase) throw notFound("Test case");
+  return prisma.$transaction(async (tx) => {
+    await tx.testCaseRequirement.updateMany({
+      where: { testCaseId, requirementChangedAt: { not: null } },
+      data: { requirementChangedAt: null },
+    });
+    return tx.testCase.update({
+      where: { id: testCaseId },
+      data: {
+        preconditions: input.preconditions ?? null,
+        steps: input.steps ?? null,
+        expectedResult: input.expectedResult ?? null,
+        openQuestions: input.openQuestions ?? null,
+      },
+      select: { id: true },
+    });
   });
 }
 

@@ -18,6 +18,7 @@ const KIND_LABELS: Record<AiJobDto["kind"], string> = {
   TRIAGE_FAILURE: "Explaining a failure",
   EXPLORE_APP: "Exploring the app",
   GENERATE_FRD: "Writing an FRD",
+  SUGGEST_CASE_UPDATE: "Updating a case from a PO answer",
 };
 
 /** The kinds of job the Requirements page shows, as a query string. */

@@ -157,10 +157,12 @@ export default async function TestCaseDetailPage({
   // An older case's "(confirm with PO)" markers kept out of what is shown, as
   // they are everywhere else.
   const text = splitOpenQuestions(testCase);
-  // PO answers not yet put into the case. Only its expected result and open
-  // questions are edited from an answer, so only they are split here.
+  // PO answers not yet put into the case: the text an answer edits, with any
+  // "(confirm with PO)" markers moved into the open questions.
   const canEditCase = canManageTestCases(user.role);
   const answerText = splitOpenQuestions({
+    preconditions: testCase.preconditions,
+    steps: testCase.steps,
     expectedResult: testCase.expectedResult,
     openQuestions: testCase.openQuestions,
   });
@@ -464,6 +466,8 @@ export default async function TestCaseDetailPage({
               caseText={
                 canEditCase
                   ? {
+                      preconditions: answerText.preconditions ?? null,
+                      steps: answerText.steps ?? null,
                       expectedResult: answerText.expectedResult ?? null,
                       openQuestions: answerText.openQuestions ?? null,
                     }

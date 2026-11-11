@@ -135,6 +135,9 @@ enum AiJobKind {
   EXPLORE_APP
   /// Write an FRD from a test case that has none.
   GENERATE_FRD
+  /// Suggest how a test case's text should change after the PO answered a
+  /// question about it, for QA to review.
+  SUGGEST_CASE_UPDATE
 }
 
 enum AiJobStatus {

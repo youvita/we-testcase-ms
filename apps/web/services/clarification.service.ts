@@ -134,6 +134,8 @@ export async function settleAnswer(
       await tx.testCase.update({
         where: { id: question.testCaseId },
         data: {
+          preconditions: input.update.preconditions ?? null,
+          steps: input.update.steps ?? null,
           expectedResult: input.update.expectedResult ?? null,
           openQuestions: input.update.openQuestions ?? null,
         },

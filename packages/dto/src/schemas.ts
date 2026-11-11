@@ -213,16 +213,35 @@ export type TestCaseInput = z.input<typeof testCaseSchema>;
  * QA deals with a PO's answer on a case: `update` puts it into the case's
  * text; without it, the answer needed no change.
  */
+/** A case's text as a PO's answer changes it: every field, empty to clear. */
+export const caseTextSchema = z.object({
+  preconditions: optionalText(4000),
+  steps: optionalText(8000),
+  expectedResult: optionalText(4000),
+  openQuestions: optionalText(4000),
+});
+
+export type CaseTextInput = z.infer<typeof caseTextSchema>;
+
 export const settleAnswerSchema = z.object({
-  update: z
-    .object({
-      expectedResult: optionalText(4000),
-      openQuestions: optionalText(4000),
-    })
-    .optional(),
+  update: caseTextSchema.optional(),
 });
 
 export type SettleAnswerInput = z.infer<typeof settleAnswerSchema>;
+
+/**
+ * Ask the AI how a case should change after the PO answered: a question in
+ * the case's discussion (`comment`), or one on a requirement it verifies.
+ */
+export const suggestCaseUpdateSchema = z.object({
+  source: z.object({
+    kind: z.enum(["comment", "requirement"]),
+    questionId: z.string().min(1),
+  }),
+  model: z.enum(AI_MODELS).optional(),
+});
+
+export type SuggestCaseUpdateInput = z.infer<typeof suggestCaseUpdateSchema>;
 
 /** Restore from, or delete forever out of, the Trash. No ids: the whole Trash. */
 export const trashActionSchema = z.object({

@@ -15,6 +15,9 @@ import { api, errorMessage } from "@/utils/api-client";
 import { formatDateTime, initials } from "@/utils/format";
 import type { PoQuestionDto } from "@wetestcase/dto";
 
+import type { CaseText } from "./apply-answer-dialog";
+import { CaseUpdatePrompt } from "./case-update-prompt";
+
 export type RequirementQuestionGroup = {
   requirement: { id: string; code: string; title: string };
   questions: PoQuestionDto[];
@@ -33,11 +36,16 @@ const STATUS = {
  * case verifying the requirement shows it too.
  */
 export function RequirementQuestionItem({
+  testCaseId,
+  caseText,
   projectId,
   requirement,
   question,
   po,
 }: {
+  testCaseId: string;
+  /** The case's text, for those who edit cases: then a PO answer offers to update it. */
+  caseText?: CaseText;
   projectId: string;
   requirement: RequirementQuestionGroup["requirement"];
   question: PoQuestionDto;
@@ -140,6 +148,18 @@ export function RequirementQuestionItem({
           </div>
         </li>
       ))}
+
+      {caseText && question.status === "answered" && !replying && (
+        <CaseUpdatePrompt
+          testCaseId={testCaseId}
+          source={{ kind: "requirement", questionId: question.id }}
+          question={question.body}
+          answers={question.replies
+            .filter((message) => message.author.isPo)
+            .map((message) => ({ author: message.author.name, body: message.body }))}
+          caseText={caseText}
+        />
+      )}
 
       {replying && (
         <li className="ml-9 space-y-2">
