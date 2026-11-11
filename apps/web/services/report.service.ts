@@ -46,7 +46,7 @@ const CASE_SHEET_HEADER = [
 ];
 import { formatDate, formatDateTime } from "@/utils/format";
 
-import { testCaseQuerySchema, type ModuleProgress } from "@wetestcase/dto";
+import { TEST_CASE_SOURCE_LABELS, testCaseQuerySchema, type ModuleProgress } from "@wetestcase/dto";
 
 import { getProject } from "./project.service";
 import { listRunEnvironments } from "./run-environment.service";
@@ -167,6 +167,8 @@ const listFilterSchema = testCaseQuerySchema.pick({
   fixStatus: true,
   platform: true,
   automated: true,
+  source: true,
+  requirementChanged: true,
 });
 
 /**
@@ -195,6 +197,8 @@ export async function listFilterFromQuery(projectId: string, params: URLSearchPa
     query.priority && `Priority: ${PRIORITY_LABELS[query.priority]}`,
     query.fixStatus &&
       `Dev update: ${query.fixStatus === "NONE" ? "none" : FIX_STATUS_SHORT_LABELS[query.fixStatus]}`,
+    query.source && `Source: ${TEST_CASE_SOURCE_LABELS[query.source]}`,
+    query.requirementChanged && "Requirement changed",
   ].filter((label): label is string => Boolean(label));
 
   return { filter: buildWhere(projectId, query), labels };

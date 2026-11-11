@@ -13,6 +13,7 @@ import {
   ROLE_VALUES,
   RUN_SCOPES,
   RUN_SPEEDS,
+  TEST_CASE_SOURCES,
   TEST_TYPES,
 } from "./enums";
 
@@ -720,6 +721,10 @@ export const testCaseQuerySchema = z.object({
   fixStatus: z.enum(["NONE", ...FIX_STATUSES]).optional(),
   platform: platformSchema.optional(),
   automated: z.enum(["yes", "no"]).optional(),
+  /** Where the case came from: AI drafts from requirements, exploring the app, or neither. */
+  source: z.enum(TEST_CASE_SOURCES).optional(),
+  /** "yes": a requirement it verifies changed since — the case may need updating. */
+  requirementChanged: z.enum(["yes"]).optional(),
   sort: z
     .enum(["tcId", "testType", "priority", "module", "updatedAt"])
     .default("tcId"),

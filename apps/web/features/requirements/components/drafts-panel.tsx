@@ -8,6 +8,7 @@ import {
   ChevronDown,
   ChevronRight,
   Compass,
+  FileText,
   Inbox,
   Loader2,
   Pencil,
@@ -63,6 +64,7 @@ import type {
 import { cn } from "@/lib/utils";
 import { api, errorMessage } from "@/utils/api-client";
 import { useClientPagination } from "@/hooks/use-client-pagination";
+import { formatRelative } from "@/utils/format";
 
 import { PoQuestionBadge, PoQuestions, type PoContext } from "./po-questions";
 
@@ -104,6 +106,21 @@ export function DraftsPanel({
   const [busy, setBusy] = useState<"accept" | "reject" | null>(null);
   const [requirementFilter, setRequirementFilter] = useState<string>(ALL);
   const [moduleFilter, setModuleFilter] = useState<string>(ALL);
+  const [runFilter, setRunFilter] = useState<string>(ALL);
+
+  // The AI runs that wrote these drafts, newest first: the top one is what
+  // was just generated.
+  const runs = useMemo(() => {
+    const byKey = new Map<string, { key: string; source: TestCaseDraftDto["source"]; count: number }>();
+    for (const draft of drafts) {
+      const key = runKey(draft);
+      const entry = byKey.get(key) ?? { key, source: draft.source, count: 0 };
+      entry.count += 1;
+      byKey.set(key, entry);
+    }
+    return Array.from(byKey.values()).sort((a, b) => b.source.runAt.localeCompare(a.source.runAt));
+  }, [drafts]);
+  const activeRun = runFilter !== ALL && runs.some((run) => run.key === runFilter) ? runFilter : ALL;
 
   // A requirement or module whose drafts have all been reviewed is gone; its
   // filter falls back to everything rather than showing nothing.
@@ -121,7 +138,7 @@ export function DraftsPanel({
     let unlinked = 0;
     let total = 0;
     for (const draft of drafts) {
-      const counted = activeModule === ALL || draft.moduleName === activeModule ? 1 : 0;
+      const counted = inRun(draft, activeRun) && (activeModule === ALL || draft.moduleName === activeModule) ? 1 : 0;
       total += counted;
       if (draft.requirements.length === 0) unlinked += counted;
       for (const req of draft.requirements) {
@@ -134,13 +151,13 @@ export function DraftsPanel({
       .filter((req) => req.count > 0 || req.id === activeRequirement)
       .sort((a, b) => a.code.localeCompare(b.code, undefined, { numeric: true }));
     return { linked, unlinked, total };
-  }, [drafts, activeModule, activeRequirement]);
+  }, [drafts, activeModule, activeRequirement, activeRun]);
 
   const moduleOptions = useMemo(() => {
     const counts = new Map<string, number>();
     let total = 0;
     for (const draft of drafts) {
-      const counted = inRequirement(draft, activeRequirement) ? 1 : 0;
+      const counted = inRun(draft, activeRun) && inRequirement(draft, activeRequirement) ? 1 : 0;
       total += counted;
       counts.set(draft.moduleName, (counts.get(draft.moduleName) ?? 0) + counted);
     }
@@ -148,22 +165,23 @@ export function DraftsPanel({
       .filter(([name, count]) => count > 0 || name === activeModule)
       .sort(([a], [b]) => a.localeCompare(b, undefined, { numeric: true }));
     return { modules, total };
-  }, [drafts, activeRequirement, activeModule]);
+  }, [drafts, activeRequirement, activeModule, activeRun]);
 
   const visible = useMemo(
     () =>
       drafts.filter(
         (d) =>
+          inRun(d, activeRun) &&
           inRequirement(d, activeRequirement) &&
           (activeModule === ALL || d.moduleName === activeModule),
       ),
-    [drafts, activeRequirement, activeModule],
+    [drafts, activeRequirement, activeModule, activeRun],
   );
-  const filtered = activeRequirement !== ALL || activeModule !== ALL;
+  const filtered = activeRequirement !== ALL || activeModule !== ALL || activeRun !== ALL;
 
   // Paged before grouping, so every page holds the same number of drafts
   // however the modules fall.
-  const paging = useClientPagination(visible, `${activeRequirement}|${activeModule}`);
+  const paging = useClientPagination(visible, `${activeRun}|${activeRequirement}|${activeModule}`);
   const shown = paging.pageItems;
 
   const questionsFor = useMemo(() => {
@@ -183,6 +201,7 @@ export function DraftsPanel({
     if (focusId && drafts.some((draft) => draft.id === focusId)) {
       setRequirementFilter(ALL);
       setModuleFilter(ALL);
+      setRunFilter(ALL);
       setExpanded((current) => new Set(current).add(focusId));
       setPendingFocus(focusId);
     }
@@ -271,6 +290,21 @@ export function DraftsPanel({
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex w-full flex-wrap gap-2 sm:w-auto">
+          <Select value={activeRun} onValueChange={setRunFilter}>
+            <SelectTrigger className="w-full sm:w-72" aria-label="Filter by AI run">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={ALL}>All AI runs ({drafts.length})</SelectItem>
+              {runs.map((run, index) => (
+                <SelectItem key={run.key} value={run.key}>
+                  {index === 0 && runs.length > 1 ? "Latest · " : ""}
+                  {run.source.kind === "explore" ? "Explore" : "Requirements"} · {run.source.detail} ·{" "}
+                  {formatRelative(run.source.runAt)} ({run.count})
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           <Select value={activeRequirement} onValueChange={setRequirementFilter}>
             <SelectTrigger className="w-full sm:w-96" aria-label="Filter by requirement">
               <SelectValue />
@@ -308,6 +342,7 @@ export function DraftsPanel({
               onClick={() => {
                 setRequirementFilter(ALL);
                 setModuleFilter(ALL);
+                setRunFilter(ALL);
               }}
             >
               Clear filters
@@ -423,6 +458,7 @@ export function DraftsPanel({
                           )}
                           <TestTypeBadge testType={draft.testType} />
                           <PriorityBadge priority={draft.priority} />
+                          <DraftSource draft={draft} />
                           {draft.openQuestions && (
                             <span className="inline-flex items-center gap-1 text-xs text-status-blocked">
                               <CircleHelp className="size-3.5" aria-hidden />
@@ -517,6 +553,33 @@ export function DraftsPanel({
 
 const ALL = "__all";
 const NO_REQUIREMENT = "__none";
+
+/** The draft came from this run, or `ALL` for any. */
+function inRun(draft: TestCaseDraftDto, filter: string): boolean {
+  return filter === ALL || runKey(draft) === filter;
+}
+
+/** The run that wrote it; drafts whose run is gone group by kind. */
+function runKey(draft: TestCaseDraftDto): string {
+  return draft.source.runId ?? `gone:${draft.source.kind}`;
+}
+
+/** Where the draft came from: a document's requirements, or explored pages. */
+function DraftSource({ draft }: { draft: TestCaseDraftDto }) {
+  const explore = draft.source.kind === "explore";
+  const Icon = explore ? Compass : FileText;
+  return (
+    <span
+      className="inline-flex max-w-64 items-center gap-1 text-xs text-muted-foreground"
+      title={`${explore ? "Explored" : "Generated from"} ${draft.source.detail} · ${formatRelative(draft.source.runAt)}`}
+    >
+      <Icon className="size-3.5 shrink-0" aria-hidden />
+      <span className="truncate">
+        {explore ? "Explore" : "From"} {draft.source.detail}
+      </span>
+    </span>
+  );
+}
 
 /** A requirement it is for is not verified by the PO yet, so it cannot be accepted. */
 function waitingForPo(draft: TestCaseDraftDto): boolean {

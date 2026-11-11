@@ -39,14 +39,18 @@ export function ChangeBadge({ requirement }: { requirement: RequirementDto }) {
         : requirement.change;
   if (!key) return null;
   const badge = BADGES[key];
+  // Which version did it: "Changed in v3".
+  const inVersion = key === "REMOVED" ? "" : ` in v${requirement.docVersion}`;
   return (
     <span
       className={cn(
         "inline-flex shrink-0 items-center rounded-full border px-2 py-0.5 text-[11px] font-medium leading-none",
         badge.className,
       )}
+      title={`${requirement.docTitle} v${requirement.docVersion}`}
     >
       {badge.label}
+      {inVersion}
     </span>
   );
 }

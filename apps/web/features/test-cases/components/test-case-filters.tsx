@@ -26,6 +26,7 @@ import {
 } from "@/lib/constants";
 import { useQueryParams } from "@/hooks/use-query-params";
 import type { Platform, SubModuleOption } from "@/types";
+import { TEST_CASE_SOURCE_LABELS, TEST_CASE_SOURCES } from "@wetestcase/dto";
 
 export type ModuleOption = { id: string; name: string };
 
@@ -73,8 +74,10 @@ export function TestCaseFilters({
   const fixStatus = get("fixStatus", "ALL");
   const platform = get("platform", "ALL");
   const automated = get("automated", "ALL");
+  const source = get("source", "ALL");
+  const requirementChanged = get("requirementChanged", "ALL");
 
-  const moreActive = [platform, automated, testType, priority, fixStatus].filter(
+  const moreActive = [platform, automated, source, requirementChanged, testType, priority, fixStatus].filter(
     (value) => value !== "ALL",
   ).length;
   const hasFilters =
@@ -220,6 +223,39 @@ export function TestCaseFilters({
             </div>
 
             <div className="space-y-1.5">
+              <Label htmlFor="filter-source">Source</Label>
+              <Select value={source} onValueChange={(value) => setParams({ source: value })}>
+                <SelectTrigger id="filter-source">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="ALL">Any source</SelectItem>
+                  {TEST_CASE_SOURCES.map((option) => (
+                    <SelectItem key={option} value={option}>
+                      {TEST_CASE_SOURCE_LABELS[option]}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="filter-requirement-changed">Requirements</Label>
+              <Select
+                value={requirementChanged}
+                onValueChange={(value) => setParams({ requirementChanged: value })}
+              >
+                <SelectTrigger id="filter-requirement-changed">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="ALL">Any</SelectItem>
+                  <SelectItem value="yes">Requirement changed — may need updating</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-1.5">
               <Label htmlFor="filter-test-type">Test type</Label>
               <Select
                 value={testType}
@@ -302,6 +338,8 @@ export function TestCaseFilters({
               fixStatus: null,
               platform: null,
               automated: null,
+              source: null,
+              requirementChanged: null,
             })
           }
         >

@@ -168,6 +168,19 @@ export type DraftStatus = (typeof DRAFT_STATUSES)[number];
 /** How many cases to ask for per requirement. */
 export const GENERATION_DEPTHS = ["essential", "thorough"] as const;
 
+/**
+ * Where a test case or draft came from: AI drafts from requirements, AI drafts
+ * from exploring the app, or neither (written by hand or imported).
+ */
+export const TEST_CASE_SOURCES = ["requirements", "explore", "manual"] as const;
+export type TestCaseSource = (typeof TEST_CASE_SOURCES)[number];
+
+export const TEST_CASE_SOURCE_LABELS: Record<TestCaseSource, string> = {
+  requirements: "From requirements",
+  explore: "From exploring the app",
+  manual: "Written or imported",
+};
+
 /** AI models a person can pick for a job; the bridge takes these aliases. */
 export const AI_MODELS = ["sonnet", "opus", "haiku"] as const;
 export type AiModel = (typeof AI_MODELS)[number];

@@ -1,4 +1,4 @@
-import type { Role } from "@wetestcase/dto";
+import type { Role, TestCaseSource } from "@wetestcase/dto";
 import type {
   Attachment,
   Comment,
@@ -117,6 +117,10 @@ export type TestCaseListItem = Pick<
   script: { updatedAt: Date } | null;
   /** No script saved yet, but the AI has started one. */
   aiScriptStarted: boolean;
+  /** Where it came from: AI drafts from requirements, exploring, or neither. */
+  source: TestCaseSource;
+  /** A requirement it verifies changed since; it may need updating. */
+  requirementChanged: boolean;
 };
 
 /**
@@ -148,6 +152,13 @@ export type TestCaseWithDetails = TestCase & {
   fixStatusEvents: FixStatusEventWithActor[];
   /** Traceability: the requirements this case verifies. */
   requirements: {
-    requirement: { id: string; code: string; title: string };
+    /** Its text changed after the case was linked; null once seen to. */
+    requirementChangedAt: Date | null;
+    requirement: {
+      id: string;
+      code: string;
+      title: string;
+      doc: { title: string; version: number };
+    };
   }[];
 };

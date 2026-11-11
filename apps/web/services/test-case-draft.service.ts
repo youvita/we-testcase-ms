@@ -28,14 +28,31 @@ export async function listPendingDrafts(
       { subModule: { sort: "asc", nulls: "first" } },
       { createdAt: "asc" },
     ],
+    include: { job: { select: { id: true, kind: true, createdAt: true, input: true } } },
   });
 
   const requirementIds = Array.from(new Set(drafts.flatMap((d) => d.requirementIds)));
   const requirements = await prisma.requirement.findMany({
     where: { id: { in: requirementIds } },
-    select: { id: true, code: true, title: true, verifiedAt: true },
+    select: { id: true, code: true, title: true, verifiedAt: true, doc: { select: { title: true } } },
   });
   const byId = new Map(requirements.map((req) => [req.id, req]));
+
+  function sourceOf(draft: (typeof drafts)[number]): TestCaseDraftDto["source"] {
+    const docs = [...new Set(draft.requirementIds.flatMap((id) => byId.get(id)?.doc.title ?? []))];
+    const fromRequirements = draft.job?.kind === "GENERATE_TEST_CASES" || draft.requirementIds.length > 0;
+    const paths = (draft.job?.input as { paths?: unknown } | null)?.paths;
+    return {
+      kind: fromRequirements ? "requirements" : "explore",
+      runId: draft.job?.id ?? null,
+      runAt: (draft.job?.createdAt ?? draft.createdAt).toISOString(),
+      detail: fromRequirements
+        ? docs.join(", ") || "Requirements"
+        : Array.isArray(paths) && paths.length
+          ? paths.join(", ")
+          : "Exploring the app",
+    };
+  }
 
   // Drafts written before open questions had their own field still carry
   // "(confirm with PO)" in their text; they are shown split.
@@ -56,6 +73,7 @@ export async function listPendingDrafts(
       const req = byId.get(id);
       return req ? [{ id: req.id, code: req.code, title: req.title, verified: req.verifiedAt !== null }] : [];
     }),
+    source: sourceOf(draft),
     createdAt: draft.createdAt.toISOString(),
   }));
 }

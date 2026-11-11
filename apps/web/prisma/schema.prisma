@@ -748,12 +748,17 @@ model TestCaseRequirement {
   testCaseId    String
   requirementId String
   createdAt     DateTime @default(now())
+  /// When the requirement's text changed after the case was linked — a new
+  /// document version, a hand edit or a merge. The case may need updating;
+  /// cleared when the case is edited or QA confirms it still holds.
+  requirementChangedAt DateTime?
 
   testCase    TestCase    @relation(fields: [testCaseId], references: [id], onDelete: Cascade)
   requirement Requirement @relation(fields: [requirementId], references: [id], onDelete: Cascade)
 
   @@id([testCaseId, requirementId])
   @@index([requirementId])
+  @@index([testCaseId, requirementChangedAt])
 }
 
 /// A unit of AI work, run in the app process on its creator's subscription.

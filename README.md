@@ -254,20 +254,30 @@ Project → **Requirements** (`/projects/:id/requirements`).
    **Upload new version** (document menu) replaces the text, keeps the old one,
    and reads it against the requirements found before: Claude is shown them so
    the same requirement keeps its code, and one that still gets a new code is
-   matched by its text. Each requirement is marked **New**, **Changed** (with a
-   before/after diff) or **Not found**; a likely rename asks QA to confirm.
-   Nothing is deleted — QA confirms a requirement *removed* or keeps it, and
-   links to test cases stay on the requirement throughout.
+   matched by its text. Each requirement is marked **New in v3**, **Changed in
+   v3** (with a before/after diff) or **Not found in v3**; a likely rename asks
+   QA to confirm. Nothing is deleted — QA confirms a requirement *removed* or
+   keeps it, and links to test cases stay on the requirement throughout.
+   When a requirement's text changes (a new version, a hand edit or a merge),
+   the test cases that verify it are marked **Requirement changed** — on the
+   list, with a filter, and on the case with what changed. Editing the case or
+   *Still correct* clears it.
 3. **Draft test cases** — select requirements, pick platform and depth, and
    Claude writes black-box cases (preconditions, steps with test data, expected
    result, type, priority, module).
-4. **Review drafts** — edit, accept or reject, one by one or in bulk. Accepting
+4. **Review drafts** — each draft says where it came from (a document, or the
+   pages explored), and the *AI runs* filter lists the runs newest first, so
+   what was just generated is one pick away. Edit, accept or reject, one by
+   one or in bulk. Accepting
    creates the test case (and its module if new) with a TC ID derived from the
    requirement, e.g. `TC-FR-012-01`, linked for traceability. Nothing the AI
    writes becomes a test case without this step.
 
 Coverage (which requirements have tests, and their latest results) is on the
-requirements page; each test case lists the requirements it verifies.
+requirements page; each test case lists the requirements it verifies. The test
+case list marks cases *From requirements* or *From exploring*, and its
+**Source** filter (under More filters) picks them apart from cases written by
+hand or imported.
 
 **No document? Explore the app.** *Explore the app* (on the test case list,
 or in Review drafts) suggests cases from the application
@@ -276,7 +286,8 @@ case's script, for pages behind login — and captures each page's outline and a
 screenshot; Claude suggests positive, negative, validation and boundary cases
 for what is actually there, skipping cases the project already has or has
 pending, plus a few observations that are not test cases. Suggestions land in
-Review drafts like any other.
+Review drafts like any other. Like the other AI jobs, it lets you pick the
+model (Sonnet by default, Opus, Haiku).
 
 **Whose Claude.** AI runs on each person's own Claude Pro/Max subscription —
 there is no shared key. Each person installs the Claude CLI once

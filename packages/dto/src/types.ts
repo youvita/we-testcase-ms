@@ -11,6 +11,7 @@ import type {
   RequirementStatus,
   Role,
   RunItemStatus,
+  TestCaseSource,
   TestRunPurpose,
   TestRunStatus,
   TestType,
@@ -208,6 +209,8 @@ export type RequirementDto = {
   section: string | null;
   docId: string;
   docTitle: string;
+  /** The document's current version; `change` is what that version did. */
+  docVersion: number;
   status: RequirementStatus;
   /**
    * What the document's current version did to it, once that version has been
@@ -287,6 +290,11 @@ export type TestCaseDraftDto = {
   platform: Platform;
   /** `verified`: the PO confirmed it; a draft becomes a case only once all are. */
   requirements: { id: string; code: string; title: string; verified: boolean }[];
+  /**
+   * The AI run that wrote it. `runId` is null when that run is gone; `detail`
+   * names what it read — the documents, or the pages explored.
+   */
+  source: { kind: TestCaseSource; runId: string | null; runAt: string; detail: string };
   createdAt: string;
 };
 

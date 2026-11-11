@@ -5,7 +5,7 @@ import {
   type RequirementStatus,
 } from "@prisma/client";
 
-import { prisma } from "@/lib/prisma";
+import { prisma, type Tx } from "@/lib/prisma";
 import { badRequest, conflict, notFound } from "@/lib/api";
 import type {
   RequirementDocDto,
@@ -300,6 +300,7 @@ export async function listRequirements(
       section: row.section,
       docId: row.docId,
       docTitle: row.doc.title,
+      docVersion: row.doc.version,
       status: row.status,
       change,
       previous: change === "CHANGED" ? (row.previous as RequirementSnapshot | null) : null,
@@ -373,13 +374,28 @@ export async function updateRequirement(
   // What it says changed: the PO confirms the new text. Open questions are
   // QA's notes, not the requirement, so editing them alone keeps it verified.
   const changed = code !== existing.code || !sameRequirementText(existing, next);
-  return prisma.requirement.update({
-    where: { id: requirementId },
-    data: {
-      ...next,
-      openQuestions: input.openQuestions ?? null,
-      ...(changed ? { verifiedAt: null, verifiedById: null } : {}),
-    },
+  const [updated] = await prisma.$transaction([
+    prisma.requirement.update({
+      where: { id: requirementId },
+      data: {
+        ...next,
+        openQuestions: input.openQuestions ?? null,
+        ...(changed ? { verifiedAt: null, verifiedById: null } : {}),
+      },
+    }),
+    ...(changed ? [flagLinkedCases(prisma, requirementId)] : []),
+  ]);
+  return updated;
+}
+
+/**
+ * Its text changed: the test cases that verify it may need updating. Each link
+ * says so until the case is edited or QA confirms it still holds.
+ */
+function flagLinkedCases(client: Pick<Tx, "testCaseRequirement">, requirementId: string) {
+  return client.testCaseRequirement.updateMany({
+    where: { requirementId },
+    data: { requirementChangedAt: new Date() },
   });
 }
 
@@ -490,6 +506,9 @@ export async function reviewRequirement(
             ...(sameRequirementText(earlier, row) && earlier.code === row.code ? {} : { verifiedAt: null, verifiedById: null }),
           },
         });
+        if (!sameRequirementText(earlier, row) || earlier.code !== row.code) {
+          await flagLinkedCases(tx, earlier.id);
+        }
       });
       return;
     }
@@ -667,6 +686,9 @@ export async function startRequirementReading(docId: string) {
         ...(differs ? { verifiedAt: null, verifiedById: null } : {}),
       },
     });
+    // A re-read of the same version found nothing new; its cases were flagged
+    // by the first reading, and may have been updated since.
+    if (differs && !keepEarlierFinding) await flagLinkedCases(prisma, match.id);
     if (change === "ADDED") tally.added += 1;
     else if (change === "CHANGED") tally.changed += 1;
     else tally.unchanged += 1;

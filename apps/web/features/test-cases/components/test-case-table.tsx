@@ -10,14 +10,17 @@ import {
   ChevronsUpDown,
   ClipboardCopy,
   ClipboardList,
+  Compass,
   Copy,
   Download,
+  FileText,
   FolderTree,
   MoreHorizontal,
   Pencil,
   Play,
   Sparkles,
   Trash2,
+  TriangleAlert,
 } from "lucide-react";
 import { toast } from "sonner";
 import type { FixStatus } from "@prisma/client";
@@ -487,6 +490,7 @@ export function TestCaseTable({
                   >
                     {testCase.title}
                   </Link>
+                  <CaseMarkers testCase={testCase} />
                 </TableCell>
 
                 <TableCell>
@@ -716,4 +720,34 @@ export function TestCaseTable({
 /** Its latest result failed or was blocked: worth a bug report. */
 function hasBugToReport(testCase: TestCaseListItem): boolean {
   return testCase.status === "FAILED" || testCase.status === "BLOCKED";
+}
+
+/** Under the title: where the case came from, and whether a requirement it verifies changed. */
+function CaseMarkers({ testCase }: { testCase: TestCaseListItem }) {
+  if (testCase.source === "manual" && !testCase.requirementChanged) return null;
+  return (
+    <span className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs">
+      {testCase.source === "requirements" && (
+        <span className="inline-flex items-center gap-1 text-muted-foreground" title="AI draft from a requirement">
+          <FileText className="size-3" aria-hidden />
+          From requirements
+        </span>
+      )}
+      {testCase.source === "explore" && (
+        <span className="inline-flex items-center gap-1 text-muted-foreground" title="AI draft from exploring the app">
+          <Compass className="size-3" aria-hidden />
+          From exploring
+        </span>
+      )}
+      {testCase.requirementChanged && (
+        <span
+          className="inline-flex items-center gap-1 font-medium text-status-blocked"
+          title="A requirement this case verifies changed since — open it to check"
+        >
+          <TriangleAlert className="size-3" aria-hidden />
+          Requirement changed
+        </span>
+      )}
+    </span>
+  );
 }

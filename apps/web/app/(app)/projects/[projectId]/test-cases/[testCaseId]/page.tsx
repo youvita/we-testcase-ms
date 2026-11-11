@@ -23,6 +23,7 @@ import { RetestButton } from "@/features/executions/components/retest-button";
 import { ExecutionHistory } from "@/features/executions/components/execution-history";
 import { ExecutionPanel } from "@/features/executions/components/execution-panel";
 import { TestCaseCardActions } from "@/features/test-cases/components/test-case-card-actions";
+import { RequirementChangedNotice } from "@/features/test-cases/components/requirement-changed-notice";
 import { AutomationScriptCard } from "@/features/automation/components/automation-script-card";
 import { TestCaseDetailShell } from "@/features/executions/components/test-case-detail-shell";
 import {
@@ -261,6 +262,25 @@ export default async function TestCaseDetailPage({
                 />
               </CardHeader>
               <CardContent className="space-y-5">
+                <RequirementChangedNotice
+                  projectId={projectId}
+                  testCaseId={testCase.id}
+                  canManage={canEditCase}
+                  requirements={testCase.requirements.flatMap(({ requirement, requirementChangedAt }) =>
+                    requirementChangedAt
+                      ? [
+                          {
+                            id: requirement.id,
+                            code: requirement.code,
+                            title: requirement.title,
+                            docTitle: requirement.doc.title,
+                            docVersion: requirement.doc.version,
+                            changedAt: requirementChangedAt.toISOString(),
+                          },
+                        ]
+                      : [],
+                  )}
+                />
                 {details.every((detail) => !detail.value) ? (
                   <p className="text-sm text-muted-foreground">
                     This test case has no preconditions, steps or expected
@@ -293,10 +313,10 @@ export default async function TestCaseDetailPage({
                       Verifies requirements
                     </h3>
                     <ul className="space-y-1 text-sm">
-                      {testCase.requirements.map(({ requirement }) => (
+                      {testCase.requirements.map(({ requirement, requirementChangedAt }) => (
                         <li key={requirement.id}>
                           <Link
-                            href={`/projects/${projectId}/requirements`}
+                            href={`/projects/${projectId}/requirements?tab=requirements&focus=${requirement.id}`}
                             className="hover:underline"
                           >
                             <span className="font-mono text-xs">
@@ -304,6 +324,13 @@ export default async function TestCaseDetailPage({
                             </span>{" "}
                             {requirement.title}
                           </Link>
+                          <span className="text-xs text-muted-foreground">
+                            {" "}
+                            · {requirement.doc.title} v{requirement.doc.version}
+                          </span>
+                          {requirementChangedAt && (
+                            <span className="ml-1.5 text-xs font-medium text-status-blocked">Changed</span>
+                          )}
                         </li>
                       ))}
                     </ul>

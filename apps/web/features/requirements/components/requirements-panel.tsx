@@ -92,7 +92,13 @@ import type { StartAi } from "./requirements-workspace";
 type Coverage = "all" | "unverified" | "uncovered" | "covered" | "questions" | "changes" | "removed";
 
 /** A document's section — the unit a feature is usually written as. */
-type Group = { key: string; section: string | null; docTitle: string; items: RequirementDto[] };
+type Group = {
+  key: string;
+  section: string | null;
+  docTitle: string;
+  docVersion: number;
+  items: RequirementDto[];
+};
 
 const groupKey = (req: RequirementDto) => `${req.docId}\u0000${req.section ?? ""}`;
 
@@ -175,7 +181,7 @@ export function RequirementsPanel({
       const key = groupKey(req);
       let group = byKey.get(key);
       if (!group) {
-        group = { key, section: req.section, docTitle: req.docTitle, items: [] };
+        group = { key, section: req.section, docTitle: req.docTitle, docVersion: req.docVersion, items: [] };
         byKey.set(key, group);
       }
       group.items.push(req);
@@ -468,7 +474,7 @@ export function RequirementsPanel({
                 </TableCell>
               </TableRow>
             )}
-            {(grouped ? groups : [{ key: "", section: null, docTitle: "", items: shown }]).map((group) => {
+            {(grouped ? groups : [{ key: "", section: null, docTitle: "", docVersion: 1, items: shown }]).map((group) => {
               const groupOpen = !grouped || isOpen(group.key);
               const counts = progress.get(group.key);
               const label = group.section ?? "No section";
@@ -511,8 +517,15 @@ export function RequirementsPanel({
                           <span className={cn("font-medium", !group.section && "text-muted-foreground")}>
                             {label}
                           </span>
-                          {docs.length > 1 && docFilter === "all" && (
-                            <span className="text-xs text-muted-foreground">{group.docTitle}</span>
+                          {((docs.length > 1 && docFilter === "all") || group.docVersion > 1) && (
+                            <span className="text-xs text-muted-foreground">
+                              {[
+                                docs.length > 1 && docFilter === "all" ? group.docTitle : null,
+                                group.docVersion > 1 ? `v${group.docVersion}` : null,
+                              ]
+                                .filter(Boolean)
+                                .join(" · ")}
+                            </span>
                           )}
                           <span className="ml-auto text-xs text-muted-foreground">
                             {counts && counts.total > 0 && (
@@ -610,7 +623,13 @@ export function RequirementsPanel({
                           </div>
                           <p className="text-xs text-muted-foreground">
                             {/* Under a section heading, both are already said. */}
-                        {(grouped ? [] : [req.section, docs.length > 1 ? req.docTitle : null])
+                        {(grouped
+                          ? []
+                          : [
+                              req.section,
+                              docs.length > 1 ? req.docTitle : null,
+                              req.docVersion > 1 ? `v${req.docVersion}` : null,
+                            ])
                               .filter(Boolean)
                               .join(" · ")}
                           </p>

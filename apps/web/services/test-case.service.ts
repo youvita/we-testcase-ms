@@ -10,7 +10,7 @@ import type {
   TestCaseListItem,
   TestCaseWithDetails,
 } from "@/types";
-import type { TrashedTestCase } from "@wetestcase/dto";
+import type { TestCaseSource, TrashedTestCase } from "@wetestcase/dto";
 
 import { resolveProjectPlatform } from "./project.service";
 
@@ -40,6 +40,10 @@ export function buildWhere(
     ...(query.platform ? { platform: query.platform } : {}),
     ...(query.automated === "yes" ? { script: { isNot: null } } : {}),
     ...(query.automated === "no" ? { script: { is: null } } : {}),
+    ...(query.source ? { drafts: SOURCE_WHERE[query.source] } : {}),
+    ...(query.requirementChanged === "yes"
+      ? { requirements: { some: { requirementChangedAt: { not: null } } } }
+      : {}),
     ...(search
       ? {
           OR: [
@@ -51,6 +55,34 @@ export function buildWhere(
         }
       : {}),
   };
+}
+
+/**
+ * A case came from the AI when a draft was accepted into it: from requirements
+ * when that draft cited one or came from generating, from exploring when it
+ * came from an exploration — or cited nothing and its run is gone, which only
+ * exploring leaves.
+ */
+const FROM_REQUIREMENTS: Prisma.TestCaseDraftWhereInput = {
+  OR: [{ job: { kind: "GENERATE_TEST_CASES" } }, { requirementIds: { isEmpty: false } }],
+};
+const FROM_EXPLORING: Prisma.TestCaseDraftWhereInput = {
+  OR: [{ job: { kind: "EXPLORE_APP" } }, { jobId: null, requirementIds: { isEmpty: true } }],
+};
+const SOURCE_WHERE: Record<TestCaseSource, Prisma.TestCaseDraftListRelationFilter> = {
+  requirements: { some: FROM_REQUIREMENTS },
+  explore: { some: FROM_EXPLORING, none: FROM_REQUIREMENTS },
+  manual: { none: {} },
+};
+
+/** Where a case came from, by the draft accepted into it (see SOURCE_WHERE). */
+export function sourceOf(
+  drafts: { requirementIds: string[]; job: { kind: string } | null }[],
+): TestCaseSource {
+  const draft = drafts[0];
+  if (!draft) return "manual";
+  if (draft.job?.kind === "GENERATE_TEST_CASES" || draft.requirementIds.length > 0) return "requirements";
+  return "explore";
 }
 
 function buildOrderBy(
@@ -113,6 +145,16 @@ export async function listTestCases(
         subModule: true,
         module: { select: { id: true, name: true } },
         script: { select: { updatedAt: true } },
+        drafts: {
+          take: 1,
+          orderBy: { createdAt: "asc" },
+          select: { requirementIds: true, job: { select: { kind: true } } },
+        },
+        requirements: {
+          where: { requirementChangedAt: { not: null } },
+          take: 1,
+          select: { requirementId: true },
+        },
       },
     }),
     prisma.testCase.count({ where }),
@@ -134,7 +176,12 @@ export async function listTestCases(
   }
 
   return {
-    items: items.map((item) => ({ ...item, aiScriptStarted: started.has(item.id) })),
+    items: items.map(({ drafts, requirements, ...item }) => ({
+      ...item,
+      aiScriptStarted: started.has(item.id),
+      source: sourceOf(drafts),
+      requirementChanged: requirements.length > 0,
+    })),
     page: query.page,
     pageSize: query.pageSize,
     total,
@@ -169,7 +216,15 @@ export async function getTestCase(
       },
       requirements: {
         select: {
-          requirement: { select: { id: true, code: true, title: true } },
+          requirementChangedAt: true,
+          requirement: {
+            select: {
+              id: true,
+              code: true,
+              title: true,
+              doc: { select: { title: true, version: true } },
+            },
+          },
         },
         orderBy: { requirement: { code: "asc" } },
       },
@@ -344,6 +399,12 @@ export async function updateTestCase(
   });
   if (duplicate) throw tcIdTaken(tcId, duplicate);
 
+  // Saved by a person who had the case open: they have seen what changed.
+  await prisma.testCaseRequirement.updateMany({
+    where: { testCaseId, requirementChangedAt: { not: null } },
+    data: { requirementChangedAt: null },
+  });
+
   return prisma.testCase.update({
     where: { id: testCaseId },
     data: {
@@ -360,6 +421,15 @@ export async function updateTestCase(
       platform,
     },
   });
+}
+
+/** QA checked the case against its changed requirements: it still holds. */
+export async function confirmRequirementChanges(testCaseId: string) {
+  const { count } = await prisma.testCaseRequirement.updateMany({
+    where: { testCaseId, requirementChangedAt: { not: null } },
+    data: { requirementChangedAt: null },
+  });
+  return { cleared: count };
 }
 
 /**
