@@ -424,6 +424,14 @@ export const requirementDocUpdateSchema = z.object({ folder: docFolder });
 
 export const requirementDocFolderSchema = docFolder;
 
+/** Rename a feature folder: every document in it moves to the new name. */
+export const requirementDocFolderRenameSchema = z.object({
+  from: trimmed(80).min(1, "Which folder?"),
+  to: trimmed(80).min(1, "Give the folder a name"),
+});
+
+export type RequirementDocFolderRenameInput = z.infer<typeof requirementDocFolderRenameSchema>;
+
 /** A new version of an existing document, pasted as text. */
 export const requirementDocVersionTextSchema = requirementDocTextSchema.pick({ content: true });
 

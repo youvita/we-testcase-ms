@@ -15,6 +15,7 @@ import {
   History,
   Loader2,
   MoreHorizontal,
+  Pencil,
   Plus,
   Sparkles,
   Trash2,
@@ -90,6 +91,7 @@ export function DocumentsPanel({
   const [newVersionOf, setNewVersionOf] = useState<RequirementDocDto | null>(null);
   const [viewing, setViewing] = useState<{ doc: RequirementDocDto; version?: number } | null>(null);
   const [moving, setMoving] = useState<RequirementDocDto | null>(null);
+  const [renaming, setRenaming] = useState<string | null>(null);
   const [history, setHistory] = useState<RequirementDocDto | null>(null);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [deleting, setDeleting] = useState<RequirementDocDto | null>(null);
@@ -343,9 +345,10 @@ export function DocumentsPanel({
                   const open = searching || !collapsed.has(group.folder);
                   return (
                     <div key={group.folder || "-"}>
+                      <div className="flex items-center bg-muted/40 pr-2 hover:bg-muted/60">
                       <button
                         type="button"
-                        className="flex w-full items-center gap-2 bg-muted/40 px-4 py-2 text-left text-sm hover:bg-muted/60"
+                        className="flex min-w-0 flex-1 items-center gap-2 px-4 py-2 text-left text-sm"
                         aria-expanded={open}
                         onClick={() =>
                           setCollapsed((current) => {
@@ -366,6 +369,19 @@ export function DocumentsPanel({
                           {formatRelative(group.updatedAt)}
                         </span>
                       </button>
+                      {canManage && group.folder && (
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="size-7 shrink-0 text-muted-foreground"
+                          aria-label={`Rename folder ${group.folder}`}
+                          title="Rename folder"
+                          onClick={() => setRenaming(group.folder)}
+                        >
+                          <Pencil className="size-3.5" />
+                        </Button>
+                      )}
+                      </div>
                       {open && <div className="divide-y border-t">{group.items.map(renderDoc)}</div>}
                     </div>
                   );
@@ -412,6 +428,13 @@ export function DocumentsPanel({
       <DocumentTextDialog doc={viewing?.doc ?? null} version={viewing?.version} onClose={() => setViewing(null)} />
 
       <MoveToFolderDialog doc={moving} folders={folders} onClose={() => setMoving(null)} />
+      <RenameFolderDialog
+        projectId={projectId}
+        folder={renaming}
+        folders={folders}
+        count={renaming ? (folderStats.get(renaming)?.count ?? 0) : 0}
+        onClose={() => setRenaming(null)}
+      />
 
       <VersionHistoryDialog
         doc={history}
@@ -882,6 +905,97 @@ function MoveToFolderDialog({
             <Button type="submit" disabled={saving || folder.trim() === (doc?.folder ?? "")}>
               {saving && <Loader2 className="mr-2 size-4 animate-spin" />}
               Move
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/**
+ * Rename a feature folder. Every document in it moves, so its requirements
+ * follow on the Requirements tab. Another folder's name joins the two.
+ */
+function RenameFolderDialog({
+  projectId,
+  folder,
+  folders,
+  count,
+  onClose,
+}: {
+  projectId: string;
+  folder: string | null;
+  folders: string[];
+  count: number;
+  onClose: () => void;
+}) {
+  const router = useRouter();
+  const [name, setName] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [shownFor, setShownFor] = useState<string | null>(null);
+  if (folder !== shownFor) {
+    setShownFor(folder);
+    setName(folder ?? "");
+  }
+  const next = name.trim();
+  const joins = next !== folder ? folders.find((other) => other === next) : undefined;
+
+  async function save() {
+    if (!folder || !next) return;
+    setSaving(true);
+    try {
+      await api.patch(`/api/projects/${projectId}/requirement-docs/folders`, { from: folder, to: next });
+      toast.success(joins ? `Moved ${folder} into ${next}` : `Renamed to ${next}`);
+      onClose();
+      router.refresh();
+    } catch (error) {
+      toast.error(errorMessage(error));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Dialog open={folder !== null} onOpenChange={(open) => !open && !saving && onClose()}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Rename folder “{folder}”</DialogTitle>
+          <DialogDescription>
+            Its {count} document{count === 1 ? "" : "s"} move{count === 1 ? "s" : ""} to the new name, and their
+            requirements follow on the Requirements tab.
+          </DialogDescription>
+        </DialogHeader>
+        <form
+          className="space-y-4"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void save();
+          }}
+        >
+          <div className="space-y-2">
+            <Label htmlFor="rename-folder">Folder name</Label>
+            <Input
+              id="rename-folder"
+              value={name}
+              maxLength={80}
+              autoComplete="off"
+              autoFocus
+              onChange={(event) => setName(event.target.value)}
+            />
+            {joins && (
+              <p className="text-xs text-status-blocked">
+                “{joins}” already exists — the two folders will become one.
+              </p>
+            )}
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" disabled={saving} onClick={onClose}>
+              Cancel
+            </Button>
+            <Button type="submit" disabled={saving || !next || next === folder}>
+              {saving && <Loader2 className="mr-2 size-4 animate-spin" />}
+              {joins ? "Merge folders" : "Rename"}
             </Button>
           </DialogFooter>
         </form>

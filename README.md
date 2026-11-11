@@ -274,7 +274,8 @@ Project → **Requirements** (`/projects/:id/requirements`).
    writes becomes a test case without this step.
 
 Documents can be kept in a feature folder (chosen on upload, or *Move to
-folder…*). Once any document has one, the Documents tab and the Requirements
+folder…*); the pencil on a folder's heading renames it — every document in
+it moves, and naming it after another folder joins the two. Once any document has one, the Documents tab and the Requirements
 tab both list by folder; each folder heading on Requirements sums up its
 requirements, coverage, changes in a new version and what the PO has not
 verified yet, and *Collapse all* leaves just the folders.

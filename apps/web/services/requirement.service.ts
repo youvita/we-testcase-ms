@@ -131,6 +131,21 @@ export async function setRequirementDocFolder(docId: string, folder: string | nu
 }
 
 /**
+ * Rename a feature folder: all of the project's documents in it move to the
+ * new name — and with them, their requirements on the Requirements tab. A
+ * name another folder already has joins the two.
+ */
+export async function renameRequirementDocFolder(projectId: string, from: string, to: string) {
+  const merged = await prisma.requirementDoc.count({ where: { projectId, folder: to } });
+  const { count } = await prisma.requirementDoc.updateMany({
+    where: { projectId, folder: from },
+    data: { folder: to },
+  });
+  if (count === 0) throw notFound("Folder");
+  return { moved: count, merged: from !== to && merged > 0 };
+}
+
+/**
  * Every version of a document, newest first: who uploaded each and when.
  *
  * An archived row records who *replaced* it, so a version's uploader is the

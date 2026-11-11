@@ -38,6 +38,7 @@ export {
   requirementDocUpdateSchema,
   requirementVerifySchema,
   requirementDocFolderSchema,
+  requirementDocFolderRenameSchema,
   requirementReviewSchema,
   requirementSchema,
   requirementCreateSchema,
