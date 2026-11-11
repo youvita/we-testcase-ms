@@ -149,8 +149,9 @@ export function RequirementQuestionItem({
         </li>
       ))}
 
-      {caseText && question.status === "answered" && !replying && (
+      {caseText && question.replies.some((message) => message.author.isPo) && !replying && (
         <CaseUpdatePrompt
+          quiet={question.status !== "answered"}
           testCaseId={testCaseId}
           source={{ kind: "requirement", questionId: question.id }}
           question={question.body}

@@ -114,6 +114,19 @@ export function CommentThread({
   // Question id → its latest answer, while the answer is not yet in the case.
   const toApply = caseText ? answersToApply(comments) : new Map<string, string>();
   const promptAfter = new Map([...toApply].map(([questionId, answerId]) => [answerId, questionId]));
+  // Answers already dealt with keep a quiet way to update the case from them,
+  // after each question's latest answer.
+  const latestAnswer = new Map<string, string>();
+  if (caseText) {
+    for (const comment of comments) {
+      if (comment.kind === "ANSWER" && comment.answerToId && !comment.deletedAt) {
+        latestAnswer.set(comment.answerToId, comment.id);
+      }
+    }
+  }
+  const quietAfter = new Map(
+    [...latestAnswer].filter(([questionId]) => !toApply.has(questionId)).map(([questionId, answerId]) => [answerId, questionId]),
+  );
   const answersTo = (questionId: string) =>
     comments
       .filter((c) => c.kind === "ANSWER" && c.answerToId === questionId && !c.deletedAt)
@@ -327,6 +340,16 @@ export function CommentThread({
                       </Button>
                     )}
                 </li>
+                {!promptFor && quietAfter.has(comment.id) && caseText && byId.get(quietAfter.get(comment.id)!) && (
+                  <CaseUpdatePrompt
+                    quiet
+                    testCaseId={testCaseId}
+                    source={{ kind: "comment", questionId: quietAfter.get(comment.id)! }}
+                    question={byId.get(quietAfter.get(comment.id)!)!.body}
+                    answers={answersTo(quietAfter.get(comment.id)!)}
+                    caseText={caseText}
+                  />
+                )}
                 {promptFor && caseText && byId.get(promptFor) && (
                   // After the PO's latest answer: the confirmed rule belongs in
                   // the case, which is what testers, reports and the AI read.

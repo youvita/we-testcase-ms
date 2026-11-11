@@ -22,6 +22,7 @@ export function CaseUpdatePrompt({
   answers,
   caseText,
   onNoChange,
+  quiet = false,
 }: {
   testCaseId: string;
   /** The question answered: in the case's discussion, or on a requirement it verifies. */
@@ -31,6 +32,11 @@ export function CaseUpdatePrompt({
   caseText: CaseText;
   /** Record that the answer needs no change — for a question in the case's discussion. */
   onNoChange?: () => Promise<void>;
+  /**
+   * The answer was already dealt with (resolved, or settled): offer the
+   * update quietly, for when it turns out the case still needs it.
+   */
+  quiet?: boolean;
 }) {
   const [dialog, setDialog] = useState<{ suggestion: CaseUpdateSuggestion | null } | null>(null);
   const [starting, setStarting] = useState(false);
@@ -77,16 +83,34 @@ export function CaseUpdatePrompt({
   }
 
   return (
-    <li className="ml-9 flex flex-wrap items-center gap-2 rounded-md border px-3 py-2">
-      <FilePenLine className="size-4 shrink-0 text-muted-foreground" aria-hidden />
+    <li
+      className={
+        quiet
+          ? "ml-9 flex flex-wrap items-center gap-1 text-xs text-muted-foreground"
+          : "ml-9 flex flex-wrap items-center gap-2 rounded-md border px-3 py-2"
+      }
+    >
+      {!quiet && <FilePenLine className="size-4 shrink-0 text-muted-foreground" aria-hidden />}
       {drafting ? (
         <>
-          <span className="mr-auto flex items-center gap-2 text-sm text-muted-foreground">
+          <span className={`mr-auto flex items-center gap-2 text-muted-foreground ${quiet ? "text-xs" : "text-sm"}`}>
             <Loader2 className="size-3.5 animate-spin" aria-hidden />
             The AI is drafting the update…
           </span>
           <Button size="sm" variant="ghost" className="h-7" disabled={!job} onClick={() => void cancel()}>
             Cancel
+          </Button>
+        </>
+      ) : quiet ? (
+        <>
+          <span>Update the test case from this answer:</span>
+          <Button size="sm" variant="ghost" className="h-6 px-1.5 text-xs" onClick={() => void suggest()}>
+            <Sparkles className="mr-1 size-3" />
+            Suggest with AI
+          </Button>
+          <span aria-hidden>·</span>
+          <Button size="sm" variant="ghost" className="h-6 px-1.5 text-xs" onClick={() => setDialog({ suggestion: null })}>
+            Edit myself
           </Button>
         </>
       ) : (
