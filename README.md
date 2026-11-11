@@ -273,6 +273,12 @@ Project → **Requirements** (`/projects/:id/requirements`).
    requirement, e.g. `TC-FR-012-01`, linked for traceability. Nothing the AI
    writes becomes a test case without this step.
 
+Documents can be kept in a feature folder (chosen on upload, or *Move to
+folder…*). Once any document has one, the Documents tab and the Requirements
+tab both list by folder; each folder heading on Requirements sums up its
+requirements, coverage, changes in a new version and what the PO has not
+verified yet, and *Collapse all* leaves just the folders.
+
 Coverage (which requirements have tests, and their latest results) is on the
 requirements page; each test case lists the requirements it verifies. The test
 case list marks cases *From requirements* or *From exploring*, and its

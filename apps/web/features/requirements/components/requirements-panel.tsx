@@ -9,6 +9,7 @@ import {
   ChevronRight,
   CircleHelp,
   FileText,
+  Folder,
   Loader2,
   MoreHorizontal,
   Pencil,
@@ -94,6 +95,8 @@ type Coverage = "all" | "unverified" | "uncovered" | "covered" | "questions" | "
 /** A document's section — the unit a feature is usually written as. */
 type Group = {
   key: string;
+  /** The feature folder of its document; "" for none. */
+  folder: string;
   section: string | null;
   docTitle: string;
   docVersion: number;
@@ -151,9 +154,14 @@ export function RequirementsPanel({
   const [editing, setEditing] = useState<RequirementDto | "new" | null>(null);
   const [deleting, setDeleting] = useState<RequirementDto | null>(null);
 
+  // Once any document is in a folder, requirements are listed by folder, as on
+  // the Documents tab — unless one document or folder is picked already.
+  const byFolder = folders.length > 0 && docFilter === "all";
+  const folderKey = (req: RequirementDto) => folderOf.get(req.docId) ?? "";
+
   const visible = useMemo(() => {
     const term = search.trim().toLowerCase();
-    return requirements.filter((req) => {
+    const matching = requirements.filter((req) => {
       // Removed requirements only show when asked for.
       if ((coverage === "removed") !== (req.status === "REMOVED")) return false;
       if (coverage === "changes" && !needsAttention(req)) return false;
@@ -169,7 +177,15 @@ export function RequirementsPanel({
         .filter(Boolean)
         .some((text) => text!.toLowerCase().includes(term));
     });
-  }, [requirements, search, docFilter, coverage, folderOf]);
+    if (!byFolder) return matching;
+    // Paged in folder order, so a folder stays together; "No folder" last.
+    // Stable: within a folder, documents and sections keep their order.
+    const rank = (req: RequirementDto) => {
+      const folder = folderOf.get(req.docId);
+      return folder ? `0${folder.toLowerCase()}` : "1";
+    };
+    return [...matching].sort((a, b) => rank(a).localeCompare(rank(b)));
+  }, [requirements, search, docFilter, coverage, folderOf, byFolder]);
 
   const paging = useClientPagination(visible, `${search}|${docFilter}|${coverage}`);
 
@@ -181,7 +197,14 @@ export function RequirementsPanel({
       const key = groupKey(req);
       let group = byKey.get(key);
       if (!group) {
-        group = { key, section: req.section, docTitle: req.docTitle, docVersion: req.docVersion, items: [] };
+        group = {
+          key,
+          folder: folderKey(req),
+          section: req.section,
+          docTitle: req.docTitle,
+          docVersion: req.docVersion,
+          items: [],
+        };
         byKey.set(key, group);
       }
       group.items.push(req);
@@ -190,7 +213,24 @@ export function RequirementsPanel({
   };
   const allGroups = useMemo(() => groupsOf(visible), [visible]);
   const groups = useMemo(() => groupsOf(paging.pageItems), [paging.pageItems]);
-  const grouped = allGroups.length > 1;
+  const grouped = allGroups.length > 1 || byFolder;
+
+  // Each folder's summary covers all its requirements, whatever the filter.
+  const folderProgress = useMemo(() => {
+    const byKey = new Map<string, { total: number; covered: number; changed: number; unverified: number }>();
+    for (const req of requirements) {
+      if (req.status === "REMOVED") continue;
+      const key = folderOf.get(req.docId) ?? "";
+      const counts = byKey.get(key) ?? { total: 0, covered: 0, changed: 0, unverified: 0 };
+      counts.total += 1;
+      if (req.testCases.length > 0) counts.covered += 1;
+      if (needsAttention(req)) counts.changed += 1;
+      if (!req.verifiedAt) counts.unverified += 1;
+      byKey.set(key, counts);
+    }
+    return byKey;
+  }, [requirements, folderOf]);
+  const [collapsedFolders, setCollapsedFolders] = useState<Set<string>>(new Set());
 
   // Each section's progress counts all its requirements, whatever the filter.
   const progress = useMemo(() => {
@@ -216,8 +256,13 @@ export function RequirementsPanel({
   );
   // A search shows every match, collapsed section or not.
   const searching = search.trim() !== "";
+  const folderOpen = (folder: string) => !byFolder || searching || !collapsedFolders.has(folder);
   const isOpen = (key: string) => searching || !collapsed.has(key);
-  const allCollapsed = allGroups.every((group) => collapsed.has(group.key));
+  // By folder, collapsing all leaves the list of folders — the overview.
+  const folderKeys = [...new Set(allGroups.map((group) => group.folder))];
+  const allCollapsed = byFolder
+    ? folderKeys.every((folder) => collapsedFolders.has(folder))
+    : allGroups.every((group) => collapsed.has(group.key));
 
   const questionsFor = useMemo(() => {
     const byRequirement = new Map<string, PoQuestionDto[]>();
@@ -246,6 +291,11 @@ export function RequirementsPanel({
         next.delete(groupKey(target));
         return next;
       });
+      setCollapsedFolders((current) => {
+        const next = new Set(current);
+        next.delete(folderOf.get(target.docId) ?? "");
+        return next;
+      });
       setPendingFocus(target.id);
     }
   }
@@ -260,7 +310,7 @@ export function RequirementsPanel({
     );
   }, [pendingFocus, visible, paging]);
   const shown = grouped
-    ? groups.flatMap((group) => (isOpen(group.key) ? group.items : []))
+    ? groups.flatMap((group) => (folderOpen(group.folder) && isOpen(group.key) ? group.items : []))
     : paging.pageItems;
 
   // Selection survives filtering, so it is counted against what still exists.
@@ -392,9 +442,16 @@ export function RequirementsPanel({
           {grouped && !searching && (
             <Button
               variant="ghost"
-              onClick={() =>
-                setCollapsed(allCollapsed ? new Set() : new Set(allGroups.map((group) => group.key)))
-              }
+              onClick={() => {
+                if (!byFolder) {
+                  setCollapsed(allCollapsed ? new Set() : new Set(allGroups.map((group) => group.key)));
+                } else if (allCollapsed) {
+                  setCollapsedFolders(new Set());
+                  setCollapsed(new Set());
+                } else {
+                  setCollapsedFolders(new Set(folderKeys));
+                }
+              }}
             >
               {allCollapsed ? "Expand all" : "Collapse all"}
             </Button>
@@ -474,13 +531,26 @@ export function RequirementsPanel({
                 </TableCell>
               </TableRow>
             )}
-            {(grouped ? groups : [{ key: "", section: null, docTitle: "", docVersion: 1, items: shown }]).map((group) => {
+            {(grouped ? groups : [{ key: "", folder: "", section: null, docTitle: "", docVersion: 1, items: shown }]).map((group, index, list) => {
               const groupOpen = !grouped || isOpen(group.key);
               const counts = progress.get(group.key);
               const label = group.section ?? "No section";
+              // A folder's heading goes before its first section on the page.
+              const firstInFolder = byFolder && (index === 0 || list[index - 1]!.folder !== group.folder);
+              const inOpenFolder = folderOpen(group.folder);
               return (
                 <Fragment key={group.key}>
-                  {grouped && (
+                  {firstInFolder && (
+                    <FolderRow
+                      folder={group.folder}
+                      open={inOpenFolder}
+                      disabled={searching}
+                      columns={canManage ? 6 : 4}
+                      counts={folderProgress.get(group.folder)}
+                      onToggle={() => setCollapsedFolders(toggle(collapsedFolders, group.folder, inOpenFolder))}
+                    />
+                  )}
+                  {grouped && inOpenFolder && (
                     <TableRow className="bg-muted/40 hover:bg-muted/40">
                       {canManage && (
                         <TableCell className="pl-4">
@@ -498,7 +568,7 @@ export function RequirementsPanel({
                           />
                         </TableCell>
                       )}
-                      <TableCell colSpan={canManage ? 5 : 4} className="py-1.5 pl-1">
+                      <TableCell colSpan={canManage ? 5 : 4} className={cn("py-1.5 pl-1", byFolder && "pl-5")}>
                         <div className="flex items-center gap-2">
                         <button
                           type="button"
@@ -564,7 +634,7 @@ export function RequirementsPanel({
                       </TableCell>
                     </TableRow>
                   )}
-                {groupOpen && group.items.map((req) => {
+                {inOpenFolder && groupOpen && group.items.map((req) => {
                   const open = expanded.has(req.id);
                   return (
                     <Fragment key={req.id}>
@@ -1137,5 +1207,61 @@ function VerifiedMark({ requirement }: { requirement: RequirementDto }) {
     >
       Not verified
     </span>
+  );
+}
+
+/** A feature folder's heading in the requirements table, as on the Documents tab. */
+function FolderRow({
+  folder,
+  open,
+  disabled,
+  columns,
+  counts,
+  onToggle,
+}: {
+  folder: string;
+  open: boolean;
+  disabled: boolean;
+  columns: number;
+  counts?: { total: number; covered: number; changed: number; unverified: number };
+  onToggle: () => void;
+}) {
+  return (
+    <TableRow className="bg-muted/70 hover:bg-muted/70">
+      <TableCell colSpan={columns} className="py-2 pl-4">
+        <button
+          type="button"
+          className="flex w-full flex-wrap items-center gap-x-2 gap-y-0.5 text-left text-sm"
+          aria-expanded={open}
+          disabled={disabled}
+          onClick={onToggle}
+        >
+          {open ? <ChevronDown className="size-4" /> : <ChevronRight className="size-4" />}
+          <Folder className="size-4 text-muted-foreground" aria-hidden />
+          <span className={cn("font-semibold", !folder && "text-muted-foreground")}>{folder || "No folder"}</span>
+          {counts && (
+            <span className="ml-auto text-xs text-muted-foreground">
+              {counts.total} requirement{counts.total === 1 ? "" : "s"}
+              {" · "}
+              <span className={cn(counts.total > 0 && counts.covered === counts.total && "font-medium text-status-passed")}>
+                {counts.covered}/{counts.total} covered
+              </span>
+              {counts.changed > 0 && (
+                <span className="text-status-blocked">
+                  {" · "}
+                  {counts.changed} changed in new version
+                </span>
+              )}
+              {counts.unverified > 0 && (
+                <span className="text-status-blocked">
+                  {" · "}
+                  {counts.unverified} not verified
+                </span>
+              )}
+            </span>
+          )}
+        </button>
+      </TableCell>
+    </TableRow>
   );
 }
