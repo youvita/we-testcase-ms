@@ -317,8 +317,23 @@ export function RequirementsPanel({
   const selectedIds = requirements
     .filter((req) => selected.has(req.id))
     .map((req) => req.id);
-  const allShownSelected =
-    shown.length > 0 && shown.every((req) => selected.has(req.id));
+  // Every requirement on this page, in a collapsed folder or section too — as
+  // a section's own checkbox does. The buttons count what is selected.
+  const onPage = paging.pageItems;
+  const checkedFor = (items: RequirementDto[]) =>
+    items.length > 0 && items.every((req) => selected.has(req.id))
+      ? true
+      : items.some((req) => selected.has(req.id))
+        ? ("indeterminate" as const)
+        : false;
+  function selectAll(items: RequirementDto[], on: boolean) {
+    const next = new Set(selected);
+    for (const req of items) {
+      if (on) next.add(req.id);
+      else next.delete(req.id);
+    }
+    setSelected(next);
+  }
 
   function toggle(set: Set<string>, id: string, on: boolean) {
     const next = new Set(set);
@@ -503,16 +518,9 @@ export function RequirementsPanel({
               {canManage && (
                 <TableHead className="w-12 pl-4">
                   <Checkbox
-                    aria-label="Select all shown"
-                    checked={allShownSelected}
-                    onCheckedChange={(checked) => {
-                      const next = new Set(selected);
-                      for (const req of shown) {
-                        if (checked) next.add(req.id);
-                        else next.delete(req.id);
-                      }
-                      setSelected(next);
-                    }}
+                    aria-label="Select all on this page"
+                    checked={checkedFor(onPage)}
+                    onCheckedChange={(checked) => selectAll(onPage, checked === true)}
                   />
                 </TableHead>
               )}
@@ -542,6 +550,14 @@ export function RequirementsPanel({
                 <Fragment key={group.key}>
                   {firstInFolder && (
                     <FolderRow
+                      selection={
+                        canManage
+                          ? (() => {
+                              const items = groups.filter((g) => g.folder === group.folder).flatMap((g) => g.items);
+                              return { checked: checkedFor(items), onChange: (on: boolean) => selectAll(items, on) };
+                            })()
+                          : undefined
+                      }
                       folder={group.folder}
                       open={inOpenFolder}
                       disabled={searching}
@@ -556,15 +572,8 @@ export function RequirementsPanel({
                         <TableCell className="pl-4">
                           <Checkbox
                             aria-label={`Select all in ${label}`}
-                            checked={group.items.every((req) => selected.has(req.id))}
-                            onCheckedChange={(checked) => {
-                              const next = new Set(selected);
-                              for (const req of group.items) {
-                                if (checked) next.add(req.id);
-                                else next.delete(req.id);
-                              }
-                              setSelected(next);
-                            }}
+                            checked={checkedFor(group.items)}
+                            onCheckedChange={(checked) => selectAll(group.items, checked === true)}
                           />
                         </TableCell>
                       )}
@@ -1212,6 +1221,7 @@ function VerifiedMark({ requirement }: { requirement: RequirementDto }) {
 
 /** A feature folder's heading in the requirements table, as on the Documents tab. */
 function FolderRow({
+  selection,
   folder,
   open,
   disabled,
@@ -1219,6 +1229,8 @@ function FolderRow({
   counts,
   onToggle,
 }: {
+  /** Selects the folder's requirements on this page; absent for viewers. */
+  selection?: { checked: boolean | "indeterminate"; onChange: (on: boolean) => void };
   folder: string;
   open: boolean;
   disabled: boolean;
@@ -1228,7 +1240,16 @@ function FolderRow({
 }) {
   return (
     <TableRow className="bg-muted/70 hover:bg-muted/70">
-      <TableCell colSpan={columns} className="py-2 pl-4">
+      {selection && (
+        <TableCell className="pl-4">
+          <Checkbox
+            aria-label={`Select all in ${folder || "No folder"}`}
+            checked={selection.checked}
+            onCheckedChange={(checked) => selection.onChange(checked === true)}
+          />
+        </TableCell>
+      )}
+      <TableCell colSpan={selection ? columns - 1 : columns} className={cn("py-2", selection ? "pl-1" : "pl-4")}>
         <button
           type="button"
           className="flex w-full flex-wrap items-center gap-x-2 gap-y-0.5 text-left text-sm"
