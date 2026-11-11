@@ -1,9 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { CornerDownRight, FileText, HelpCircle, Loader2, Send } from "lucide-react";
+import { CornerDownRight, HelpCircle, Loader2, Send } from "lucide-react";
 import { toast } from "sonner";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -38,16 +37,12 @@ const STATUS = {
 export function RequirementQuestionItem({
   testCaseId,
   caseText,
-  projectId,
-  requirement,
   question,
   po,
 }: {
   testCaseId: string;
   /** The case's text, for those who edit cases: then a PO answer offers to update it. */
   caseText?: CaseText;
-  projectId: string;
-  requirement: RequirementQuestionGroup["requirement"];
   question: PoQuestionDto;
   po: PoContext;
 }) {
@@ -108,15 +103,6 @@ export function RequirementQuestionItem({
               </button>
             )}
           </div>
-          <Link
-            href={`/projects/${projectId}/requirements?tab=requirements&focus=${requirement.id}`}
-            className="inline-flex max-w-full items-center gap-1 rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground hover:text-foreground"
-            title={`On requirement ${requirement.code} — open it on the Requirements page`}
-          >
-            <FileText className="size-3 shrink-0" aria-hidden />
-            <span className="font-mono">{requirement.code}</span>
-            <span className="truncate">{requirement.title}</span>
-          </Link>
           <p className={cn("preserve-lines text-sm", resolved && "text-muted-foreground")}>{question.body}</p>
           <p className="flex flex-wrap items-center gap-x-1.5 text-xs text-muted-foreground">
             <HelpCircle className="size-3.5" aria-hidden />

@@ -45,7 +45,6 @@ export function CommentThread({
   canModerate,
   canAnswer = false,
   caseText,
-  projectId,
   requirementQuestions = [],
   po,
 }: {
@@ -61,7 +60,6 @@ export function CommentThread({
    * then each new PO answer asks to be put into them.
    */
   caseText?: CaseText;
-  projectId: string;
   /**
    * The PO questions on the requirements this case verifies: shown among
    * the comments, in time order — they are part of the same conversation.
@@ -98,13 +96,11 @@ export function CommentThread({
   const askedLast = asked.slice(next);
   const renderAsked = (items: typeof asked) =>
     po
-      ? items.map(({ requirement, question }) => (
+      ? items.map(({ question }) => (
           <RequirementQuestionItem
             key={question.id}
             testCaseId={testCaseId}
             caseText={caseText}
-            projectId={projectId}
-            requirement={requirement}
             question={question}
             po={po}
           />

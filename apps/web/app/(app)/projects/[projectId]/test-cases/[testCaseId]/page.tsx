@@ -455,7 +455,6 @@ export default async function TestCaseDetailPage({
               canComment={canPostComment}
               canModerate={isAdmin(user.role)}
               canAnswer={canAnswerPo(user.role)}
-              projectId={projectId}
               requirementQuestions={requirementQuestions}
               po={{
                 admins,
