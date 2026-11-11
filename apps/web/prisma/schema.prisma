@@ -204,7 +204,7 @@ model User {
   sessions Session[]
   accounts Account[]
 
-  ownedProjects        Project[]         @relation("ProjectQaOwner")
+  ownedProjects        Project[]         @relation("ProjectProductOwner")
   createdProjects      Project[]         @relation("ProjectCreatedBy")
   projectRoles         ProjectMember[]   @relation("ProjectMemberUser")
   executions           TestExecution[]
@@ -303,8 +303,11 @@ model Project {
   createdAt   DateTime      @default(now())
   updatedAt   DateTime      @updatedAt
 
-  qaOwnerId String?
-  qaOwner   User?   @relation("ProjectQaOwner", fields: [qaOwnerId], references: [id], onDelete: SetNull)
+  /// The PO (an admin): new comments on the project's cases go to them, and
+  /// they answer. Required by the form; null only for projects saved before
+  /// it was, or whose PO's account was removed.
+  productOwnerId String?
+  productOwner   User?   @relation("ProjectProductOwner", fields: [productOwnerId], references: [id], onDelete: SetNull)
 
   createdById String
   createdBy   User   @relation("ProjectCreatedBy", fields: [createdById], references: [id])
@@ -328,12 +331,12 @@ model Project {
   poQuestions PoQuestion[]
 
   @@index([status])
-  @@index([qaOwnerId])
+  @@index([productOwnerId])
 }
 
-/// A person in charge of a project, alongside its single QA owner.
+/// A person in charge of a project — QA, developers — alongside its product owner.
 ///
-/// Also the access list: everyone here, the QA owner and the creator can open
+/// Also the access list: everyone here, the product owner and the creator can open
 /// the project. Admins are not listed because they can reach every project by
 /// role — see lib/project-access.ts, which is the only place that decides this.
 model ProjectMember {
@@ -502,7 +505,8 @@ model Comment {
   settledBy          User?     @relation("CommentSettledBy", fields: [settledById], references: [id], onDelete: SetNull)
   settledChangedCase Boolean   @default(false)
 
-  /// An answer's question.
+  /// The comment this one replies under — a question's answer, or a reply
+  /// to any other comment. One level: a reply to a reply goes under its root.
   answerToId String?
   answerTo   Comment?  @relation("CommentAnswer", fields: [answerToId], references: [id], onDelete: SetNull)
   answers    Comment[] @relation("CommentAnswer")
@@ -526,6 +530,11 @@ enum NotificationKind {
   QUESTION_ANSWERED
   /// QA followed up on a question this admin was asked or has answered.
   QUESTION_REPLIED
+  /// Someone replied under a comment this person wrote or replied to.
+  COMMENT_REPLIED
+  /// A new comment on a case: to the project's product owner, or, from an
+  /// admin, to the people working on the case.
+  COMMENT_POSTED
 }
 
 /// In the app only: the bell in the top bar.
@@ -745,9 +754,9 @@ model Requirement {
 
 /// Traceability: which requirements a test case verifies.
 model TestCaseRequirement {
-  testCaseId    String
-  requirementId String
-  createdAt     DateTime @default(now())
+  testCaseId           String
+  requirementId        String
+  createdAt            DateTime  @default(now())
   /// When the requirement's text changed after the case was linked — a new
   /// document version, a hand edit or a merge. The case may need updating;
   /// cleared when the case is edited or QA confirms it still holds.

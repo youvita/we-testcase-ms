@@ -2,7 +2,7 @@ import { ROLES } from "@/lib/constants";
 import { ok, readJson, route } from "@/lib/api";
 import { assertTestCaseAccess } from "@/lib/project-access";
 import { commentSchema } from "@/lib/validations";
-import { createComment, listComments } from "@/services/comment.service";
+import { listComments, postComment } from "@/services/comment.service";
 
 type Ctx = { params: Promise<{ testCaseId: string }> };
 
@@ -13,7 +13,8 @@ export const GET = route<Ctx>({}, async (_request, { params, user }) => {
 });
 
 /**
- * Post to the discussion.
+ * Post to the discussion: a comment, which notifies the PO, or a reply
+ * under one, which notifies the people in that thread.
  *
  * Open to Developers as well as QA — unlike an execution, a comment records an
  * opinion rather than a test result, so it leaves the audit trail intact.
@@ -23,8 +24,8 @@ export const POST = route<Ctx>(
   async (request, { params, user }) => {
     const { testCaseId } = await params;
     await assertTestCaseAccess(testCaseId, user);
-    const { body } = commentSchema.parse(await readJson(request));
-    const comment = await createComment(testCaseId, user.id, body);
+    const input = commentSchema.parse(await readJson(request));
+    const comment = await postComment(testCaseId, user, input);
     return ok(comment, 201);
   },
 );

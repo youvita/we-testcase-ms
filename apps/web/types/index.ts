@@ -62,14 +62,14 @@ export type PublicUser = Omit<
   "role"
 > & { role: Role };
 
-/** A person on a project — QA owner or one of the people in charge. */
+/** A person on a project — product owner or one of the people in charge. */
 export type ProjectPerson = Pick<User, "id" | "name" | "email" | "image">;
 
 /** A run environment, as the project form and labels need it. */
 export type ProjectEnvironmentOption = { id: string; name: string };
 
 export type ProjectWithStats = Project & {
-  qaOwner: ProjectPerson | null;
+  productOwner: ProjectPerson | null;
   /** People in charge, flattened out of the join table by the service. */
   members: ProjectPerson[];
   defaultEnvironment: ProjectEnvironmentOption | null;

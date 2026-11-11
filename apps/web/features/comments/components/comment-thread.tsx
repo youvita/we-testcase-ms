@@ -23,7 +23,10 @@ import { formatDateTime, initials } from "@/utils/format";
 import { answersToApply } from "@/utils/po-answers";
 import type { CommentWithAuthor } from "@/types";
 
+import type { PoContext } from "@/features/requirements/components/po-questions";
+
 import { ApplyAnswerDialog, type CaseText } from "./apply-answer-dialog";
+import { RequirementQuestionItem, type RequirementQuestionGroup } from "./requirement-questions";
 
 /**
  * QA ↔ developer discussion on a test case.
@@ -41,6 +44,9 @@ export function CommentThread({
   canModerate,
   canAnswer = false,
   caseText,
+  projectId,
+  requirementQuestions = [],
+  po,
 }: {
   testCaseId: string;
   comments: CommentWithAuthor[];
@@ -54,15 +60,54 @@ export function CommentThread({
    * then each new PO answer asks to be put into them.
    */
   caseText?: CaseText;
+  projectId: string;
+  /**
+   * The PO questions on the requirements this case verifies: shown among
+   * the comments, in time order — they are part of the same conversation.
+   */
+  requirementQuestions?: RequirementQuestionGroup[];
+  /** Who may ask and answer the requirement questions. */
+  po?: PoContext;
 }) {
   const router = useRouter();
   const [body, setBody] = useState("");
   const [posting, setPosting] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  // The comment being replied to, and the reply.
   const [answering, setAnswering] = useState<string | null>(null);
   const [answer, setAnswer] = useState("");
   const [sendingAnswer, setSendingAnswer] = useState(false);
   const byId = new Map(comments.map((comment) => [comment.id, comment]));
+  // Each thread together: a comment, then the replies under it.
+  const ordered = threaded(comments);
+  // Each requirement question goes just before the first case thread that
+  // started after it; the rest go last.
+  const asked = requirementQuestions
+    .flatMap(({ requirement, questions }) => questions.map((question) => ({ requirement, question })))
+    .sort((a, b) => a.question.createdAt.localeCompare(b.question.createdAt));
+  const askedBefore = new Map<string, typeof asked>();
+  const roots = ordered.filter((comment) => !comment.answerToId || !byId.has(comment.answerToId));
+  let next = 0;
+  for (const root of roots) {
+    const startedAt = new Date(root.createdAt).toISOString();
+    const due: typeof asked = [];
+    while (next < asked.length && asked[next]!.question.createdAt <= startedAt) due.push(asked[next++]!);
+    if (due.length) askedBefore.set(root.id, due);
+  }
+  const askedLast = asked.slice(next);
+  const renderAsked = (items: typeof asked) =>
+    po
+      ? items.map(({ requirement, question }) => (
+          <RequirementQuestionItem
+            key={question.id}
+            projectId={projectId}
+            requirement={requirement}
+            question={question}
+            po={po}
+          />
+        ))
+      : null;
+  const total = comments.length + asked.reduce((sum, item) => sum + 1 + item.question.replies.length, 0);
   // Question id → its latest answer, while the answer is not yet in the case.
   const toApply = caseText ? answersToApply(comments) : new Map<string, string>();
   const promptAfter = new Map([...toApply].map(([questionId, answerId]) => [answerId, questionId]));
@@ -87,10 +132,10 @@ export function CommentThread({
     if (!trimmed) return;
     setSendingAnswer(true);
     try {
-      await api.post(`/api/comments/${questionId}/answer`, { body: trimmed });
+      await api.post(`/api/test-cases/${testCaseId}/comments`, { body: trimmed, replyToId: questionId });
       setAnswer("");
       setAnswering(null);
-      toast.success("Answered — the person who asked is notified");
+      toast.success("Replied — the people in this thread are notified");
       router.refresh();
     } catch (error) {
       toast.error(errorMessage(error));
@@ -134,14 +179,14 @@ export function CommentThread({
       <CardHeader>
         <CardTitle className="text-base">Discussion</CardTitle>
         <CardDescription>
-          {comments.length === 0
+          {total === 0
             ? "Ask a question or report a fix — QA and developers both post here."
-            : `${comments.length} comment${comments.length === 1 ? "" : "s"}`}
+            : `${total} comment${total === 1 ? "" : "s"}`}
         </CardDescription>
       </CardHeader>
 
       <CardContent className="space-y-4">
-        {comments.length === 0 ? (
+        {total === 0 ? (
           <EmptyState
             icon={MessageSquare}
             title="No comments yet"
@@ -149,12 +194,13 @@ export function CommentThread({
           />
         ) : (
           <ol className="space-y-3">
-            {comments.map((comment) => {
+            {ordered.map((comment) => {
               const withdrawn = Boolean(comment.deletedAt);
               const question = comment.kind === "QUESTION";
               const promptFor = promptAfter.get(comment.id);
               return (
                 <Fragment key={comment.id}>
+                {renderAsked(askedBefore.get(comment.id) ?? [])}
                 <li className={cn("flex items-start gap-3", comment.answerToId && "ml-9")}>
                   <Avatar className="size-7 shrink-0">
                     {comment.author.image && (
@@ -175,7 +221,9 @@ export function CommentThread({
                       {" · "}
                       {formatDateTime(comment.createdAt)}
                       {comment.kind === "ANSWER" && " · Answer"}
-                      {comment.kind === "COMMENT" && comment.answerToId && " · Follow-up"}
+                      {comment.kind === "COMMENT" &&
+                        comment.answerToId &&
+                        (byId.get(comment.answerToId)?.kind === "QUESTION" ? " · Follow-up" : " · Reply")}
                     </p>
                     {withdrawn ? (
                       // A tombstone, not a gap: replies below this one still need
@@ -211,18 +259,18 @@ export function CommentThread({
                         )}
                       </p>
                     )}
-                    {question && !withdrawn && canAnswer && answering !== comment.id && (
+                    {!withdrawn && (canComment || (question && canAnswer)) && answering !== comment.id && (
                       <Button
-                        variant="outline"
+                        variant={question && canAnswer ? "outline" : "ghost"}
                         size="sm"
-                        className="mt-1 h-7"
+                        className={cn("mt-1 h-7", !(question && canAnswer) && "-ml-2 px-2 text-muted-foreground")}
                         onClick={() => {
                           setAnswering(comment.id);
                           setAnswer("");
                         }}
                       >
                         <CornerDownRight className="mr-1.5 size-3.5" />
-                        Answer
+                        {question && canAnswer ? "Answer" : "Reply"}
                       </Button>
                     )}
                     {answering === comment.id && (
@@ -232,8 +280,12 @@ export function CommentThread({
                           autoFocus
                           value={answer}
                           onChange={(event) => setAnswer(event.target.value)}
-                          placeholder="The answer QA can test against — the message, the limit, the rule…"
-                          aria-label="Write the answer"
+                          placeholder={
+                            question && canAnswer
+                              ? "The answer QA can test against — the message, the limit, the rule…"
+                              : `Reply to ${comment.author.name}…`
+                          }
+                          aria-label={question && canAnswer ? "Write the answer" : "Write a reply"}
                         />
                         <div className="flex justify-end gap-2">
                           <Button size="sm" variant="ghost" disabled={sendingAnswer} onClick={() => setAnswering(null)}>
@@ -249,7 +301,7 @@ export function CommentThread({
                             ) : (
                               <Send className="mr-2 size-4" />
                             )}
-                            Send answer
+                            {question && canAnswer ? "Send answer" : "Send reply"}
                           </Button>
                         </div>
                       </div>
@@ -300,6 +352,7 @@ export function CommentThread({
                 </Fragment>
               );
             })}
+            {renderAsked(askedLast)}
           </ol>
         )}
 
@@ -322,7 +375,7 @@ export function CommentThread({
               rows={3}
               value={body}
               onChange={(event) => setBody(event.target.value)}
-              placeholder="Build number, root cause, what you changed, what QA should check…"
+              placeholder="Write a comment…"
               aria-label="Write a comment"
             />
             <div className="flex justify-end">
@@ -344,4 +397,21 @@ export function CommentThread({
       </CardContent>
     </Card>
   );
+}
+
+/**
+ * Each thread together, oldest thread first: a comment, then the replies
+ * under it in the order they came. A reply whose comment is gone stands alone.
+ */
+function threaded(comments: CommentWithAuthor[]): CommentWithAuthor[] {
+  const ids = new Set(comments.map((comment) => comment.id));
+  const replies = new Map<string, CommentWithAuthor[]>();
+  for (const comment of comments) {
+    if (comment.answerToId && ids.has(comment.answerToId)) {
+      replies.set(comment.answerToId, [...(replies.get(comment.answerToId) ?? []), comment]);
+    }
+  }
+  return comments
+    .filter((comment) => !comment.answerToId || !ids.has(comment.answerToId))
+    .flatMap((root) => [root, ...(replies.get(root.id) ?? [])]);
 }

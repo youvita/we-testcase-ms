@@ -9,6 +9,7 @@ import {
   askPoQuestion,
   listNotifications,
   listPoQuestions,
+  listRequirementQuestionsForCase,
   markNotificationsRead,
   replyToPoQuestion,
   resolvePoQuestion,
@@ -305,5 +306,34 @@ describe("putting a PO answer into the case", () => {
     await expect(
       settleAnswer(question.id, qa, { update: { expectedResult: "50.", openQuestions: undefined } }),
     ).rejects.toThrow();
+  });
+});
+
+describe("a case's discussion shows its requirements' questions", () => {
+  it("reads them live from the requirement, so later answers appear", async () => {
+    const { project, module, owner: qa } = await createProject();
+    const po = await createUser("ADMIN");
+    const doc = await prisma.requirementDoc.create({
+      data: { projectId: project.id, createdById: qa.id, title: "PRD", content: "x", charCount: 1 },
+    });
+    const [linked, other] = await Promise.all(
+      ["FR-1", "FR-2"].map((code) =>
+        prisma.requirement.create({ data: { projectId: project.id, docId: doc.id, code, title: code } }),
+      ),
+    );
+    const testCase = await createTestCase(project.id, module.id, "TC-1");
+    await prisma.testCaseRequirement.create({ data: { testCaseId: testCase.id, requirementId: linked!.id } });
+
+    expect(await listRequirementQuestionsForCase(testCase.id)).toEqual([]);
+
+    const question = await askPoQuestion(project.id, qa, { requirementId: linked!.id, body: "Max length?" });
+    await askPoQuestion(project.id, qa, { requirementId: other!.id, body: "Not this case's" });
+    await replyToPoQuestion(question.id, as(po), "50 characters.");
+
+    const groups = await listRequirementQuestionsForCase(testCase.id);
+    expect(groups.map((g) => g.requirement.code)).toEqual(["FR-1"]);
+    expect(groups[0]!.questions.map((q) => [q.body, q.status, q.replies.map((r) => r.body)])).toEqual([
+      ["Max length?", "answered", ["50 characters."]],
+    ]);
   });
 });

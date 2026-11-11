@@ -136,7 +136,7 @@ export default async function ProjectOverviewPage({
               project.environment ??
               (project.runEnvironments.length > 0 ? "No default environment" : "Add environments")}
           </Link>
-          <span>QA owner: {project.qaOwner?.name ?? "Unassigned"}</span>
+          <span>PO: {project.productOwner?.name ?? "Unassigned"}</span>
           {project.members.length > 0 && (
             <span>
               In charge:{" "}

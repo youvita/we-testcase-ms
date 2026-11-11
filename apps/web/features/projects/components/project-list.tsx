@@ -61,7 +61,7 @@ import type { Project, ProjectWithStats } from "@/types";
 import {
   ProjectFormDialog,
   type MemberOption,
-  type QaOwnerOption,
+  type ProductOwnerOption,
 } from "./project-form-dialog";
 
 type ProjectView = "card" | "list";
@@ -75,14 +75,14 @@ type ProjectView = "card" | "list";
  */
 export function ProjectList({
   projects,
-  qaOwners,
+  productOwners,
   memberCandidates,
   canManage,
   canDelete,
   startCreating = false,
 }: {
   projects: ProjectWithStats[];
-  qaOwners: QaOwnerOption[];
+  productOwners: ProductOwnerOption[];
   memberCandidates: MemberOption[];
   canManage: boolean;
   canDelete: boolean;
@@ -264,7 +264,7 @@ export function ProjectList({
 
                 <div className="flex items-center justify-between border-t pt-3 text-xs text-muted-foreground">
                   <span className="truncate">
-                    QA: {project.qaOwner?.name ?? "Unassigned"}
+                    QA: {project.productOwner?.name ?? "Unassigned"}
                   </span>
                   <span className="shrink-0">
                     {project.moduleCount} module
@@ -288,7 +288,7 @@ export function ProjectList({
               <TableRow>
                 <TableHead>Project</TableHead>
                 <TableHead className="w-[240px]">Progress</TableHead>
-                <TableHead className="hidden md:table-cell">QA owner</TableHead>
+                <TableHead className="hidden md:table-cell">Product owner (PO)</TableHead>
                 <TableHead className="hidden lg:table-cell text-right">
                   Modules
                 </TableHead>
@@ -343,7 +343,7 @@ export function ProjectList({
                   </TableCell>
 
                   <TableCell className="hidden md:table-cell text-sm text-muted-foreground">
-                    {project.qaOwner?.name ?? "Unassigned"}
+                    {project.productOwner?.name ?? "Unassigned"}
                   </TableCell>
 
                   <TableCell className="hidden lg:table-cell text-right text-sm tabular-nums text-muted-foreground">
@@ -400,7 +400,7 @@ export function ProjectList({
             if (!next && startCreating) router.replace("/projects", { scroll: false });
           }}
           project={editing}
-          qaOwners={qaOwners}
+          productOwners={productOwners}
           memberCandidates={memberCandidates}
         />
       )}

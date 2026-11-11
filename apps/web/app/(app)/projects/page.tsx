@@ -10,7 +10,7 @@ import { requireUser } from "@/lib/session";
 import {
   listProjectMemberCandidates,
   listProjects,
-  listQaOwnerCandidates,
+  listProductOwnerCandidates,
 } from "@/services/project.service";
 
 export const metadata: Metadata = { title: "Projects" };
@@ -25,13 +25,13 @@ export default async function ProjectsPage({
   // `?new=1` opens the New project form, for links like "Create project".
   const startCreating = canManage && (await searchParams).new === "1";
 
-  const [projects, qaOwners, memberCandidates] =
+  const [projects, productOwners, memberCandidates] =
     await Promise.all([
       // Only the projects this person is on — see lib/project-access.ts.
       listProjects({ access: projectAccessWhere(user) }),
       // The rest only feed the create/edit form, so they are fetched only for
       // the roles that get one.
-      canManage ? listQaOwnerCandidates() : Promise.resolve([]),
+      canManage ? listProductOwnerCandidates() : Promise.resolve([]),
       canManage ? listProjectMemberCandidates() : Promise.resolve([]),
     ]);
 
@@ -50,7 +50,7 @@ export default async function ProjectsPage({
 
       <ProjectList
         projects={projects}
-        qaOwners={qaOwners}
+        productOwners={productOwners}
         memberCandidates={memberCandidates}
         canManage={canManage}
         canDelete={user.role === ROLES.ADMIN}

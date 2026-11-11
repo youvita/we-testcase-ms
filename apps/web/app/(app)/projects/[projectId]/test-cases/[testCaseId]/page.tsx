@@ -23,11 +23,15 @@ import { RetestButton } from "@/features/executions/components/retest-button";
 import { ExecutionHistory } from "@/features/executions/components/execution-history";
 import { ExecutionPanel } from "@/features/executions/components/execution-panel";
 import { TestCaseCardActions } from "@/features/test-cases/components/test-case-card-actions";
+import { EditTestCaseButton } from "@/features/test-cases/components/edit-test-case-button";
+import { listModules } from "@/services/module.service";
+import { getProject } from "@/services/project.service";
 import { RequirementChangedNotice } from "@/features/test-cases/components/requirement-changed-notice";
 import { AutomationScriptCard } from "@/features/automation/components/automation-script-card";
 import { TestCaseDetailShell } from "@/features/executions/components/test-case-detail-shell";
 import {
   canAnswerPo,
+  canAskPo,
   canComment,
   canExecuteTests,
   canManageTestCases,
@@ -45,10 +49,12 @@ import { getJob } from "@/services/ai-job.service";
 import { getLastFinishedScriptJob, getLatestScriptJob } from "@/services/ai-scripts.service";
 import { getAutomationScript, listSignInCases } from "@/services/automation-script.service";
 import { listComments } from "@/services/comment.service";
+import { listAdmins, listRequirementQuestionsForCase } from "@/services/clarification.service";
 import { listRunEnvironments } from "@/services/run-environment.service";
 import {
   getTestCase,
   getTestCaseNeighbours,
+  listSubModules,
 } from "@/services/test-case.service";
 import { formatDateTime } from "@/utils/format";
 import { splitOpenQuestions } from "@/utils/open-questions";
@@ -111,7 +117,13 @@ export default async function TestCaseDetailPage({
     getLastFinishedScriptJob(testCaseId),
     listSignInCases(projectId),
   ]);
+  const requirementQuestions = await listRequirementQuestionsForCase(testCaseId);
+  const admins = requirementQuestions.length ? await listAdmins() : [];
   const latestWriteJob = latestWrite ? await getJob(latestWrite.id) : null;
+  // What the edit form offers; only for those who may edit.
+  const editForm = canManageTestCases(user.role)
+    ? await Promise.all([listModules(projectId), listSubModules(projectId), getProject(projectId)])
+    : null;
 
   const canExecute = canExecuteTests(user.role);
 
@@ -247,6 +259,16 @@ export default async function TestCaseDetailPage({
             <Card>
               <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2 space-y-0">
                 <CardTitle className="text-base">Test case</CardTitle>
+                <div className="flex flex-wrap items-center gap-2">
+                {editForm && (
+                  <EditTestCaseButton
+                    projectId={projectId}
+                    testCaseId={testCase.id}
+                    modules={editForm[0].map((mod) => ({ id: mod.id, name: mod.name }))}
+                    subModules={editForm[1]}
+                    platforms={editForm[2].platforms}
+                  />
+                )}
                 <TestCaseCardActions
                   testCaseId={testCase.id}
                   hasFrd={testCase.requirements.length > 0}
@@ -260,6 +282,7 @@ export default async function TestCaseDetailPage({
                     (testCase.platform === "WEB" || testCase.platform === "API")
                   }
                 />
+                </div>
               </CardHeader>
               <CardContent className="space-y-5">
                 <RequirementChangedNotice
@@ -430,6 +453,14 @@ export default async function TestCaseDetailPage({
               canComment={canPostComment}
               canModerate={isAdmin(user.role)}
               canAnswer={canAnswerPo(user.role)}
+              projectId={projectId}
+              requirementQuestions={requirementQuestions}
+              po={{
+                admins,
+                currentUserId: user.id,
+                canAsk: canAskPo(user.role),
+                canAnswer: canAnswerPo(user.role),
+              }}
               caseText={
                 canEditCase
                   ? {

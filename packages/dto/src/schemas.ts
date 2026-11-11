@@ -111,7 +111,7 @@ export type ChangePasswordInput = z.infer<typeof changePasswordSchema>;
  *
  * Every optional field here accepts its own *output* as input (`null` as well as
  * `""`/absent). That matters because the client validates with this schema too,
- * and react-hook-form submits the parsed result — so "no QA owner" reaches the
+ * and react-hook-form submits the parsed result — so "no environment" reaches the
  * API as `null`, not as the `"none"` the Select used. A schema that rejected
  * that would fail only for users who left the field alone.
  */
@@ -129,12 +129,13 @@ export const projectSchema = z
       .nullish()
       .transform((v) => (v === "" || v === "none" ? null : v)),
     status: projectStatusSchema.default("PLANNING"),
-    qaOwnerId: z
-      .string()
-      .nullish()
-      .transform((v) => (v === "" || v === "none" ? null : (v ?? null))),
+    /** The product owner (an admin): required — new comments on cases go to them. */
+    productOwnerId: z
+      .string({ required_error: "Choose the product owner", invalid_type_error: "Choose the product owner" })
+      .trim()
+      .refine((v) => v !== "" && v !== "none", "Choose the product owner"),
     /**
-     * Everyone in charge alongside the QA owner. Order is not significant.
+     * Everyone in charge — QA, developers — alongside the product owner. Order is not significant.
      *
      * Absent is *not* the same as empty: an update that omits this leaves the
      * existing people in place, while `[]` clears them. Without that
@@ -303,8 +304,14 @@ export type ExecutionEditInput = z.input<typeof executionEditSchema>;
 // Discussion & developer triage
 // ---------------------------------------------------------------------------
 
+/** Post to a case's discussion: a comment, or a reply under one. */
 export const commentSchema = z.object({
   body: trimmed(4000).min(1, "Write something before posting"),
+  replyToId: z
+    .string()
+    .trim()
+    .optional()
+    .transform((value) => value || undefined),
 });
 
 export type CommentInput = z.infer<typeof commentSchema>;

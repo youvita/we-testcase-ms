@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Check, ChevronsUpDown, Loader2, Plus, X } from "lucide-react";
+import { Check, ChevronsUpDown, Info, Loader2, Plus, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
@@ -33,6 +33,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   PLATFORMS,
   PLATFORM_LABELS,
@@ -48,10 +49,9 @@ import { ApiError, api, errorMessage } from "@/utils/api-client";
 import { toDateInputValue } from "@/utils/format";
 import type { Project, ProjectEnvironmentOption, ProjectPerson } from "@/types";
 
-export type QaOwnerOption = { id: string; name: string; email: string };
-export type MemberOption = QaOwnerOption & { role: Role | string };
+export type ProductOwnerOption = { id: string; name: string; email: string };
+export type MemberOption = ProductOwnerOption & { role: Role | string };
 
-const NO_OWNER = "none";
 const NO_ENVIRONMENT = "none";
 /** Opens the environment dialog; never a value the form keeps. */
 const ADD_ENVIRONMENT = "__add__";
@@ -66,7 +66,7 @@ export function ProjectFormDialog({
   open,
   onOpenChange,
   project,
-  qaOwners,
+  productOwners,
   memberCandidates = [],
 }: {
   open: boolean;
@@ -77,7 +77,7 @@ export function ProjectFormDialog({
     /** The run environments it can default to. */
     runEnvironments?: ProjectEnvironmentOption[];
   };
-  qaOwners: QaOwnerOption[];
+  productOwners: ProductOwnerOption[];
   /** Everyone who can be put in charge. */
   memberCandidates?: MemberOption[];
 }) {
@@ -98,7 +98,7 @@ export function ProjectFormDialog({
       description: "",
       version: "",
       status: "PLANNING",
-      qaOwnerId: NO_OWNER,
+      productOwnerId: "",
       memberIds: [],
       platforms: ["WEB"],
       startDate: "",
@@ -130,7 +130,7 @@ export function ProjectFormDialog({
         ? (project.defaultEnvironmentId ?? NO_ENVIRONMENT)
         : undefined,
       status: project?.status ?? "PLANNING",
-      qaOwnerId: project?.qaOwnerId ?? NO_OWNER,
+      productOwnerId: project?.productOwnerId ?? "",
       memberIds: project?.members?.map((member) => member.id) ?? [],
       platforms: project?.platforms ?? ["WEB"],
       startDate: toDateInputValue(project?.startDate),
@@ -174,7 +174,7 @@ export function ProjectFormDialog({
   }
 
   const status = watch("status");
-  const qaOwnerId = watch("qaOwnerId");
+  const productOwnerId = watch("productOwnerId");
   const defaultEnvironmentId = watch("defaultEnvironmentId");
 
   // A new project picks among its drafts by name; an existing one by id.
@@ -320,7 +320,7 @@ export function ProjectFormDialog({
 
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
-                <Label htmlFor="version">Version</Label>
+                <FieldLabel htmlFor="version">Version</FieldLabel>
                 <Input
                   id="version"
                   placeholder="1.4.2"
@@ -329,9 +329,12 @@ export function ProjectFormDialog({
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="defaultEnvironmentId">
+                <FieldLabel
+                  htmlFor="defaultEnvironmentId"
+                  info="Preselected when running scripts and recording results."
+                >
                   Default run environment
-                </Label>
+                </FieldLabel>
                 <Select
                   value={environmentValue}
                   onValueChange={handleEnvironmentChange}
@@ -378,15 +381,14 @@ export function ProjectFormDialog({
                     ))}
                   </div>
                 )}
-                <p className="text-xs text-muted-foreground">
-                  {project?.environment && !project.defaultEnvironmentId
-                    ? `Was labelled “${project.environment}”. Choose or add the run environment it means. `
-                    : ""}
-                  {!isEdit && drafts.length > 0
-                    ? "Created with the project. "
-                    : ""}
-                  Preselected when running scripts and recording results.
-                </p>
+                {project?.environment && !project.defaultEnvironmentId && (
+                  <p className="text-xs text-muted-foreground">
+                    Was labelled &ldquo;{project.environment}&rdquo;. Choose or add the run environment it means.
+                  </p>
+                )}
+                {!isEdit && drafts.length > 0 && (
+                  <p className="text-xs text-muted-foreground">Created with the project.</p>
+                )}
                 {errors.defaultEnvironmentId && (
                   <p className="text-xs text-destructive">
                     {errors.defaultEnvironmentId.message}
@@ -397,7 +399,7 @@ export function ProjectFormDialog({
 
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
-                <Label htmlFor="status">Status</Label>
+                <FieldLabel htmlFor="status">Status</FieldLabel>
                 <Select
                   value={status ?? "PLANNING"}
                   onValueChange={(value) =>
@@ -420,28 +422,33 @@ export function ProjectFormDialog({
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="qaOwnerId">QA owner</Label>
+                <FieldLabel
+                  htmlFor="productOwnerId"
+                  required
+                  info="Receives comments posted on this project’s test cases and replies to them. Add QA under In charge."
+                >
+                  Product owner (PO)
+                </FieldLabel>
                 <Select
-                  value={qaOwnerId ?? NO_OWNER}
+                  value={productOwnerId ?? ""}
                   onValueChange={(value) =>
-                    setValue("qaOwnerId", value, { shouldDirty: true })
+                    setValue("productOwnerId", value, { shouldDirty: true, shouldValidate: true })
                   }
                 >
-                  <SelectTrigger id="qaOwnerId">
-                    <SelectValue placeholder="Unassigned" />
+                  <SelectTrigger id="productOwnerId" aria-invalid={Boolean(errors.productOwnerId)}>
+                    <SelectValue placeholder="Choose the product owner" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value={NO_OWNER}>Unassigned</SelectItem>
-                    {qaOwners.map((owner) => (
+                    {productOwners.map((owner) => (
                       <SelectItem key={owner.id} value={owner.id}>
                         {owner.name}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
-                <p className="text-xs text-muted-foreground">
-                  Optional. Unassigned is a valid choice.
-                </p>
+                {errors.productOwnerId && (
+                  <p className="text-xs text-destructive">{errors.productOwnerId.message}</p>
+                )}
               </div>
             </div>
 
@@ -529,8 +536,7 @@ export function ProjectFormDialog({
                 )}
 
                 <p className="text-xs text-muted-foreground">
-                  Only these people, the QA owner and admins can open this
-                  project.
+                  Only these people and admins can open this project.
                 </p>
               </div>
             )}
@@ -582,5 +588,40 @@ export function ProjectFormDialog({
         }}
       />
     </>
+  );
+}
+
+/**
+ * A field's label on a row of fixed height, so fields side by side line up
+ * whether or not they carry a red star or an ⓘ note shown on hover.
+ */
+function FieldLabel({
+  htmlFor,
+  required = false,
+  info,
+  children,
+}: {
+  htmlFor: string;
+  required?: boolean;
+  info?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="flex h-5 items-center gap-1.5">
+      <Label htmlFor={htmlFor}>
+        {children}
+        {required && <span className="text-destructive"> *</span>}
+      </Label>
+      {info && (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button type="button" className="text-muted-foreground hover:text-foreground" aria-label={info}>
+              <Info className="size-3.5" />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent className="max-w-64">{info}</TooltipContent>
+        </Tooltip>
+      )}
+    </div>
   );
 }

@@ -29,7 +29,7 @@ export async function createUser(role: "ADMIN" | "QA" | "DEVELOPER" = "QA") {
 export async function createProject(name = "Project") {
   const owner = await createUser("QA");
   const project = await prisma.project.create({
-    data: { name, createdById: owner.id, qaOwnerId: owner.id },
+    data: { name, createdById: owner.id },
   });
   const module = await prisma.module.create({
     data: { projectId: project.id, name: "Login" },

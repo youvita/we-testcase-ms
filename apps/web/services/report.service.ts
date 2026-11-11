@@ -272,7 +272,7 @@ export async function buildExcelReport(
     ["Results From", environment ?? "All environments (latest result per case)"],
     ...(filter ? [["Filters", filterLabels.join(", ") || "—"]] : []),
     ["Status", PROJECT_STATUS_LABELS[project.status]],
-    ["QA Owner", project.qaOwner?.name ?? "Unassigned"],
+    ["Product owner", project.productOwner?.name ?? "Unassigned"],
     ["Start Date", formatDate(project.startDate)],
     ["End Date", formatDate(project.endDate)],
     ["Generated", formatDateTime(new Date())],
@@ -1053,7 +1053,7 @@ export async function buildPdfReport(projectId: string, environment?: string): P
       ? `Results from: ${environment}`
       : `Environment: ${projectEnvironment ?? "—"} (results from all environments)`,
     `Status: ${PROJECT_STATUS_LABELS[project.status]}`,
-    `QA Owner: ${project.qaOwner?.name ?? "Unassigned"}`,
+    `Product owner: ${project.productOwner?.name ?? "Unassigned"}`,
     `Period: ${formatDate(project.startDate)} – ${formatDate(project.endDate)}`,
     `Generated: ${formatDateTime(new Date())}`,
   ];

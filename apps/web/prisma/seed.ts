@@ -337,8 +337,10 @@ async function main() {
       status: "ACTIVE",
       startDate: new Date("2026-07-01"),
       endDate: new Date("2026-08-31"),
-      qaOwnerId: qa.id,
+      productOwnerId: admin.id,
       createdById: admin.id,
+      // QA work on it as one of the people in charge.
+      members: { create: [{ userId: qa.id }] },
       modules: {
         create: MODULES.map((name, index) => ({ name, position: index })),
       },

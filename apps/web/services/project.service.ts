@@ -9,7 +9,7 @@ import { buildBreakdown } from "@/utils/stats";
 
 import { addEnvironmentsToNewProject } from "./run-environment.service";
 
-const qaOwnerSelect = {
+const productOwnerSelect = {
   select: { id: true, name: true, email: true, image: true },
 } as const;
 
@@ -21,7 +21,7 @@ const environmentInclude = {
 } as const satisfies Prisma.ProjectInclude;
 
 const memberSelect = {
-  select: { user: qaOwnerSelect },
+  select: { user: productOwnerSelect },
   orderBy: [{ user: { name: "asc" } }],
 } as const satisfies Prisma.Project$membersArgs;
 
@@ -62,7 +62,7 @@ export async function listProjects(options?: {
   const [projects, grouped, moduleCounts] = await Promise.all([
     prisma.project.findMany({
       where,
-      include: { qaOwner: qaOwnerSelect, members: memberSelect, ...environmentInclude },
+      include: { productOwner: productOwnerSelect, members: memberSelect, ...environmentInclude },
       orderBy: [{ updatedAt: "desc" }],
     }),
     prisma.testCase.groupBy({
@@ -99,8 +99,8 @@ export async function getProject(projectId: string) {
   const project = await prisma.project.findUnique({
     where: { id: projectId },
     include: {
-      qaOwner: qaOwnerSelect,
-      createdBy: qaOwnerSelect,
+      productOwner: productOwnerSelect,
+      createdBy: productOwnerSelect,
       members: memberSelect,
       modules: { orderBy: [{ position: "asc" }, { name: "asc" }] },
       ...environmentInclude,
@@ -142,7 +142,7 @@ function toProjectData(input: ProjectOutput) {
     status: input.status,
     startDate: input.startDate,
     endDate: input.endDate,
-    qaOwnerId: input.qaOwnerId,
+    productOwnerId: input.productOwnerId,
     // Absent on update means "leave as is" — see projectSchema.
     ...(input.platforms ? { platforms: input.platforms } : {}),
     // Absent leaves it; choosing one retires the old free-text label.
@@ -153,6 +153,14 @@ function toProjectData(input: ProjectOutput) {
           ...(input.defaultEnvironmentId ? { environment: null } : {}),
         }),
   };
+}
+
+/** The product owner is a PO, and POs are admins here: an active admin. */
+async function assertProductOwner(userId: string) {
+  const eligible = await prisma.user.count({
+    where: { id: userId, isActive: true, role: "ADMIN" },
+  });
+  if (!eligible) throw badRequest("Choose the product owner from the list — an active admin.");
 }
 
 /** The default must be one of this project's own environments. */
@@ -223,6 +231,7 @@ export async function createProject(
 ) {
   // An id cannot name an environment of a project that does not exist yet.
   await assertDefaultEnvironment(null, input.defaultEnvironmentId);
+  await assertProductOwner(input.productOwnerId);
   const environments = input.environments ?? [];
   const defaultName = input.defaultEnvironmentName ?? null;
   if (defaultName && !environments.some((env) => env.name === defaultName)) {
@@ -243,7 +252,7 @@ export async function createProject(
     return tx.project.update({
       where: { id: project.id },
       data: { defaultEnvironmentId: defaultName ? ids.get(defaultName)! : null },
-      include: { qaOwner: qaOwnerSelect, members: memberSelect },
+      include: { productOwner: productOwnerSelect, members: memberSelect },
     });
   });
 }
@@ -252,13 +261,14 @@ export async function updateProject(projectId: string, input: ProjectOutput) {
   await assertProjectExists(projectId);
   await assertPlatformsCoverCases(projectId, input.platforms);
   await assertDefaultEnvironment(projectId, input.defaultEnvironmentId);
+  await assertProductOwner(input.productOwnerId);
 
   // Omitted means "do not touch who is in charge" — see memberIds in the schema.
   if (input.memberIds === undefined) {
     return prisma.project.update({
       where: { id: projectId },
       data: toProjectData(input),
-      include: { qaOwner: qaOwnerSelect, members: memberSelect },
+      include: { productOwner: productOwnerSelect, members: memberSelect },
     });
   }
 
@@ -286,7 +296,7 @@ export async function updateProject(projectId: string, input: ProjectOutput) {
           })),
         },
       },
-      include: { qaOwner: qaOwnerSelect, members: memberSelect },
+      include: { productOwner: productOwnerSelect, members: memberSelect },
     });
   });
 }
@@ -333,10 +343,10 @@ export async function assertProjectExists(projectId: string) {
   return exists;
 }
 
-/** Users eligible to be a project's QA owner. */
-export async function listQaOwnerCandidates() {
+/** Who can be a project's product owner: the active admins, who are the POs. */
+export async function listProductOwnerCandidates() {
   return prisma.user.findMany({
-    where: { isActive: true, role: { in: ["QA", "ADMIN"] } },
+    where: { isActive: true, role: "ADMIN" },
     select: { id: true, name: true, email: true },
     orderBy: { name: "asc" },
   });

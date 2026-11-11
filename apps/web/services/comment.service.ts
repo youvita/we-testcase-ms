@@ -1,8 +1,11 @@
 import { prisma } from "@/lib/prisma";
-import { forbidden, notFound } from "@/lib/api";
+import { badRequest, forbidden, notFound } from "@/lib/api";
 import { isAdmin } from "@/lib/permissions";
 import type { Role } from "@/lib/constants";
 import type { CommentWithAuthor } from "@/types";
+import type { CommentInput } from "@wetestcase/dto";
+
+import { answerQuestion, listAdmins } from "./clarification.service";
 
 const authorSelect = {
   select: { id: true, name: true, email: true, image: true, role: true },
@@ -34,23 +37,136 @@ export async function listComments(
   );
 }
 
-export async function createComment(
+const postInclude = {
+  author: authorSelect,
+  deletedBy: { select: { id: true, name: true } },
+  questionTo: { select: { id: true, name: true } },
+} as const;
+
+/**
+ * Post to a case's discussion — kept to one box:
+ *
+ *  - A new comment goes to the project's product owner — or, for a project
+ *    without one yet, to every active admin. One from an admin goes the
+ *    other way, to the people working on the case (see `workingOn`).
+ *  - A reply sits under the comment it answers — one level: replying to a
+ *    reply puts it under the same comment — and everyone already in that
+ *    thread is notified. An admin replying to a question is its answer.
+ */
+export async function postComment(
   testCaseId: string,
-  authorId: string,
-  body: string,
+  author: { id: string; role: Role },
+  input: CommentInput,
 ): Promise<CommentWithAuthor> {
   const testCase = await prisma.testCase.findUnique({
     where: { id: testCaseId },
-    select: { id: true },
+    select: {
+      id: true,
+      project: { select: { productOwnerId: true, members: { select: { userId: true } } } },
+      executions: { orderBy: { executedAt: "desc" }, take: 1, select: { testerId: true } },
+      comments: { where: { deletedAt: null }, select: { authorId: true } },
+    },
   });
   if (!testCase) throw notFound("Test case");
 
-  return prisma.comment.create({
-    data: { testCaseId, authorId, body },
-    include: {
-      author: authorSelect,
-      deletedBy: { select: { id: true, name: true } },
+  if (input.replyToId) return reply(testCaseId, author, input.replyToId, input.body);
+
+  const recipients = isAdmin(author.role)
+    ? workingOn(testCase)
+    : testCase.project.productOwnerId
+      ? [testCase.project.productOwnerId]
+      : (await listAdmins()).map((admin) => admin.id);
+  return prisma.$transaction(async (tx) => {
+    const comment = await tx.comment.create({
+      data: { testCaseId, authorId: author.id, body: input.body },
+      include: postInclude,
+    });
+    await tx.notification.createMany({
+      data: recipients
+        .filter((id) => id !== author.id)
+        .map((recipientId) => ({
+          kind: "COMMENT_POSTED" as const,
+          recipientId,
+          actorId: author.id,
+          testCaseId,
+          commentId: comment.id,
+        })),
+    });
+    return comment;
+  });
+}
+
+/**
+ * Who an admin's new comment is for: whoever last ran the case and everyone
+ * who has posted on it — or, while nobody has, the project's people in charge.
+ */
+function workingOn(testCase: {
+  project: { members: { userId: string }[] };
+  executions: { testerId: string }[];
+  comments: { authorId: string }[];
+}): string[] {
+  const people = new Set([
+    ...testCase.executions.map((run) => run.testerId),
+    ...testCase.comments.map((comment) => comment.authorId),
+  ]);
+  if (people.size === 0) testCase.project.members.forEach((member) => people.add(member.userId));
+  return [...people];
+}
+
+async function reply(
+  testCaseId: string,
+  author: { id: string; role: Role },
+  replyToId: string,
+  body: string,
+): Promise<CommentWithAuthor> {
+  const target = await prisma.comment.findUnique({
+    where: { id: replyToId },
+    select: { testCaseId: true, answerToId: true },
+  });
+  if (!target || target.testCaseId !== testCaseId) throw notFound("Comment");
+  const root = await prisma.comment.findUniqueOrThrow({
+    where: { id: target.answerToId ?? replyToId },
+    select: {
+      id: true,
+      kind: true,
+      authorId: true,
+      deletedAt: true,
+      questionToId: true,
+      answers: { where: { deletedAt: null }, select: { authorId: true } },
     },
+  });
+  if (root.deletedAt) throw badRequest("That comment was deleted — post a new one instead.");
+
+  // The PO replying to a question answers it, with the answer's own flow.
+  if (root.kind === "QUESTION" && isAdmin(author.role)) {
+    const answer = await answerQuestion(root.id, author, body);
+    return prisma.comment.findUniqueOrThrow({ where: { id: answer.id }, include: postInclude });
+  }
+
+  const thread = new Set([root.authorId, ...root.answers.map((answer) => answer.authorId)]);
+  if (root.questionToId) thread.add(root.questionToId);
+  thread.delete(author.id);
+
+  return prisma.$transaction(async (tx) => {
+    const posted = await tx.comment.create({
+      data: { testCaseId, authorId: author.id, body, answerToId: root.id },
+      include: postInclude,
+    });
+    await tx.notification.createMany({
+      data: [...thread].map((recipientId) => ({
+        kind: "COMMENT_REPLIED" as const,
+        recipientId,
+        actorId: author.id,
+        testCaseId,
+        commentId: posted.id,
+      })),
+    });
+    // Replying acts on what came before in the thread: that is read now.
+    await tx.notification.updateMany({
+      where: { recipientId: author.id, readAt: null, comment: { OR: [{ id: root.id }, { answerToId: root.id }] } },
+      data: { readAt: new Date() },
+    });
+    return posted;
   });
 }
 

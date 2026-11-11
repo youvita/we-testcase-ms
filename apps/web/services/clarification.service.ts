@@ -208,6 +208,34 @@ export async function listPoQuestions(projectId: string): Promise<PoQuestionDto[
   return rows.map(toPoQuestionDto);
 }
 
+/**
+ * The questions asked about the requirements a case verifies, read live from
+ * the requirements' own threads — so the case's discussion shows the PO's
+ * latest answers without a copy that could fall behind. Grouped by
+ * requirement, in the order of their codes.
+ */
+export async function listRequirementQuestionsForCase(testCaseId: string): Promise<
+  { requirement: { id: string; code: string; title: string }; questions: PoQuestionDto[] }[]
+> {
+  const links = await prisma.testCaseRequirement.findMany({
+    where: { testCaseId },
+    select: { requirement: { select: { id: true, code: true, title: true } } },
+    orderBy: { requirement: { code: "asc" } },
+  });
+  if (links.length === 0) return [];
+  const rows = await prisma.poQuestion.findMany({
+    where: { requirementId: { in: links.map((link) => link.requirement.id) } },
+    orderBy: { createdAt: "asc" },
+    include: poQuestionInclude,
+  });
+  return links
+    .map(({ requirement }) => ({
+      requirement,
+      questions: rows.filter((row) => row.requirementId === requirement.id).map(toPoQuestionDto),
+    }))
+    .filter((group) => group.questions.length > 0);
+}
+
 export async function askPoQuestion(
   projectId: string,
   asker: { id: string },

@@ -15,7 +15,7 @@ import type { SessionUser } from "@/lib/session";
  * cases, and being QA does not let them read a project they are not on.
  *
  * Access is granted to:
- *  - the QA owner,
+ *  - the product owner,
  *  - everyone listed as in charge (`ProjectMember`),
  *  - the person who created it — otherwise a QA who forgets to add themselves
  *    loses the project they just made,
@@ -27,7 +27,7 @@ import type { SessionUser } from "@/lib/session";
  * that they are not allowed in, so project ids stay unguessable.
  */
 export type ProjectAccessRow = {
-  qaOwnerId: string | null;
+  productOwnerId: string | null;
   createdById: string;
   members: { userId: string }[];
 };
@@ -38,7 +38,7 @@ export function canAccessProject(
   user: SessionUser,
 ): boolean {
   if (isAdmin(user.role)) return true;
-  if (project.qaOwnerId === user.id) return true;
+  if (project.productOwnerId === user.id) return true;
   if (project.createdById === user.id) return true;
   return project.members.some((member) => member.userId === user.id);
 }
@@ -54,7 +54,7 @@ export function projectAccessWhere(
   if (isAdmin(user.role)) return {};
   return {
     OR: [
-      { qaOwnerId: user.id },
+      { productOwnerId: user.id },
       { createdById: user.id },
       { members: { some: { userId: user.id } } },
     ],
@@ -62,7 +62,7 @@ export function projectAccessWhere(
 }
 
 const accessSelect = {
-  qaOwnerId: true,
+  productOwnerId: true,
   createdById: true,
   members: { select: { userId: true } },
 } as const;

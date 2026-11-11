@@ -46,11 +46,11 @@ describe("default run environment", () => {
   });
 
   it("can only be set to one of the project's own environments", async () => {
-    const { project } = await createProject("Mine");
+    const { project, owner } = await createProject("Mine");
     const { project: other } = await createProject("Other");
     const mine = await createRunEnvironment(project.id, env("UAT"));
     const theirs = await createRunEnvironment(other.id, env("PRO"));
-    const base = { name: "Mine", status: "ACTIVE" as const };
+    const base = { name: "Mine", status: "ACTIVE" as const, productOwnerId: (await createUser("ADMIN")).id };
 
     await expect(
       updateProject(project.id, projectSchema.parse({ ...base, defaultEnvironmentId: theirs.id })),
@@ -68,7 +68,7 @@ describe("default run environment", () => {
   it("cannot be named by a project that is only being created", async () => {
     const owner = await createUser("QA");
     await expect(
-      createProjectViaService(projectSchema.parse({ name: "New", defaultEnvironmentId: "x" }), owner.id),
+      createProjectViaService(projectSchema.parse({ name: "New", productOwnerId: (await createUser("ADMIN")).id, defaultEnvironmentId: "x" }), owner.id),
     ).rejects.toThrow("this project's run environments");
   });
 
@@ -80,11 +80,11 @@ describe("default run environment", () => {
     ];
 
     const withPro = await createProjectViaService(
-      projectCreateSchema.parse({ name: "With PRO", environments, defaultEnvironmentName: "PRO" }),
+      projectCreateSchema.parse({ name: "With PRO", productOwnerId: (await createUser("ADMIN")).id, environments, defaultEnvironmentName: "PRO" }),
       owner.id,
     );
     const withNone = await createProjectViaService(
-      projectCreateSchema.parse({ name: "No default", environments, defaultEnvironmentName: null }),
+      projectCreateSchema.parse({ name: "No default", productOwnerId: (await createUser("ADMIN")).id, environments, defaultEnvironmentName: null }),
       owner.id,
     );
 
@@ -98,7 +98,7 @@ describe("default run environment", () => {
     // Nothing is left behind when the default names none of them.
     await expect(
       createProjectViaService(
-        projectCreateSchema.parse({ name: "Bad", environments, defaultEnvironmentName: "SIT" }),
+        projectCreateSchema.parse({ name: "Bad", productOwnerId: (await createUser("ADMIN")).id, environments, defaultEnvironmentName: "SIT" }),
         owner.id,
       ),
     ).rejects.toThrow("one of the environments added");
@@ -209,5 +209,24 @@ describe("results by environment", () => {
     expect(await summary()).toMatchObject({ passed: 1, blocked: 1, failed: 0, notRun: 0 });
     expect(await summary("PRO")).toEqual({ from: "PRO", passed: 0, failed: 1, blocked: 0, notRun: 1 });
     expect(await summary("UAT")).toEqual({ from: "UAT", passed: 2, failed: 0, blocked: 0, notRun: 0 });
+  });
+});
+
+describe("a project's product owner", () => {
+  it("is required, and must be an active admin — QA go under In charge", async () => {
+    expect(projectSchema.safeParse({ name: "New" }).success).toBe(false);
+    expect(projectSchema.safeParse({ name: "New", productOwnerId: "none" }).success).toBe(false);
+
+    const qa = await createUser("QA");
+    await expect(
+      createProjectViaService(projectSchema.parse({ name: "New", productOwnerId: qa.id }), qa.id),
+    ).rejects.toThrow("product owner");
+
+    const po = await createUser("ADMIN");
+    const project = await createProjectViaService(
+      projectSchema.parse({ name: "New", productOwnerId: po.id, memberIds: [qa.id] }),
+      qa.id,
+    );
+    expect(project.productOwnerId).toBe(po.id);
   });
 });
