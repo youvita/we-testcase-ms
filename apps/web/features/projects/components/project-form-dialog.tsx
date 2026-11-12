@@ -84,6 +84,7 @@ export function ProjectFormDialog({
   const router = useRouter();
   const isEdit = Boolean(project);
   const [membersOpen, setMembersOpen] = useState(false);
+  const [memberSearch, setMemberSearch] = useState("");
   const [addingEnvironment, setAddingEnvironment] = useState(false);
   /** New project: environments to create with it, and which is default. */
   const [drafts, setDrafts] = useState<RunEnvironmentOutput[]>([]);
@@ -223,6 +224,14 @@ export function ProjectFormDialog({
     setValue("platforms", next, { shouldDirty: true, shouldValidate: true });
   }
 
+  const memberQuery = memberSearch.trim().toLowerCase();
+  const visibleCandidates = memberQuery
+    ? memberCandidates.filter(
+        (candidate) =>
+          candidate.name.toLowerCase().includes(memberQuery) ||
+          candidate.email.toLowerCase().includes(memberQuery),
+      )
+    : memberCandidates;
   const selectedMembers = memberCandidates.filter((candidate) =>
     memberIds.includes(candidate.id),
   );
@@ -455,7 +464,13 @@ export function ProjectFormDialog({
             {memberCandidates.length > 0 && (
               <div className="space-y-2">
                 <Label htmlFor="memberIds">In charge</Label>
-                <Popover open={membersOpen} onOpenChange={setMembersOpen}>
+                <Popover
+                  open={membersOpen}
+                  onOpenChange={(open) => {
+                    setMembersOpen(open);
+                    if (!open) setMemberSearch("");
+                  }}
+                >
                   <PopoverTrigger asChild>
                     <Button
                       id="memberIds"
@@ -474,42 +489,57 @@ export function ProjectFormDialog({
                     </Button>
                   </PopoverTrigger>
                   <PopoverContent
-                    className="max-h-72 w-[--radix-popover-trigger-width] overflow-y-auto p-1"
+                    className="flex max-h-80 w-[--radix-popover-trigger-width] flex-col p-1"
                     align="start"
                   >
-                    {memberCandidates.map((candidate) => {
-                      const checked = memberIds.includes(candidate.id);
-                      return (
-                        <button
-                          key={candidate.id}
-                          type="button"
-                          onClick={() => toggleMember(candidate.id)}
-                          className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm hover:bg-muted"
-                        >
-                          <Checkbox
-                            checked={checked}
-                            // The row handles the click; the box only shows state.
-                            tabIndex={-1}
-                            className="pointer-events-none"
-                          />
-                          <span className="min-w-0 flex-1">
-                            <span className="block truncate font-medium">
-                              {candidate.name}
+                    {memberCandidates.length > 6 && (
+                      <Input
+                        autoFocus
+                        value={memberSearch}
+                        onChange={(event) => setMemberSearch(event.target.value)}
+                        placeholder="Search by name or email…"
+                        aria-label="Search people"
+                        className="mb-1 h-8 shrink-0"
+                      />
+                    )}
+                    <div className="min-h-0 flex-1 overflow-y-auto">
+                      {visibleCandidates.length === 0 && (
+                        <p className="px-2 py-3 text-center text-sm text-muted-foreground">No one matches.</p>
+                      )}
+                      {visibleCandidates.map((candidate) => {
+                        const checked = memberIds.includes(candidate.id);
+                        return (
+                          <button
+                            key={candidate.id}
+                            type="button"
+                            onClick={() => toggleMember(candidate.id)}
+                            className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm hover:bg-muted"
+                          >
+                            <Checkbox
+                              checked={checked}
+                              // The row handles the click; the box only shows state.
+                              tabIndex={-1}
+                              className="pointer-events-none"
+                            />
+                            <span className="min-w-0 flex-1">
+                              <span className="block truncate font-medium">
+                                {candidate.name}
+                              </span>
+                              <span className="block truncate text-xs text-muted-foreground">
+                                {candidate.email}
+                              </span>
                             </span>
-                            <span className="block truncate text-xs text-muted-foreground">
-                              {candidate.email}
-                            </span>
-                          </span>
-                          <Badge variant="outline" className="shrink-0 text-xs">
-                            {ROLE_LABELS[candidate.role as Role] ??
-                              candidate.role}
-                          </Badge>
-                          {checked && (
-                            <Check className="size-4 shrink-0 text-primary" />
-                          )}
-                        </button>
-                      );
-                    })}
+                            <Badge variant="outline" className="shrink-0 text-xs">
+                              {ROLE_LABELS[candidate.role as Role] ??
+                                candidate.role}
+                            </Badge>
+                            {checked && (
+                              <Check className="size-4 shrink-0 text-primary" />
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
                   </PopoverContent>
                 </Popover>
 
