@@ -17,7 +17,7 @@ import {
 } from "./clarification.service";
 import { answersToApply } from "@/utils/po-answers";
 
-import { listComments } from "./comment.service";
+import { listComments, postComment } from "./comment.service";
 import { reviewDrafts } from "./test-case-draft.service";
 
 beforeEach(resetDatabase);
@@ -335,5 +335,31 @@ describe("a case's discussion shows its requirements' questions", () => {
     expect(groups[0]!.questions.map((q) => [q.body, q.status, q.replies.map((r) => r.body)])).toEqual([
       ["Max length?", "answered", ["50 characters."]],
     ]);
+  });
+});
+
+describe("the PO's reply to a comment", () => {
+  it("asks to be put into the case, like an answer, until it is settled", async () => {
+    const { project, module, owner: qa } = await createProject();
+    const po = await createUser("ADMIN");
+    const testCase = await createTestCase(project.id, module.id, "TC-9");
+    const comment = await postComment(testCase.id, { id: qa.id, role: "QA" }, { body: "Check shows an error now?" });
+    expect(answersToApply(await listComments(testCase.id)).size).toBe(0);
+
+    const reply = await postComment(testCase.id, { id: po.id, role: "ADMIN" }, { body: "Yes, updated the prototype.", replyToId: comment.id });
+    expect([...answersToApply(await listComments(testCase.id))]).toEqual([[comment.id, reply.id]]);
+
+    await settleAnswer(comment.id, { id: qa.id }, {});
+    expect(answersToApply(await listComments(testCase.id)).size).toBe(0);
+  });
+
+  it("is not asked of a thread only QA and developers replied to", async () => {
+    const { project, module, owner: qa } = await createProject();
+    const dev = await createUser("DEVELOPER");
+    const testCase = await createTestCase(project.id, module.id, "TC-9");
+    const comment = await postComment(testCase.id, { id: qa.id, role: "QA" }, { body: "Fails" });
+    await postComment(testCase.id, { id: dev.id, role: "DEVELOPER" }, { body: "Fixed", replyToId: comment.id });
+    expect(answersToApply(await listComments(testCase.id)).size).toBe(0);
+    await expect(settleAnswer(comment.id, { id: qa.id }, {})).rejects.toThrow(/not answered/);
   });
 });

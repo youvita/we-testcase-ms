@@ -66,6 +66,7 @@ async function loadContext(testCaseId: string, source: Source) {
       select: {
         testCaseId: true,
         kind: true,
+        answerToId: true,
         deletedAt: true,
         body: true,
         author: { select: { name: true, role: true } },
@@ -76,7 +77,14 @@ async function loadContext(testCaseId: string, source: Source) {
         },
       },
     });
-    if (!comment || comment.testCaseId !== testCaseId || comment.kind !== "QUESTION" || comment.deletedAt) {
+    // A question, or a comment the PO replied to: either way the PO answered.
+    if (
+      !comment ||
+      comment.testCaseId !== testCaseId ||
+      comment.deletedAt ||
+      comment.answerToId ||
+      comment.kind === "ANSWER"
+    ) {
       throw notFound("Question");
     }
     question = { author: comment.author.name, fromPo: false, body: comment.body };

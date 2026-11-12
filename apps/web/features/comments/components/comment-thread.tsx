@@ -21,7 +21,7 @@ import { ROLE_LABELS, toRole } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 import { api, errorMessage } from "@/utils/api-client";
 import { formatDateTime, initials } from "@/utils/format";
-import { answersToApply } from "@/utils/po-answers";
+import { answersToApply, poAnswers } from "@/utils/po-answers";
 import type { CommentWithAuthor } from "@/types";
 
 import type { PoContext } from "@/features/requirements/components/po-questions";
@@ -159,21 +159,15 @@ export function CommentThread({
   const promptAfter = new Map([...toApply].map(([questionId, answerId]) => [answerId, questionId]));
   // Answers already dealt with keep a quiet way to update the case from them,
   // after each question's latest answer.
-  const latestAnswer = new Map<string, string>();
-  if (caseText) {
-    for (const comment of comments) {
-      if (comment.kind === "ANSWER" && comment.answerToId && !comment.deletedAt) {
-        latestAnswer.set(comment.answerToId, comment.id);
-      }
-    }
-  }
+  // The PO's answers in each thread: replies to a question, or the PO's
+  // replies to anyone's comment.
+  const answered = caseText ? poAnswers(comments) : new Map<string, CommentWithAuthor[]>();
+  const latestAnswer = new Map([...answered].map(([rootId, answers]) => [rootId, answers.at(-1)!.id]));
   const quietAfter = new Map(
     [...latestAnswer].filter(([questionId]) => !toApply.has(questionId)).map(([questionId, answerId]) => [answerId, questionId]),
   );
   const answersTo = (questionId: string) =>
-    comments
-      .filter((c) => c.kind === "ANSWER" && c.answerToId === questionId && !c.deletedAt)
-      .map((c) => ({ author: c.author.name, body: c.body }));
+    (answered.get(questionId) ?? []).map((c) => ({ author: c.author.name, body: c.body }));
 
   async function handleNoChange(questionId: string) {
     try {
@@ -348,6 +342,11 @@ export function CommentThread({
                             </span>
                           </>
                         )}
+                      </p>
+                    )}
+                    {!question && !withdrawn && comment.settledAt && !toApply.has(comment.id) && (
+                      <p className="text-xs text-muted-foreground" title={comment.settledBy ? `By ${comment.settledBy.name}` : undefined}>
+                        {comment.settledChangedCase ? "Answer added to the case" : "No change to the case"}
                       </p>
                     )}
                     {!withdrawn && (canComment || (question && canAnswer)) && answering !== comment.id && (

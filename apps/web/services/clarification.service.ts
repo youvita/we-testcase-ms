@@ -140,10 +140,23 @@ export async function settleAnswer(
 ) {
   const question = await prisma.comment.findUnique({
     where: { id: questionId },
-    select: { kind: true, testCaseId: true, deletedAt: true, answeredAt: true },
+    select: {
+      kind: true,
+      testCaseId: true,
+      deletedAt: true,
+      answerToId: true,
+      answeredAt: true,
+      answers: { where: { deletedAt: null }, select: { kind: true, author: { select: { role: true } } } },
+    },
   });
-  if (!question || question.kind !== "QUESTION" || question.deletedAt) throw notFound("Question");
-  if (!question.answeredAt) throw badRequest("The PO has not answered this question yet.");
+  // A question, or a comment the PO replied to.
+  if (!question || question.deletedAt || question.answerToId || question.kind === "ANSWER") {
+    throw notFound("Question");
+  }
+  const answered =
+    question.answeredAt ||
+    question.answers.some((reply) => reply.kind === "ANSWER" || isAdmin(reply.author.role));
+  if (!answered) throw badRequest("The PO has not answered this yet.");
 
   return prisma.$transaction(async (tx) => {
     if (input.update) {
