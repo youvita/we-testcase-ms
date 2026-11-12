@@ -57,7 +57,8 @@ import {
   listSubModules,
 } from "@/services/test-case.service";
 import { formatDateTime } from "@/utils/format";
-import { splitOpenQuestions } from "@/utils/open-questions";
+import { caseQuestions, keptOnNote, splitOpenQuestions } from "@/utils/open-questions";
+import { OpenQuestions } from "@/components/shared/open-questions";
 import { answersToApply } from "@/utils/po-answers";
 
 export async function generateMetadata({
@@ -166,6 +167,11 @@ export default async function TestCaseDetailPage({
     expectedResult: testCase.expectedResult,
     openQuestions: testCase.openQuestions,
   });
+  // Its open questions: on the requirements it verifies, or its own.
+  const questions = caseQuestions(
+    text.openQuestions,
+    testCase.requirements.map(({ requirement }) => requirement),
+  );
   const unappliedAnswers = canEditCase ? answersToApply(comments).size : 0;
   const details: { label: string; value: string | null }[] = [
     { label: "Preconditions", value: text.preconditions },
@@ -332,6 +338,7 @@ export default async function TestCaseDetailPage({
                     ) : null,
                   )
                 )}
+                {questions.text && <OpenQuestions text={questions.text} note={keptOnNote(questions.keptOn)} />}
                 {testCase.requirements.length > 0 && (
                   <div className="space-y-1.5">
                     <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
@@ -468,7 +475,7 @@ export default async function TestCaseDetailPage({
                       preconditions: answerText.preconditions ?? null,
                       steps: answerText.steps ?? null,
                       expectedResult: answerText.expectedResult ?? null,
-                      openQuestions: answerText.openQuestions ?? null,
+                      openQuestions: questions.text,
                     }
                   : undefined
               }

@@ -12,7 +12,7 @@ import { StatusBadge } from "@/components/shared/status-badge";
 import type { ExecutionStatus, TestCaseListItem } from "@/types";
 import { api, errorMessage } from "@/utils/api-client";
 import { formatDateTime } from "@/utils/format";
-import { splitOpenQuestions } from "@/utils/open-questions";
+import { caseQuestions, keptOnNote, splitOpenQuestions } from "@/utils/open-questions";
 
 /** The parts of GET /api/test-cases/:id the quick view shows, as JSON gives them. */
 type QuickCase = {
@@ -34,7 +34,13 @@ type QuickCase = {
   }[];
   requirements: {
     requirementChangedAt: string | null;
-    requirement: { id: string; code: string; title: string; doc: { title: string; version: number } };
+    requirement: {
+      id: string;
+      code: string;
+      title: string;
+      openQuestions: string | null;
+      doc: { title: string; version: number };
+    };
   }[];
 };
 
@@ -91,6 +97,8 @@ export function TestCaseQuickView({
   }, [openId, loaded]);
 
   const text = detail ? splitOpenQuestions(detail) : null;
+  const questions =
+    detail && text ? caseQuestions(text.openQuestions, detail.requirements.map(({ requirement }) => requirement)) : null;
   const latest = detail?.executions[0];
   const changed = detail?.requirements.filter((link) => link.requirementChangedAt) ?? [];
   const fullPage = item ? `/projects/${projectId}/test-cases/${item.id}` : "#";
@@ -151,7 +159,9 @@ export function TestCaseQuickView({
                       <Field label="Expected result" value={text.expectedResult} />
                     </>
                   )}
-                  {text.openQuestions && <OpenQuestions text={text.openQuestions} />}
+                  {questions?.text && (
+                    <OpenQuestions text={questions.text} note={keptOnNote(questions.keptOn)} />
+                  )}
 
                   {detail.requirements.length > 0 && (
                     <Section label="Verifies requirements">

@@ -89,3 +89,110 @@ export function splitOpenQuestions<T extends CaseText>(
 /** The marker's own audience: "(confirm endpoint with dev)" is not for the PO. */
 const whoConfirms = (marker: string) => (/with\s+(?:the\s+)?dev/i.test(marker) ? "the developers" : "the PO");
 const withStop = (sentence: string) => (/[.!?]$/.test(sentence) ? sentence : `${sentence}.`);
+
+// ---------------------------------------------------------------------------
+// One home for each question. A case that verifies requirements keeps its
+// open questions on them — the same list for every case verifying them, and
+// where the PO reads the specification. A case with none keeps its own.
+// ---------------------------------------------------------------------------
+
+const BULLET = /^\s*(?:[-*•–]|\d+[.)])\s+/;
+
+/** The questions in an open-questions text, one per line, without their bullets. */
+export function questionLines(text: string | null | undefined): string[] {
+  return (text ?? "")
+    .split("\n")
+    .map((line) => line.replace(BULLET, "").trim())
+    .filter(Boolean);
+}
+
+/** The same question, however it is punctuated or capitalised. */
+export const sameQuestion = (question: string) =>
+  question
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .trim();
+
+const asList = (questions: string[]) => (questions.length ? questions.map((q) => `- ${q}`).join("\n") : null);
+
+/** Several lists as one, each question once, in the order they come. */
+export function mergeQuestions(...texts: (string | null | undefined)[]): string | null {
+  const seen = new Set<string>();
+  const merged: string[] = [];
+  for (const question of texts.flatMap(questionLines)) {
+    const key = sameQuestion(question);
+    if (key && !seen.has(key)) {
+      seen.add(key);
+      merged.push(question);
+    }
+  }
+  return asList(merged);
+}
+
+/**
+ * A case's whole list, edited, back onto the requirements that hold it: each
+ * keeps the questions still on the list, loses those taken off it, and the
+ * first takes the new ones. A requirement whose questions did not change
+ * keeps its text as it was written.
+ */
+export function distributeQuestions<Id extends string>(
+  text: string | null | undefined,
+  holders: { id: Id; text: string | null }[],
+): Map<Id, string | null> {
+  const wanted = new Map<string, string>();
+  for (const question of questionLines(text)) {
+    const key = sameQuestion(question);
+    if (key && !wanted.has(key)) wanted.set(key, question);
+  }
+  const held = new Set<string>();
+  const kept = holders.map((holder) => {
+    const own = questionLines(holder.text);
+    const keep = own.filter((question) => wanted.has(sameQuestion(question)));
+    keep.forEach((question) => held.add(sameQuestion(question)));
+    return { holder, own, keep };
+  });
+  const added = [...wanted].filter(([key]) => !held.has(key)).map(([, question]) => question);
+
+  const result = new Map<Id, string | null>();
+  kept.forEach(({ holder, own, keep }, index) => {
+    const questions = index === 0 ? [...keep, ...added] : keep;
+    const unchanged =
+      questions.length === own.length && questions.every((q, i) => sameQuestion(q) === sameQuestion(own[i]!));
+    result.set(holder.id, unchanged ? holder.text : asList(questions));
+  });
+  return result;
+}
+
+/** `holder` with the questions of `text` it does not ask yet, added after its own. */
+export function addQuestions(holder: string | null | undefined, text: string | null | undefined): string | null {
+  const have = new Set(questionLines(holder).map(sameQuestion));
+  const added = questionLines(text).filter((question) => {
+    const key = sameQuestion(question);
+    if (!key || have.has(key)) return false;
+    have.add(key);
+    return true;
+  });
+  if (!added.length) return holder?.trim() ? holder : null;
+  return [holder?.trim(), asList(added)].filter(Boolean).join("\n");
+}
+
+/**
+ * A case's open questions as one list — its own and those of the
+ * requirements it verifies — and the codes of the requirements they are kept
+ * on (none: kept on the case).
+ */
+export function caseQuestions(
+  own: string | null | undefined,
+  requirements: { code: string; openQuestions: string | null }[],
+): { text: string | null; keptOn: string[] } {
+  return {
+    text: mergeQuestions(own, ...requirements.map((requirement) => requirement.openQuestions)),
+    keptOn: requirements.map((requirement) => requirement.code),
+  };
+}
+
+/** The note under a case's open questions, saying where they are kept. */
+export function keptOnNote(keptOn: string[]): string | null {
+  if (keptOn.length === 0) return null;
+  return `Kept on requirement${keptOn.length > 1 ? "s" : ""} ${keptOn.join(", ")} — shared with every test case that verifies ${keptOn.length > 1 ? "them" : "it"}.`;
+}

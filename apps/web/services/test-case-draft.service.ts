@@ -8,6 +8,7 @@ import type {
   TestCaseDraftInput,
 } from "@wetestcase/dto";
 
+import { addRequirementQuestions } from "./case-questions.service";
 import { copyDraftQuestionsToCase } from "./clarification.service";
 import { resolveProjectPlatform } from "./project.service";
 
@@ -268,7 +269,8 @@ export async function reviewDrafts(
             preconditions: text.preconditions,
             steps: text.steps,
             expectedResult: text.expectedResult,
-            openQuestions: text.openQuestions,
+            // A case verifying requirements keeps its questions on them.
+            openQuestions: linkedIds.length ? null : text.openQuestions,
             testType: draft.testType,
             priority: draft.priority,
             platform: draft.platform,
@@ -288,6 +290,7 @@ export async function reviewDrafts(
             testCaseId: testCase.id,
           },
         });
+        if (linkedIds[0]) await addRequirementQuestions(tx, linkedIds[0], text.openQuestions);
         await copyDraftQuestionsToCase(tx, draft.id, testCase.id);
         results.push({ draftId: draft.id, testCaseId: testCase.id, tcId });
       }

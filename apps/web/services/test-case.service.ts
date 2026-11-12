@@ -12,6 +12,7 @@ import type {
 } from "@/types";
 import type { CaseTextInput, TestCaseSource, TrashedTestCase } from "@wetestcase/dto";
 
+import { saveCaseQuestions } from "./case-questions.service";
 import { resolveProjectPlatform } from "./project.service";
 
 const testerSelect = {
@@ -222,6 +223,8 @@ export async function getTestCase(
               id: true,
               code: true,
               title: true,
+              // Shown with the case's own open questions.
+              openQuestions: true,
               doc: { select: { title: true, version: true } },
             },
           },
@@ -328,7 +331,7 @@ export async function updateCaseText(testCaseId: string, input: CaseTextInput) {
         preconditions: input.preconditions ?? null,
         steps: input.steps ?? null,
         expectedResult: input.expectedResult ?? null,
-        openQuestions: input.openQuestions ?? null,
+        openQuestions: await saveCaseQuestions(tx, testCaseId, input.openQuestions),
       },
       select: { id: true },
     });
@@ -431,22 +434,25 @@ export async function updateTestCase(
     data: { requirementChangedAt: null },
   });
 
-  return prisma.testCase.update({
-    where: { id: testCaseId },
-    data: {
-      moduleId: mod.id,
-      subModule: input.subModule ?? null,
-      tcId,
-      title: input.title.trim(),
-      preconditions: input.preconditions ?? null,
-      steps: input.steps ?? null,
-      expectedResult: input.expectedResult ?? null,
-      openQuestions: input.openQuestions ?? null,
-      testType: input.testType ?? "FUNCTIONAL",
-      priority: input.priority ?? "MEDIUM",
-      platform,
-    },
-  });
+  return prisma.$transaction(async (tx) =>
+    tx.testCase.update({
+      where: { id: testCaseId },
+      data: {
+        moduleId: mod.id,
+        subModule: input.subModule ?? null,
+        tcId,
+        title: input.title.trim(),
+        preconditions: input.preconditions ?? null,
+        steps: input.steps ?? null,
+        expectedResult: input.expectedResult ?? null,
+        // Kept on its requirements, when it verifies any.
+        openQuestions: await saveCaseQuestions(tx, testCaseId, input.openQuestions),
+        testType: input.testType ?? "FUNCTIONAL",
+        priority: input.priority ?? "MEDIUM",
+        platform,
+      },
+    }),
+  );
 }
 
 /** QA checked the case against its changed requirements: it still holds. */

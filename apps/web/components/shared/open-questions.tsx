@@ -12,12 +12,15 @@ export function OpenQuestions({
   text,
   className,
   action,
+  note,
   forPo = false,
 }: {
   text: string;
   className?: string;
   /** Beside the heading: "Ask the PO", where asking is possible. */
   action?: ReactNode;
+  /** Under the list: where the questions are kept. */
+  note?: ReactNode;
   /** For the PO, whom the questions are for. */
   forPo?: boolean;
 }) {
@@ -31,6 +34,7 @@ export function OpenQuestions({
         {action}
       </div>
       <p className="mt-1 whitespace-pre-wrap">{text}</p>
+      {note && <p className="mt-1.5 text-xs text-muted-foreground">{note}</p>}
     </div>
   );
 }

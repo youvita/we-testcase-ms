@@ -5,6 +5,7 @@ import { badRequest, forbidden, notFound } from "@/lib/api";
 import { isAdmin } from "@/lib/permissions";
 import type { Role } from "@/lib/constants";
 import type { CommentWithAuthor } from "@/types";
+import { saveCaseQuestions } from "./case-questions.service";
 import type {
   NotificationDto,
   NotificationList,
@@ -137,7 +138,7 @@ export async function settleAnswer(
           preconditions: input.update.preconditions ?? null,
           steps: input.update.steps ?? null,
           expectedResult: input.update.expectedResult ?? null,
-          openQuestions: input.update.openQuestions ?? null,
+          openQuestions: await saveCaseQuestions(tx, question.testCaseId, input.update.openQuestions),
         },
       });
     }

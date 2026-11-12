@@ -36,7 +36,7 @@ import {
   TEST_TYPE_LABELS,
 } from "@/lib/constants";
 import { testCaseSchema, type TestCaseInput } from "@/lib/validations";
-import { splitOpenQuestions } from "@/utils/open-questions";
+import { caseQuestions, keptOnNote, splitOpenQuestions } from "@/utils/open-questions";
 import { ApiError, api, errorMessage } from "@/utils/api-client";
 import type { Platform, SubModuleOption, TestCaseWithDetails } from "@/types";
 
@@ -80,6 +80,8 @@ export function TestCaseFormDialog({
   const router = useRouter();
   const isEdit = Boolean(testCaseId);
   const [loading, setLoading] = useState(false);
+  /** Where its open questions are kept: the requirements it verifies, if any. */
+  const [keptOn, setKeptOn] = useState<string[]>([]);
 
   /** Modules added from this dialog, before the page has been refreshed. */
   const [createdModules, setCreatedModules] = useState<ModuleOption[]>([]);
@@ -160,6 +162,12 @@ export function TestCaseFormDialog({
         if (cancelled) return;
         // An older case's "(confirm with PO)" markers, split out to edit.
         const text = splitOpenQuestions(testCase);
+        // One list: its requirements', with any of its own still to move there.
+        const questions = caseQuestions(
+          text.openQuestions,
+          testCase.requirements.map(({ requirement }) => requirement),
+        );
+        setKeptOn(questions.keptOn);
         reset({
           moduleId: testCase.moduleId,
           subModule: testCase.subModule ?? "",
@@ -168,7 +176,7 @@ export function TestCaseFormDialog({
           preconditions: text.preconditions ?? "",
           steps: text.steps ?? "",
           expectedResult: text.expectedResult ?? "",
-          openQuestions: text.openQuestions ?? "",
+          openQuestions: questions.text ?? "",
           testType: testCase.testType,
           priority: testCase.priority,
           platform: testCase.platform,
@@ -546,7 +554,9 @@ export function TestCaseFormDialog({
                 {...register("openQuestions")}
               />
               <p className="text-xs text-muted-foreground">
-                What is still unclear, kept out of the expected result so it stays a check.
+                {isEdit && keptOn.length > 0
+                  ? keptOnNote(keptOn)
+                  : "What is still unclear, kept out of the expected result so it stays a check."}
               </p>
             </div>
           </form>

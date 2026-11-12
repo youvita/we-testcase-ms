@@ -173,7 +173,8 @@ export function RequirementsPanel({
       if (coverage === "questions" && !req.openQuestions) return false;
       if (coverage === "unverified" && req.verifiedAt) return false;
       if (!term) return true;
-      return [req.code, req.title, req.description, req.section]
+      // A test case's ID finds the requirements it verifies.
+      return [req.code, req.title, req.description, req.section, ...req.testCases.map((tc) => tc.tcId)]
         .filter(Boolean)
         .some((text) => text!.toLowerCase().includes(term));
     });
@@ -416,7 +417,7 @@ export function RequirementsPanel({
         <div className="flex flex-wrap gap-2">
           <Input
             className="w-full sm:w-64"
-            placeholder="Search code, title, section…"
+            placeholder="Search code, title, section, test case…"
             value={search}
             onChange={(event) => setSearch(event.target.value)}
           />

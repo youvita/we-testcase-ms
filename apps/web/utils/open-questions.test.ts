@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { splitOpenQuestions } from "./open-questions";
+import { addQuestions, distributeQuestions, mergeQuestions, questionLines, splitOpenQuestions } from "./open-questions";
 
 describe("splitOpenQuestions", () => {
   it("moves the sentence naming a gap, and keeps the checks", () => {
@@ -61,5 +61,34 @@ describe("splitOpenQuestions", () => {
   it("leaves text without a marker exactly as it was", () => {
     const testCase = { expectedResult: "An error says the amount is undefined.", openQuestions: null };
     expect(splitOpenQuestions(testCase)).toEqual(testCase);
+  });
+});
+
+describe("one home for each open question", () => {
+  it("reads one question per line, without bullets or numbers", () => {
+    expect(questionLines("- First?\n\n2. Second?\n* Third?\nFourth?")).toEqual(["First?", "Second?", "Third?", "Fourth?"]);
+    expect(questionLines(null)).toEqual([]);
+  });
+
+  it("merges lists, each question once", () => {
+    expect(mergeQuestions("- Paginated?", null, "1. paginated\n2. Empty state?")).toBe("- Paginated?\n- Empty state?");
+    expect(mergeQuestions(null, "")).toBeNull();
+  });
+
+  it("puts an edited list back on the requirements that hold it", () => {
+    const result = distributeQuestions("- Paginated?\n- Sortable?\n- Which browsers?", [
+      { id: "F1", text: "- Paginated?\n- Empty state?" },
+      { id: "F2", text: "- Sortable?" },
+    ]);
+    // F1 loses the question taken off the list and takes the new one; F2 is as it was.
+    expect(result.get("F1")).toBe("- Paginated?\n- Which browsers?");
+    expect(result.get("F2")).toBe("- Sortable?");
+    expect(distributeQuestions("", [{ id: "F1", text: "- Paginated?" }]).get("F1")).toBeNull();
+  });
+
+  it("adds new questions after a requirement's own, as written", () => {
+    expect(addQuestions("Is it paginated?", "- is it paginated\n- Empty state?")).toBe("Is it paginated?\n- Empty state?");
+    expect(addQuestions(null, "- Empty state?")).toBe("- Empty state?");
+    expect(addQuestions("- Kept", null)).toBe("- Kept");
   });
 });

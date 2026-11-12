@@ -185,6 +185,8 @@ async function saveFrd(
         testCases: { create: { testCaseId: tc.id } },
       },
     });
+    // Its questions now live on the requirement, which the case verifies.
+    await tx.testCase.update({ where: { id: tc.id }, data: { openQuestions: null } });
     return doc;
   });
 }

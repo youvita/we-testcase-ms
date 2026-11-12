@@ -158,6 +158,7 @@ export type TestCaseWithDetails = TestCase & {
       id: string;
       code: string;
       title: string;
+      openQuestions: string | null;
       doc: { title: string; version: number };
     };
   }[];

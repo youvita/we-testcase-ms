@@ -5,7 +5,7 @@ import { badRequest, notFound } from "@/lib/api";
 import { AiError, askClaude, parseJsonBlock } from "@/lib/claude";
 import { isAdmin } from "@/lib/permissions";
 import type { SessionUser } from "@/lib/session";
-import { splitOpenQuestions } from "@/utils/open-questions";
+import { caseQuestions, splitOpenQuestions } from "@/utils/open-questions";
 import type { AiJobDto, CaseUpdateSuggestion, SuggestCaseUpdateInput } from "@wetestcase/dto";
 
 import { defineJob, enqueueJob } from "./ai-job.service";
@@ -43,7 +43,14 @@ async function loadContext(testCaseId: string, source: Source) {
       requirements: {
         select: {
           requirement: {
-            select: { id: true, code: true, title: true, description: true, acceptanceCriteria: true },
+            select: {
+              id: true,
+              code: true,
+              title: true,
+              description: true,
+              acceptanceCriteria: true,
+              openQuestions: true,
+            },
           },
         },
       },
@@ -168,8 +175,8 @@ ${text.steps || "(none)"}
 Expected result:
 ${text.expectedResult || "(none)"}
 
-Open questions:
-${text.openQuestions || "(none)"}
+Open questions${testCase.requirements.length ? " (kept on its requirements, shared with their other cases)" : ""}:
+${caseQuestions(text.openQuestions, testCase.requirements.map(({ requirement }) => requirement)).text || "(none)"}
 ${requirements ? `\nRequirements this case verifies:\n${requirements}\n` : ""}
 Question asked by ${question.author}:
 ${question.body}
