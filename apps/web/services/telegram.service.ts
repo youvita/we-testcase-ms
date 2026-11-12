@@ -5,8 +5,9 @@ import { appUrl, escapeHtml, isTelegramConfigured, sendTelegram } from "@/lib/te
 /**
  * What the team's Telegram group hears about: questions for the PO and the
  * PO's answers, comments on test cases, and requirements waiting for the PO
- * to verify. Each is called once the change is saved, without awaiting it
- * (`void`): it loads what it needs, and a failure is logged, never thrown.
+ * to verify — all in one shape (see `notice`). Each is called once the change
+ * is saved, without awaiting it (`void`): it loads what it needs, and a
+ * failure is logged, never thrown.
  */
 
 const EXCERPT = 300;
@@ -16,11 +17,66 @@ function excerpt(body: string): string {
   return escapeHtml(text.length > EXCERPT ? `${text.slice(0, EXCERPT - 1)}…` : text);
 }
 
-function message(lines: (string | null | false | undefined)[], path: string) {
+/** What happened, as the heading of a message's middle part. */
+const KIND = {
+  comment: "💬 Comment",
+  reply: "↩️ Reply",
+  question: "❓ Question for the PO",
+  answer: "✅ PO answer",
+  followUp: "↩️ Follow-up",
+  toVerify: "📋 To verify",
+} as const;
+
+/**
+ * Every message has one shape, whatever happened:
+ *
+ *   📁 WeBill365
+ *   Test case: TC-AI-03
+ *   Title: Create a customer with only the mandatory fields
+ *
+ *   ❓ Question for the PO
+ *   Alice Admin: Please clarify …
+ *
+ *   📎 1 file attached
+ *   🔗 Open in WeTestCase
+ */
+function notice({
+  project,
+  about,
+  kind,
+  who,
+  text,
+  files = 0,
+  path,
+}: {
+  project: string;
+  /** What it is about, as label → value lines; the first value in bold. */
+  about: [label: string, value: string][];
+  kind: keyof typeof KIND;
+  who?: string;
+  text: string;
+  files?: number;
+  path: string;
+}) {
   const url = appUrl(path);
-  return [...lines.filter(Boolean), url ? `<a href="${escapeHtml(url)}">Open in WeTestCase</a>` : null]
+  const said = text.trim() ? excerpt(text) : "";
+  const sections = [
+    [
+      `📁 <b>${escapeHtml(project)}</b>`,
+      ...about.map(([label, value], index) =>
+        index === 0 ? `${label}: <b>${escapeHtml(value)}</b>` : `${label}: ${escapeHtml(value)}`,
+      ),
+    ],
+    [`<b>${KIND[kind]}</b>`, who ? `<b>${escapeHtml(who)}</b>${said ? `: ${said}` : ""}` : said],
+    [
+      files > 0 && `📎 ${files} file${files === 1 ? "" : "s"} attached`,
+      url && `🔗 <a href="${escapeHtml(url)}">Open in WeTestCase</a>`,
+    ],
+  ];
+  return sections
+    .map((lines) => lines.filter(Boolean).join("\n"))
     .filter(Boolean)
-    .join("\n");
+    .join("\n\n");
 }
 
 async function send(build: () => Promise<string | null>) {
@@ -42,20 +98,22 @@ async function questionSubject(questionId: string) {
       projectId: true,
       project: { select: { name: true } },
       asker: { select: { name: true } },
-      questionTo: { select: { name: true } },
       requirement: { select: { id: true, code: true, title: true } },
       draft: { select: { id: true, title: true } },
     },
   });
   if (!question) return null;
   const requirements = `/projects/${question.projectId}/requirements`;
-  const subject = question.requirement
-    ? `${question.requirement.code} ${question.requirement.title}`
-    : `draft “${question.draft?.title ?? ""}”`;
+  const about: [string, string][] = question.requirement
+    ? [
+        ["Requirement", question.requirement.code],
+        ["Title", question.requirement.title],
+      ]
+    : [["Draft test case", question.draft?.title ?? ""]];
   const path = question.requirement
     ? `${requirements}?tab=requirements&focus=${question.requirement.id}`
     : `${requirements}?tab=drafts&focus=${question.draft?.id ?? ""}`;
-  return { question, subject, path };
+  return { question, about, path };
 }
 
 /** QA asked the PO about a requirement or a review draft. */
@@ -63,16 +121,15 @@ export function telegramQuestionAsked(questionId: string) {
   void send(async () => {
     const found = await questionSubject(questionId);
     if (!found) return null;
-    const { question, subject, path } = found;
-    return message(
-      [
-        `❓ <b>${escapeHtml(question.asker.name)}</b> asked <b>${escapeHtml(question.questionTo?.name ?? "the PO")}</b>`,
-        `${escapeHtml(question.project.name)} · <b>${escapeHtml(subject)}</b>`,
-        "",
-        excerpt(question.body),
-      ],
+    const { question, about, path } = found;
+    return notice({
+      project: question.project.name,
+      about,
+      kind: "question",
+      who: question.asker.name,
+      text: question.body,
       path,
-    );
+    });
   });
 }
 
@@ -87,23 +144,19 @@ export function telegramQuestionReplied(questionId: string, replyId: string) {
       }),
     ]);
     if (!found || !reply) return null;
-    const { question, subject, path } = found;
-    const fromPo = isAdmin(reply.author.role);
-    return message(
-      [
-        fromPo
-          ? `✅ <b>${escapeHtml(reply.author.name)}</b> answered <b>${escapeHtml(question.asker.name)}</b>`
-          : `↩️ <b>${escapeHtml(reply.author.name)}</b> followed up`,
-        `${escapeHtml(question.project.name)} · <b>${escapeHtml(subject)}</b>`,
-        "",
-        excerpt(reply.body),
-      ],
+    const { question, about, path } = found;
+    return notice({
+      project: question.project.name,
+      about,
+      kind: isAdmin(reply.author.role) ? "answer" : "followUp",
+      who: reply.author.name,
+      text: reply.body,
       path,
-    );
+    });
   });
 }
 
-/** A comment, a reply, or the PO's answer in a test case's discussion. */
+/** A comment, a reply, a question for the PO, or the PO's answer in a test case's discussion. */
 export function telegramCommentPosted(commentId: string) {
   void send(async () => {
     const comment = await prisma.comment.findUnique({
@@ -112,31 +165,34 @@ export function telegramCommentPosted(commentId: string) {
         body: true,
         kind: true,
         answerToId: true,
+        _count: { select: { attachments: true } },
         author: { select: { name: true } },
-        answerTo: { select: { author: { select: { name: true } } } },
         testCase: {
           select: { id: true, tcId: true, title: true, projectId: true, project: { select: { name: true } } },
         },
       },
     });
     if (!comment) return null;
-    const who = `<b>${escapeHtml(comment.author.name)}</b>`;
-    const headline =
-      comment.kind === "ANSWER"
-        ? `✅ ${who} answered <b>${escapeHtml(comment.answerTo?.author.name ?? "a question")}</b>`
-        : comment.answerToId
-          ? `↩️ ${who} replied to <b>${escapeHtml(comment.answerTo?.author.name ?? "a comment")}</b>`
-          : `💬 ${who} commented`;
     const { testCase } = comment;
-    return message(
-      [
-        headline,
-        `${escapeHtml(testCase.project.name)} · <b>${escapeHtml(testCase.tcId)}</b> ${escapeHtml(testCase.title)}`,
-        "",
-        excerpt(comment.body),
+    return notice({
+      project: testCase.project.name,
+      about: [
+        ["Test case", testCase.tcId],
+        ["Title", testCase.title],
       ],
-      `/projects/${testCase.projectId}/test-cases/${testCase.id}#discussion`,
-    );
+      kind:
+        comment.kind === "ANSWER"
+          ? "answer"
+          : comment.kind === "QUESTION"
+            ? "question"
+            : comment.answerToId
+              ? "reply"
+              : "comment",
+      who: comment.author.name,
+      text: comment.body,
+      files: comment._count.attachments,
+      path: `/projects/${testCase.projectId}/test-cases/${testCase.id}#discussion`,
+    });
   });
 }
 
@@ -155,12 +211,12 @@ export function telegramRequirementsToVerify(docId: string) {
     });
     const waiting = doc?._count.requirements ?? 0;
     if (!doc || waiting === 0) return null;
-    return message(
-      [
-        `📋 <b>${waiting} requirement${waiting === 1 ? "" : "s"}</b> to verify — PO, please review`,
-        `${escapeHtml(doc.project.name)} · ${escapeHtml(doc.title)} v${doc.version}`,
-      ],
-      `/projects/${doc.projectId}/requirements?tab=requirements`,
-    );
+    return notice({
+      project: doc.project.name,
+      about: [["Document", `${doc.title} v${doc.version}`]],
+      kind: "toVerify",
+      text: `${waiting} requirement${waiting === 1 ? "" : "s"} waiting — PO, please review`,
+      path: `/projects/${doc.projectId}/requirements?tab=requirements`,
+    });
   });
 }

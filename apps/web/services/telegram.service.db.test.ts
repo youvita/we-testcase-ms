@@ -43,9 +43,18 @@ describe("posting to the team's Telegram group", () => {
     const [text] = await messages(1);
     expect(sent[0]!.url).toBe("https://api.telegram.org/bot123:abc/sendMessage");
     expect(sent[0]!.body).toMatchObject({ chat_id: "-1001", parse_mode: "HTML" });
-    expect(text).toContain("commented");
-    expect(text).toContain("<b>TC-1</b> Check &lt;button&gt;");
-    expect(text).toContain("Fails on build 12 &amp; 13");
+    expect(text).toBe(
+      [
+        "📁 <b>WeBill365</b>",
+        "Test case: <b>TC-1</b>",
+        "Title: Check &lt;button&gt;",
+        "",
+        "<b>💬 Comment</b>",
+        `<b>${qa.name}</b>: Fails on build 12 &amp; 13`,
+        "",
+        `🔗 <a href="https://qa.example.test/projects/${project.id}/test-cases/${testCase.id}#discussion">Open in WeTestCase</a>`,
+      ].join("\n"),
+    );
     expect(text).toContain(`https://qa.example.test/projects/${project.id}/test-cases/${testCase.id}#discussion`);
   });
 
@@ -63,10 +72,11 @@ describe("posting to the team's Telegram group", () => {
     await replyToPoQuestion(question.id, as(po), "Not defined.");
 
     const [asked, answered] = await messages(2);
-    expect(asked).toContain("asked");
-    expect(asked).toContain("F1-03 Biller ID");
-    expect(answered).toContain("answered");
-    expect(answered).toContain("Not defined.");
+    // One shape for both: what it is about, then who said what.
+    expect(asked).toContain("Requirement: <b>F1-03</b>\nTitle: Biller ID");
+    expect(asked).toContain(`<b>❓ Question for the PO</b>\n<b>${qa.name}</b>: Max length?`);
+    expect(answered).toContain("Requirement: <b>F1-03</b>\nTitle: Biller ID");
+    expect(answered).toContain(`<b>✅ PO answer</b>\n<b>${po.name}</b>: Not defined.`);
   });
 
   it("posts requirements waiting for the PO to verify, and nothing when none wait", async () => {
@@ -79,7 +89,7 @@ describe("posting to the team's Telegram group", () => {
     });
     telegramRequirementsToVerify(doc.id);
     const [text] = await messages(1);
-    expect(text).toContain("2 requirements</b> to verify");
+    expect(text).toContain("Document: <b>FRD v1</b>\n\n<b>📋 To verify</b>\n2 requirements waiting — PO, please review");
 
     await prisma.requirement.updateMany({ data: { verifiedAt: new Date() } });
     telegramRequirementsToVerify(doc.id);
