@@ -334,6 +334,11 @@ export const commentSchema = z.object({
     .trim()
     .optional()
     .transform((value) => value || undefined),
+  /**
+   * A question for the PO rather than a comment: the PO's reply to it is an
+   * answer, which asks to be put into the case. Only a new post, not a reply.
+   */
+  question: z.boolean().optional(),
 });
 
 export type CommentInput = z.infer<typeof commentSchema>;

@@ -478,6 +478,18 @@ export default async function TestCaseDetailPage({
                 note: keptOnNote(questions.keptOn),
                 canEdit: canEditCase,
               }}
+              askOn={
+                canAskPo(user.role)
+                  ? {
+                      projectId,
+                      requirements: testCase.requirements.map(({ requirement }) => ({
+                        id: requirement.id,
+                        code: requirement.code,
+                        openQuestions: requirement.openQuestions,
+                      })),
+                    }
+                  : undefined
+              }
               po={{
                 admins,
                 currentUserId: user.id,

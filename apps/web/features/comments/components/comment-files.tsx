@@ -61,11 +61,18 @@ export function pastedFiles(event: ClipboardEvent): File[] {
 }
 
 /** The body to post: JSON, or multipart when files go with it. */
-export function commentPayload(body: string, files: File[], replyToId?: string) {
-  if (files.length === 0) return { body, ...(replyToId ? { replyToId } : {}) };
+export function commentPayload(
+  body: string,
+  files: File[],
+  { replyToId, question }: { replyToId?: string; question?: boolean } = {},
+) {
+  if (files.length === 0) {
+    return { body, ...(replyToId ? { replyToId } : {}), ...(question ? { question } : {}) };
+  }
   const form = new FormData();
   form.set("body", body);
   if (replyToId) form.set("replyToId", replyToId);
+  if (question) form.set("question", "true");
   for (const file of files) form.append("files", file);
   return form;
 }

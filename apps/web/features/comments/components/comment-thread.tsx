@@ -2,7 +2,7 @@
 
 import { Fragment, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { CornerDownRight, HelpCircle, Loader2, MessageSquare, Send, Trash2 } from "lucide-react";
+import { CornerDownRight, HelpCircle, Loader2, MessageCircleQuestion, MessageSquare, Send, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -15,6 +15,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { EmptyState } from "@/components/shared/empty-state";
 import { ROLE_LABELS, toRole } from "@/lib/constants";
 import { cn } from "@/lib/utils";
@@ -51,6 +52,7 @@ export function CommentThread({
   requirementQuestions = [],
   po,
   openQuestions,
+  askOn,
 }: {
   testCaseId: string;
   comments: CommentWithAuthor[];
@@ -73,17 +75,45 @@ export function CommentThread({
   po?: PoContext;
   /** The case's open questions, kept at the top of its discussion. */
   openQuestions?: { text: string | null; note: string | null; canEdit: boolean };
+  /**
+   * Where "Ask the PO" asks: on a requirement the case verifies — where its
+   * open questions are kept — or, verifying none, on the case itself.
+   */
+  askOn?: { projectId: string; requirements: { id: string; code: string; openQuestions: string | null }[] };
 }) {
   const router = useRouter();
   const [body, setBody] = useState("");
   const [files, setFiles] = useState<File[]>([]);
   const composer = useRef<HTMLTextAreaElement>(null);
 
-  /** Start a comment asking the PO the open questions. */
+  // Asking the PO, not commenting: on this requirement, or (null) on the case.
+  const [asking, setAsking] = useState<{ requirementId: string | null } | null>(null);
+  const askRequirements = askOn?.requirements ?? [];
+  const askingOn = askRequirements.find((requirement) => requirement.id === asking?.requirementId);
+
+  /**
+   * Ask the PO the open questions — as a question, so the answer can be
+   * resolved and put into the case. On a requirement, its own questions.
+   */
   function askOpenQuestions(questions: string) {
-    setBody(`Could you clarify:\n${questions}`);
+    if (!askOn) {
+      // Those who don't ask the PO themselves: a comment, as before.
+      setBody(`Could you clarify:\n${questions}`);
+      composer.current?.focus();
+      return;
+    }
+    const requirement =
+      askRequirements.find((candidate) => candidate.openQuestions?.trim()) ?? askRequirements[0];
+    setAsking({ requirementId: requirement?.id ?? null });
+    setBody(`Could you clarify:\n${requirement?.openQuestions?.trim() || questions}`);
     composer.current?.focus();
     composer.current?.scrollIntoView({ block: "center", behavior: "smooth" });
+  }
+
+  function askAbout(requirementId: string) {
+    const requirement = askRequirements.find((candidate) => candidate.id === requirementId);
+    setAsking({ requirementId });
+    if (requirement?.openQuestions?.trim()) setBody(`Could you clarify:\n${requirement.openQuestions.trim()}`);
   }
   const [posting, setPosting] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -159,7 +189,7 @@ export function CommentThread({
     if (!trimmed && answerFiles.length === 0) return;
     setSendingAnswer(true);
     try {
-      await api.post(`/api/test-cases/${testCaseId}/comments`, commentPayload(trimmed, answerFiles, questionId));
+      await api.post(`/api/test-cases/${testCaseId}/comments`, commentPayload(trimmed, answerFiles, { replyToId: questionId }));
       setAnswer("");
       setAnswerFiles([]);
       setAnswering(null);
@@ -176,11 +206,28 @@ export function CommentThread({
     const trimmed = body.trim();
     if (!trimmed && files.length === 0) return;
 
+    if (askingOn && files.length > 0) {
+      toast.error("A question on a requirement can't carry files — remove them, or post them as a comment.");
+      return;
+    }
+
     setPosting(true);
     try {
-      await api.post(`/api/test-cases/${testCaseId}/comments`, commentPayload(trimmed, files));
+      if (askingOn && askOn) {
+        await api.post(`/api/projects/${askOn.projectId}/po-questions`, {
+          requirementId: askingOn.id,
+          body: trimmed,
+        });
+      } else {
+        await api.post(
+          `/api/test-cases/${testCaseId}/comments`,
+          commentPayload(trimmed, files, { question: Boolean(asking) }),
+        );
+      }
+      if (asking) toast.success("Asked — the PO is notified");
       setBody("");
       setFiles([]);
+      setAsking(null);
       router.refresh();
     } catch (error) {
       toast.error(errorMessage(error));
@@ -410,6 +457,47 @@ export function CommentThread({
 
         {canComment && (
           <div className="space-y-2 border-t pt-4">
+            {asking && (
+              // A question, not a comment: the PO's answer can be resolved
+              // and put into the case.
+              <div className="flex flex-wrap items-center gap-1.5 rounded-md border border-status-blocked/30 bg-status-blocked/5 py-1 pl-2 pr-1 text-xs">
+                <MessageCircleQuestion className="size-3.5 text-status-blocked" aria-hidden />
+                <span className="font-medium">Asking the PO</span>
+                {askingOn ? (
+                  <>
+                    <span className="text-muted-foreground">about requirement</span>
+                    {askRequirements.length > 1 ? (
+                      <Select value={askingOn.id} onValueChange={askAbout} disabled={posting}>
+                        <SelectTrigger className="h-6 w-auto gap-1 px-2 font-mono text-xs" aria-label="Requirement">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {askRequirements.map((requirement) => (
+                            <SelectItem key={requirement.id} value={requirement.id} className="font-mono text-xs">
+                              {requirement.code}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    ) : (
+                      <span className="font-mono">{askingOn.code}</span>
+                    )}
+                  </>
+                ) : (
+                  <span className="text-muted-foreground">about this test case</span>
+                )}
+                <button
+                  type="button"
+                  className="ml-auto rounded p-0.5 text-muted-foreground hover:text-foreground disabled:opacity-50"
+                  disabled={posting}
+                  aria-label="Post as a comment instead"
+                  title="Post as a comment instead"
+                  onClick={() => setAsking(null)}
+                >
+                  <X className="size-3.5" />
+                </button>
+              </div>
+            )}
             <Textarea
               ref={composer}
               rows={3}
@@ -419,12 +507,17 @@ export function CommentThread({
                 const pasted = pastedFiles(event);
                 if (pasted.length) setFiles(addFiles(files, pasted));
               }}
-              placeholder="Write a comment…"
-              aria-label="Write a comment"
+              placeholder={asking ? "Write your question for the PO…" : "Write a comment…"}
+              aria-label={asking ? "Write your question for the PO" : "Write a comment"}
             />
             <PendingFiles files={files} onChange={setFiles} disabled={posting} />
             <div className="flex items-center justify-between gap-2">
-              <AttachButton files={files} onChange={setFiles} disabled={posting} />
+              {askingOn ? (
+                // A requirement's questions are text only.
+                <span />
+              ) : (
+                <AttachButton files={files} onChange={setFiles} disabled={posting} />
+              )}
               <Button
                 size="sm"
                 onClick={handlePost}
@@ -435,7 +528,7 @@ export function CommentThread({
                 ) : (
                   <Send className="mr-2 size-4" />
                 )}
-                Post comment
+                {asking ? "Ask the PO" : "Post comment"}
               </Button>
             </div>
           </div>

@@ -50,6 +50,8 @@ const postInclude = {
 /**
  * Post to a case's discussion — kept to one box:
  *
+ *  - A question for the PO (`question`) goes to the same people as a
+ *    comment; the PO's reply to it is its answer.
  *  - A new comment goes to the project's product owner — or, for a project
  *    without one yet, to every active admin. One from an admin goes the
  *    other way, to the people working on the case (see `workingOn`).
@@ -84,16 +86,24 @@ export async function postComment(
     : testCase.project.productOwnerId
       ? [testCase.project.productOwnerId]
       : (await listAdmins()).map((admin) => admin.id);
+  // A question is for the PO: an admin is the one who answers, not asks.
+  const question = Boolean(input.question) && !isAdmin(author.role);
   const saved = await withFiles(testCase.projectId, files, (attachments) => prisma.$transaction(async (tx) => {
     const comment = await tx.comment.create({
-      data: { testCaseId, authorId: author.id, body: input.body, attachments: { create: attachments } },
+      data: {
+        testCaseId,
+        authorId: author.id,
+        body: input.body,
+        kind: question ? "QUESTION" : "COMMENT",
+        attachments: { create: attachments },
+      },
       include: postInclude,
     });
     await tx.notification.createMany({
       data: recipients
         .filter((id) => id !== author.id)
         .map((recipientId) => ({
-          kind: "COMMENT_POSTED" as const,
+          kind: question ? ("QUESTION_ASKED" as const) : ("COMMENT_POSTED" as const),
           recipientId,
           actorId: author.id,
           testCaseId,

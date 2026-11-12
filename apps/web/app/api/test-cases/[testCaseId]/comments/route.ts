@@ -42,6 +42,7 @@ export const POST = route<Ctx>(
     const input = (files.length ? commentWithFilesSchema : commentSchema).parse({
       body: form.get("body") ?? "",
       replyToId: form.get("replyToId") ?? undefined,
+      question: form.get("question") === "true" || undefined,
     });
     const prepared = await prepareCommentFiles(files);
     return ok(await postComment(testCaseId, user, input, prepared), 201);

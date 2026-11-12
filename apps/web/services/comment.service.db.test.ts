@@ -25,7 +25,7 @@ async function setUp() {
   return { project, module, testCase, qa, dev, po, otherPo };
 }
 
-const notified = async (kind: "COMMENT_POSTED" | "COMMENT_REPLIED" | "QUESTION_ANSWERED") =>
+const notified = async (kind: "COMMENT_POSTED" | "COMMENT_REPLIED" | "QUESTION_ANSWERED" | "QUESTION_ASKED") =>
   (await prisma.notification.findMany({ where: { kind }, select: { recipientId: true } }))
     .map((n) => n.recipientId)
     .sort();
@@ -94,5 +94,25 @@ describe("posting to a case's discussion", () => {
     const other = await createTestCase(project.id, module.id, "TC-2");
     const root = await post(other.id, qa, { body: "Elsewhere" });
     await expect(post(testCase.id, qa, { body: "Hi", replyToId: root.id })).rejects.toThrow(/Comment/);
+  });
+});
+
+describe("asking the PO on a case", () => {
+  it("posts a question the PO's reply answers", async () => {
+    const { testCase, qa, po } = await setUp();
+    const question = await post(testCase.id, qa, { body: "Could you clarify:\n- Max length?", question: true });
+    expect(question.kind).toBe("QUESTION");
+    expect(await notified("QUESTION_ASKED")).toEqual([po.id]);
+
+    const answer = await post(testCase.id, po, { body: "50 characters.", replyToId: question.id });
+    expect(answer.kind).toBe("ANSWER");
+    const asked = await prisma.comment.findUniqueOrThrow({ where: { id: question.id } });
+    expect(asked.answeredAt).not.toBeNull();
+  });
+
+  it("keeps an admin's post a comment: the PO answers, not asks", async () => {
+    const { testCase, po } = await setUp();
+    const comment = await post(testCase.id, po, { body: "Note", question: true });
+    expect(comment.kind).toBe("COMMENT");
   });
 });
