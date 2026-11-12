@@ -220,6 +220,51 @@ containers stay the same (`name: we-testcase-ms` in `docker-compose.prod.yml`).
 
 ---
 
+## Telegram: two bots
+
+| Bot | Posts | Reads |
+| --- | --- | --- |
+| App | PO questions, PO answers, comments, requirements waiting on the PO | `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` |
+| Deploy | ✅ / ❌ after every CI deploy | `DEPLOY_TELEGRAM_BOT_TOKEN` / `DEPLOY_TELEGRAM_CHAT_ID` |
+
+Separate bots, and usually separate chats: build results stay out of the group
+QA works in, and either can be re-pointed or revoked without touching the
+other. Nothing falls back from one pair to the other — sharing a bot is what
+let the two drift apart unnoticed.
+
+The app reads its pair from `.env.production` only. The deploy script takes
+its pair from the environment first (GitHub repository secrets of the same
+names) and from `.env.production` otherwise, so either place works:
+
+```ini
+# .env.production on the Mac mini
+TELEGRAM_BOT_TOKEN="123456:ABC…"          # @BotFather, app bot
+TELEGRAM_CHAT_ID="-1001234567"            # the QA group
+
+DEPLOY_TELEGRAM_BOT_TOKEN="987654:XYZ…"   # @BotFather, a second bot
+DEPLOY_TELEGRAM_CHAT_ID="-1009876543"     # a build channel
+```
+
+Add each bot to its chat first, then read the chat id from
+`https://api.telegram.org/bot<token>/getUpdates`.
+
+### When a notification does not arrive
+
+`deploy/scripts/notify-deploy-telegram.sh` prints what Telegram said:
+
+```
+Telegram refused the deploy notification: chat not found
+Check DEPLOY_TELEGRAM_CHAT_ID, and that the deploy bot is in that chat.
+```
+
+The step this replaced ended at a bare `curl` with no `--fail` and nothing
+reading the reply, so a refusal exited 0 and the step went green having sent
+nothing. That is how deploy notices were missing for days while the workflow
+reported success. A notification still never fails a deploy — it reports and
+exits 0.
+
+---
+
 ## Day-to-day
 
 | Task | Command |

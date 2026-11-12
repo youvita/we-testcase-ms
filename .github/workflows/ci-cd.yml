@@ -94,39 +94,20 @@ jobs:
           DEPLOY_ENV_FILE: ${{ vars.DEPLOY_ENV_FILE }}
         run: ./deploy/scripts/ci-deploy.sh
 
-      - name: Notify Telegram
+      # The deploy bot, not the app's. The app posts comments and PO
+      # questions on TELEGRAM_*; this posts build results on DEPLOY_TELEGRAM_*,
+      # so one can be re-pointed or revoked without touching the other.
+      # Values come from repository secrets, or from .env.production on the
+      # deploy host when the secrets are unset.
+      - name: Notify Telegram (deploy bot)
         if: always()
         env:
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          DEPLOY_TELEGRAM_BOT_TOKEN: ${{ secrets.DEPLOY_TELEGRAM_BOT_TOKEN }}
+          DEPLOY_TELEGRAM_CHAT_ID: ${{ secrets.DEPLOY_TELEGRAM_CHAT_ID }}
+          DEPLOY_ENV_FILE: ${{ vars.DEPLOY_ENV_FILE }}
           JOB_STATUS: ${{ job.status }}
           REPO_NAME: ${{ github.event.repository.name }}
           BRANCH: ${{ github.ref_name }}
           ACTOR: ${{ github.actor }}
           COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
-        run: |
-          if [ -z "$TELEGRAM_BOT_TOKEN" ] || [ -z "$TELEGRAM_CHAT_ID" ]; then
-            echo "Telegram secrets not configured; skipping notification."
-            exit 0
-          fi
-
-          if [ "$JOB_STATUS" = "success" ]; then
-            STATUS="✅ Deployment successful"
-          else
-            STATUS="❌ Deployment failed"
-          fi
-
-          COMMIT_LINE="${COMMIT_MESSAGE%%$'\n'*}"
-
-          MESSAGE="$STATUS
-
-          Project: $REPO_NAME
-          Branch: $BRANCH
-          By: $ACTOR
-          Commit: ${COMMIT_LINE:-(manual run)}"
-
-          curl -sS -X POST \
-            "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
-            -d chat_id="${TELEGRAM_CHAT_ID}" \
-            -d disable_web_page_preview=true \
-            --data-urlencode text="$MESSAGE"
+        run: ./deploy/scripts/notify-deploy-telegram.sh
