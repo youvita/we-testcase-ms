@@ -360,7 +360,14 @@ export const poQuestionSchema = questionSchema
 export type PoQuestionInput = z.input<typeof poQuestionSchema>;
 
 /** Settle a question for the PO, or open it again. */
-export const poQuestionResolveSchema = z.object({ resolved: z.boolean() });
+export const poQuestionResolveSchema = z.object({
+  resolved: z.boolean(),
+  /**
+   * On resolving: open questions it settled, to take off its requirement's
+   * (or draft's) list — they no longer wait on the PO.
+   */
+  removeOpenQuestions: z.array(z.string().trim().min(1).max(2000)).max(50).optional(),
+});
 
 /** Mark notifications read: these ids, or every one when `ids` is absent. */
 export const notificationsReadSchema = z.object({

@@ -78,6 +78,8 @@ import {
 import { api, errorMessage } from "@/utils/api-client";
 import { formatDateTime } from "@/utils/format";
 import { OPEN_QUESTIONS_FOR_PO, OPEN_QUESTIONS_FOR_QA } from "@/components/shared/open-questions";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { questionLines } from "@/utils/open-questions";
 
 import {
   ChangeBadge,
@@ -693,12 +695,7 @@ export function RequirementsPanel({
                             </span>
                             <ChangeBadge requirement={req} />
                             {req.status === "ACTIVE" && <VerifiedMark requirement={req} />}
-                            {req.openQuestions && (
-                              <CircleHelp
-                                className="mt-0.5 size-4 shrink-0 text-status-blocked"
-                                aria-label="Has open questions"
-                              />
-                            )}
+                            {req.openQuestions && <OpenQuestionCount text={req.openQuestions} />}
                             <PoQuestionBadge questions={questionsFor(req.id)} />
                           </div>
                           <p className="text-xs text-muted-foreground">
@@ -766,7 +763,7 @@ export function RequirementsPanel({
                               text={req.openQuestions}
                               className="text-status-blocked"
                             />
-                            <PoQuestions questions={questionsFor(req.id)} po={po} />
+                            <PoQuestions questions={questionsFor(req.id)} po={po} openQuestions={req.openQuestions} />
                             {po.canAsk && (
                               <AskPoDialog
                                 ask={{ url: `/api/projects/${projectId}/po-questions`, extra: { requirementId: req.id } }}
@@ -1285,5 +1282,26 @@ function FolderRow({
         </button>
       </TableCell>
     </TableRow>
+  );
+}
+
+/** How many open questions a requirement still lists, with what that means on hover. */
+function OpenQuestionCount({ text }: { text: string }) {
+  const count = Math.max(questionLines(text).length, 1);
+  const label = `${count} open question${count === 1 ? "" : "s"} — waiting on the PO`;
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span
+          tabIndex={0}
+          className="inline-flex shrink-0 items-center gap-1 text-xs font-medium text-status-blocked"
+          aria-label={label}
+        >
+          <CircleHelp className="size-3.5" aria-hidden />
+          {count} open
+        </span>
+      </TooltipTrigger>
+      <TooltipContent>{label}</TooltipContent>
+    </Tooltip>
   );
 }

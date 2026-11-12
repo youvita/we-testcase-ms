@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { addQuestions, distributeQuestions, mergeQuestions, questionLines, splitOpenQuestions } from "./open-questions";
+import { addQuestions, askedQuestions, distributeQuestions, withoutQuestions, mergeQuestions, questionLines, splitOpenQuestions } from "./open-questions";
 
 describe("splitOpenQuestions", () => {
   it("moves the sentence naming a gap, and keeps the checks", () => {
@@ -90,5 +90,26 @@ describe("one home for each open question", () => {
     expect(addQuestions("Is it paginated?", "- is it paginated\n- Empty state?")).toBe("Is it paginated?\n- Empty state?");
     expect(addQuestions(null, "- Empty state?")).toBe("- Empty state?");
     expect(addQuestions("- Kept", null)).toBe("- Kept");
+  });
+});
+
+describe("open questions a question to the PO settled", () => {
+  const open = "- Format, length and allowed characters of Biller ID are not specified\n- Is the list sortable?";
+  const asked =
+    "Could you clarify:\n1. Format, length and allowed characters of Biller ID are not specified?\n2. Should the Check button turn blue?";
+
+  it("finds the open questions a question asked", () => {
+    expect(askedQuestions(open, asked)).toEqual([
+      "Format, length and allowed characters of Biller ID are not specified",
+    ]);
+    expect(askedQuestions(null, asked)).toEqual([]);
+  });
+
+  it("takes them off the list", () => {
+    expect(withoutQuestions(open, ["format, length and allowed characters of biller id are not specified?"])).toBe(
+      "- Is the list sortable?",
+    );
+    expect(withoutQuestions("- Only one?", ["Only one"])).toBeNull();
+    expect(withoutQuestions("Kept as written", ["Other"])).toBe("Kept as written");
   });
 });

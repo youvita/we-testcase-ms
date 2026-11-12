@@ -5,6 +5,7 @@ import { badRequest, forbidden, notFound } from "@/lib/api";
 import { isAdmin } from "@/lib/permissions";
 import type { Role } from "@/lib/constants";
 import type { CommentWithAuthor } from "@/types";
+import { withoutQuestions } from "@/utils/open-questions";
 import { saveCaseQuestions } from "./case-questions.service";
 import type {
   NotificationDto,
@@ -218,11 +219,14 @@ export async function listPoQuestions(projectId: string): Promise<PoQuestionDto[
  * requirement, in the order of their codes.
  */
 export async function listRequirementQuestionsForCase(testCaseId: string): Promise<
-  { requirement: { id: string; code: string; title: string }; questions: PoQuestionDto[] }[]
+  {
+    requirement: { id: string; code: string; title: string; openQuestions: string | null };
+    questions: PoQuestionDto[];
+  }[]
 > {
   const links = await prisma.testCaseRequirement.findMany({
     where: { testCaseId },
-    select: { requirement: { select: { id: true, code: true, title: true } } },
+    select: { requirement: { select: { id: true, code: true, title: true, openQuestions: true } } },
     orderBy: { requirement: { code: "asc" } },
   });
   if (links.length === 0) return [];
@@ -352,13 +356,25 @@ export async function replyToPoQuestion(
   });
 }
 
-/** Settle a question, or open it again: the asker, or an admin. */
+/**
+ * Settle a question, or open it again: the asker, or an admin. Settling can
+ * take the open questions it answered off its requirement's — or pending
+ * draft's — list, so the case no longer shows them as waiting on the PO.
+ */
 export async function resolvePoQuestion(
   questionId: string,
   actor: { id: string; role: Role },
   resolved: boolean,
+  removeOpenQuestions: string[] = [],
 ): Promise<PoQuestionDto> {
-  const question = await prisma.poQuestion.findUnique({ where: { id: questionId }, select: { askerId: true } });
+  const question = await prisma.poQuestion.findUnique({
+    where: { id: questionId },
+    select: {
+      askerId: true,
+      requirement: { select: { id: true, openQuestions: true } },
+      draft: { select: { id: true, status: true, openQuestions: true } },
+    },
+  });
   if (!question) throw notFound("Question");
   if (question.askerId !== actor.id && !isAdmin(actor.role)) {
     throw forbidden("Only the person who asked, or an admin, can settle a question");
@@ -369,6 +385,19 @@ export async function resolvePoQuestion(
       data: resolved ? { resolvedAt: new Date(), resolvedById: actor.id } : { resolvedAt: null, resolvedById: null },
       include: poQuestionInclude,
     });
+    if (resolved && removeOpenQuestions.length) {
+      if (question.requirement) {
+        const openQuestions = withoutQuestions(question.requirement.openQuestions, removeOpenQuestions);
+        if (openQuestions !== question.requirement.openQuestions) {
+          await tx.requirement.update({ where: { id: question.requirement.id }, data: { openQuestions } });
+        }
+      } else if (question.draft?.status === "PENDING") {
+        const openQuestions = withoutQuestions(question.draft.openQuestions, removeOpenQuestions);
+        if (openQuestions !== question.draft.openQuestions) {
+          await tx.testCaseDraft.update({ where: { id: question.draft.id }, data: { openQuestions } });
+        }
+      }
+    }
     if (resolved) {
       // Nothing left to act on.
       await tx.notification.updateMany({

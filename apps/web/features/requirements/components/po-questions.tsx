@@ -12,6 +12,8 @@ import { api, errorMessage } from "@/utils/api-client";
 import { formatRelative, initials } from "@/utils/format";
 import type { PoQuestionDto } from "@wetestcase/dto";
 
+import { ResolveQuestionButton } from "./resolve-question-button";
+
 /** What the Requirements page needs to ask and answer questions. */
 export type PoContext = {
   /** Every active admin — the people who can answer. */
@@ -38,23 +40,34 @@ const STATUS = {
 export function PoQuestions({
   questions,
   po,
+  openQuestions = null,
   className,
 }: {
   questions: PoQuestionDto[];
   po: PoContext;
+  /** The open questions of what they were asked about: resolving can take those settled off. */
+  openQuestions?: string | null;
   className?: string;
 }) {
   if (!questions.length) return null;
   return (
     <ul className={cn("divide-y", className)}>
       {questions.map((question) => (
-        <PoQuestionThread key={question.id} question={question} po={po} />
+        <PoQuestionThread key={question.id} question={question} po={po} openQuestions={openQuestions} />
       ))}
     </ul>
   );
 }
 
-function PoQuestionThread({ question, po }: { question: PoQuestionDto; po: PoContext }) {
+function PoQuestionThread({
+  question,
+  po,
+  openQuestions,
+}: {
+  question: PoQuestionDto;
+  po: PoContext;
+  openQuestions: string | null;
+}) {
   const router = useRouter();
   const [replying, setReplying] = useState(false);
   const [draft, setDraft] = useState("");
@@ -80,20 +93,6 @@ function PoQuestionThread({ question, po }: { question: PoQuestionDto; po: PoCon
     }
   }
 
-  async function settle(next: boolean) {
-    setBusy("resolve");
-    try {
-      await api.post(`/api/po-questions/${question.id}/resolve`, { resolved: next });
-      setShowResolved(false);
-      setReplying(false);
-      router.refresh();
-    } catch (error) {
-      toast.error(errorMessage(error));
-    } finally {
-      setBusy(null);
-    }
-  }
-
   return (
     <li className="py-3 text-sm first:pt-0 last:pb-0">
       <Message
@@ -109,14 +108,11 @@ function PoQuestionThread({ question, po }: { question: PoQuestionDto; po: PoCon
         }
         action={
           canSettle && (
-            <button
-              type="button"
+            <ResolveQuestionButton
+              question={question}
+              openQuestions={openQuestions}
               className="text-xs text-muted-foreground hover:text-foreground disabled:opacity-50"
-              disabled={busy !== null}
-              onClick={() => void settle(!resolved)}
-            >
-              {busy === "resolve" ? "…" : resolved ? "Reopen" : "Mark resolved"}
-            </button>
+            />
           )
         }
         body={question.body}

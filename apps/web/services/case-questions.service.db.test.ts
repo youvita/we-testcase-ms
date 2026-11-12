@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { prisma } from "@/lib/prisma";
 import { createProject, createTestCase, resetDatabase } from "@/test/db";
 
-import { settleAnswer } from "./clarification.service";
+import { resolvePoQuestion, settleAnswer } from "./clarification.service";
 import { reviewDrafts } from "./test-case-draft.service";
 import { updateCaseText, updateTestCase } from "./test-case.service";
 
@@ -87,5 +87,25 @@ describe("a test case's open questions, kept in one place", () => {
       "- Is the list paginated or sortable?\n- What is shown when no account is linked?\n- Is there a call to action?",
     );
     expect(await caseQuestionsOf(testCaseId)).toBeNull();
+  });
+});
+
+describe("resolving a question for the PO", () => {
+  it("can take the open questions it settled off its requirement", async () => {
+    const { project, owner, requirement } = await setUp();
+    const asked = await prisma.poQuestion.create({
+      data: {
+        projectId: project.id,
+        requirementId: requirement.id,
+        askerId: owner.id,
+        body: "Could you clarify:\n- Is the list paginated or sortable?",
+      },
+    });
+    await resolvePoQuestion(asked.id, { id: owner.id, role: "QA" }, true, ["Is the list paginated or sortable?"]);
+    expect(await questionsOf(requirement.id)).toBe("- What is shown when no account is linked?");
+
+    // Reopening leaves the list alone.
+    await resolvePoQuestion(asked.id, { id: owner.id, role: "QA" }, false, ["What is shown when no account is linked?"]);
+    expect(await questionsOf(requirement.id)).toBe("- What is shown when no account is linked?");
   });
 });

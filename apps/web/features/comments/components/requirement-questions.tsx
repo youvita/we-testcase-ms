@@ -16,9 +16,10 @@ import type { PoQuestionDto } from "@wetestcase/dto";
 
 import type { CaseText } from "./apply-answer-dialog";
 import { CaseUpdatePrompt } from "./case-update-prompt";
+import { ResolveQuestionButton } from "@/features/requirements/components/resolve-question-button";
 
 export type RequirementQuestionGroup = {
-  requirement: { id: string; code: string; title: string };
+  requirement: { id: string; code: string; title: string; openQuestions: string | null };
   questions: PoQuestionDto[];
 };
 
@@ -38,12 +39,15 @@ export function RequirementQuestionItem({
   testCaseId,
   caseText,
   question,
+  openQuestions,
   po,
 }: {
   testCaseId: string;
   /** The case's text, for those who edit cases: then a PO answer offers to update it. */
   caseText?: CaseText;
   question: PoQuestionDto;
+  /** Its requirement's open questions: resolving can take those it settled off. */
+  openQuestions: string | null;
   po: PoContext;
 }) {
   const router = useRouter();
@@ -69,18 +73,6 @@ export function RequirementQuestionItem({
     }
   }
 
-  async function settle(next: boolean) {
-    setBusy("resolve");
-    try {
-      await api.post(`/api/po-questions/${question.id}/resolve`, { resolved: next });
-      router.refresh();
-    } catch (error) {
-      toast.error(errorMessage(error));
-    } finally {
-      setBusy(null);
-    }
-  }
-
   return (
     <>
       <li className="flex items-start gap-3">
@@ -92,16 +84,7 @@ export function RequirementQuestionItem({
               {" · QA · "}
               {formatDateTime(question.createdAt)}
             </p>
-            {canSettle && (
-              <button
-                type="button"
-                className="shrink-0 text-xs text-muted-foreground hover:text-foreground disabled:opacity-50"
-                disabled={busy !== null}
-                onClick={() => void settle(!resolved)}
-              >
-                {busy === "resolve" ? "…" : resolved ? "Reopen" : "Mark resolved"}
-              </button>
-            )}
+            {canSettle && <ResolveQuestionButton question={question} openQuestions={openQuestions} />}
           </div>
           <p className={cn("preserve-lines text-sm", resolved && "text-muted-foreground")}>{question.body}</p>
           <p className="flex flex-wrap items-center gap-x-1.5 text-xs text-muted-foreground">

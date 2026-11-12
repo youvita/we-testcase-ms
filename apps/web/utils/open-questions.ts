@@ -196,3 +196,24 @@ export function keptOnNote(keptOn: string[]): string | null {
   if (keptOn.length === 0) return null;
   return `Kept on requirement${keptOn.length > 1 ? "s" : ""} ${keptOn.join(", ")} — shared with every test case that verifies ${keptOn.length > 1 ? "them" : "it"}.`;
 }
+
+/**
+ * The questions of an open-questions list that a question put to the PO
+ * asked — its lines name them, as "Ask the PO" filled them in.
+ */
+export function askedQuestions(open: string | null | undefined, asked: string): string[] {
+  const askedKeys = questionLines(asked).map(sameQuestion).filter(Boolean);
+  return questionLines(open).filter((question) => {
+    const key = sameQuestion(question);
+    return Boolean(key) && askedKeys.some((line) => line === key || line.includes(key) || key.includes(line));
+  });
+}
+
+/** A list without these questions; null once none is left. */
+export function withoutQuestions(text: string | null | undefined, remove: string[]): string | null {
+  const gone = new Set(remove.map(sameQuestion));
+  const lines = questionLines(text);
+  const left = lines.filter((question) => !gone.has(sameQuestion(question)));
+  if (left.length === lines.length) return text?.trim() ? text : null;
+  return asList(left);
+}

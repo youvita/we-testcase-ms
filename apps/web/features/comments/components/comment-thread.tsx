@@ -96,12 +96,13 @@ export function CommentThread({
   const askedLast = asked.slice(next);
   const renderAsked = (items: typeof asked) =>
     po
-      ? items.map(({ question }) => (
+      ? items.map(({ requirement, question }) => (
           <RequirementQuestionItem
             key={question.id}
             testCaseId={testCaseId}
             caseText={caseText}
             question={question}
+            openQuestions={requirement.openQuestions}
             po={po}
           />
         ))

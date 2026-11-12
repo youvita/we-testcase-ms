@@ -137,7 +137,9 @@ Rules:
 - Change only what the answer affects. Keep everything else word for word, in the same style and format (numbered steps stay numbered).
 - Use the PO's exact values: messages, limits, formats, rules.
 - Remove from the open questions each question this conversation settles; keep the ones it does not.
-- Do not invent behaviour the PO did not confirm. If the answer is unclear or does not settle the question, leave the text as it is, keep the question open, and say so in the summary.
+- "Not defined", "no rule", "any value is fine" or "not in scope" settle a question too: the PO has decided there is no rule. Remove the question, and where it helps the tester, state the decision in the case (e.g. "No format or length rule applies to the Biller ID (confirmed by the PO).").
+- A question stays open only when the PO has not decided yet ("to be confirmed", "we will check") or did not answer it.
+- Do not invent behaviour the PO did not confirm. If the answer is unclear, leave the text as it is, keep the question open, and say so in the summary.
 - A case checks one behaviour. If the answer adds behaviour this case cannot cover (a new state, a new rule), do not cram it in: describe it in newCaseIdea as a test case to add.
 - Write in the language the case is written in.
 

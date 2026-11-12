@@ -625,7 +625,7 @@ function DraftQuestions({
       ) : (
         ask
       )}
-      <PoQuestions questions={questions} po={po} />
+      <PoQuestions questions={questions} po={po} openQuestions={draft.openQuestions} />
     </div>
   );
 }
