@@ -22,6 +22,11 @@ if ! docker info >/dev/null 2>&1; then
   exit 1
 fi
 
+# Every deploy path funnels through here (ci-deploy.sh and deploy.sh both call
+# `npm run docker:stack:up`), so this is the one place worth checking that the
+# checkout is not older than what is already live.
+"${ROOT}/deploy/scripts/check-up-to-date.sh"
+
 COMPOSE=(docker compose -f docker-compose.prod.yml --env-file .env.production)
 
 echo "==> Redeploying app only (tunnel is not touched)"

@@ -220,6 +220,38 @@ containers stay the same (`name: we-testcase-ms` in `docker-compose.prod.yml`).
 
 ---
 
+## Every deploy checks the checkout first
+
+`npm run docker:stack:up` refuses to build when the working tree is missing
+commits from `main`:
+
+```
+Refusing to deploy: this checkout is 44 commit(s) behind origin/main.
+```
+
+Every deploy path funnels through that script — `ci-deploy.sh` and `deploy.sh`
+both call it — so the check runs on the CI deploy as well as a manual one.
+
+The rule is that HEAD *contains* `origin/main`, not that it *is* `origin/main`,
+so deploying a feature branch that is up to date is unaffected. The check only
+refuses when it can prove the checkout is behind: no git, no remote, an
+unreachable origin or a shallow clone it cannot reason about all warn and let
+the deploy through.
+
+Rolling back on purpose:
+
+```bash
+ALLOW_STALE_DEPLOY=1 npm run docker:stack:up
+```
+
+It exists because of 12 November 2026: a deploy ran from a branch forty-four
+commits behind `main`, carrying a migration that created an enum `main` had
+already created. Prisma recorded the failure, `migrate deploy` then refused to
+run at all, and the app sat in a restart loop until the row was marked rolled
+back. Nothing in the deploy path had mentioned that the checkout was stale.
+
+---
+
 ## Day-to-day
 
 | Task | Command |
