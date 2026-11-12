@@ -207,6 +207,26 @@ That installs a user LaunchAgent labeled `macmini`. Keep Docker Desktop running.
 
 Secrets stay on disk. Do not put `.env.production` in GitHub secrets.
 
+### Deploy notifications (Telegram)
+
+Every deploy reports to Telegram, pass or fail. Both values live in
+`.env.production` on this Mac, beside the other production secrets, so nothing
+has to be stored in GitHub:
+
+```ini
+TELEGRAM_BOT_TOKEN="123456:ABC…"   # @BotFather
+TELEGRAM_CHAT_ID="-1001234567"     # negative for a group
+```
+
+Get the chat id by messaging the bot (or adding it to the group) and reading
+`https://api.telegram.org/bot<token>/getUpdates`.
+
+`deploy/scripts/notify-telegram.sh` reads them, searching the same places
+`ci-deploy.sh` does, so it still works when the deploy failed before the env
+file was linked into the CI checkout. Repository secrets of the same name win
+when set. With neither, it logs that it is not configured and exits 0 — a
+missing notification never turns a good deploy red.
+
 ### After that
 
 | Task | How |
