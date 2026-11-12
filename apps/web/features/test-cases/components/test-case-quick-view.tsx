@@ -2,17 +2,16 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { ChevronLeft, ChevronRight, ExternalLink, Loader2, Pencil, TriangleAlert } from "lucide-react";
+import { ChevronLeft, ChevronRight, CircleHelp, ExternalLink, Loader2, Pencil, TriangleAlert } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { OpenQuestions } from "@/components/shared/open-questions";
 import { PlatformBadge, PriorityBadge, TestTypeBadge } from "@/components/shared/priority-badge";
 import { StatusBadge } from "@/components/shared/status-badge";
 import type { ExecutionStatus, TestCaseListItem } from "@/types";
 import { api, errorMessage } from "@/utils/api-client";
 import { formatDateTime } from "@/utils/format";
-import { caseQuestions, keptOnNote, splitOpenQuestions } from "@/utils/open-questions";
+import { caseQuestions, questionLines, splitOpenQuestions } from "@/utils/open-questions";
 
 /** The parts of GET /api/test-cases/:id the quick view shows, as JSON gives them. */
 type QuickCase = {
@@ -99,6 +98,7 @@ export function TestCaseQuickView({
   const text = detail ? splitOpenQuestions(detail) : null;
   const questions =
     detail && text ? caseQuestions(text.openQuestions, detail.requirements.map(({ requirement }) => requirement)) : null;
+  const openCount = questionLines(questions?.text).length;
   const latest = detail?.executions[0];
   const changed = detail?.requirements.filter((link) => link.requirementChangedAt) ?? [];
   const fullPage = item ? `/projects/${projectId}/test-cases/${item.id}` : "#";
@@ -156,11 +156,24 @@ export function TestCaseQuickView({
                     <>
                       <Field label="Preconditions" value={text.preconditions} />
                       <Field label="Steps" value={text.steps} />
-                      <Field label="Expected result" value={text.expectedResult} />
+                      <Field
+                        label="Expected result"
+                        value={text.expectedResult}
+                        badge={
+                          openCount > 0 && (
+                            // As on the full page: the questions are kept in its
+                            // discussion; the check is not final while any is open.
+                            <Link
+                              href={`${fullPage}#open-questions`}
+                              className="inline-flex items-center gap-1 rounded-full bg-status-blocked/10 px-2 py-0.5 normal-case tracking-normal text-status-blocked hover:underline"
+                            >
+                              <CircleHelp className="size-3" aria-hidden />
+                              {openCount} open question{openCount === 1 ? "" : "s"}
+                            </Link>
+                          )
+                        }
+                      />
                     </>
-                  )}
-                  {questions?.text && (
-                    <OpenQuestions text={questions.text} note={keptOnNote(questions.keptOn)} />
                   )}
 
                   {detail.requirements.length > 0 && (
@@ -259,19 +272,30 @@ export function TestCaseQuickView({
   );
 }
 
-function Section({ label, children }: { label: string; children: React.ReactNode }) {
+function Section({ label, badge, children }: { label: string; badge?: React.ReactNode; children: React.ReactNode }) {
   return (
     <div className="space-y-1.5">
-      <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{label}</h3>
+      <h3 className="flex flex-wrap items-center gap-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+        {label}
+        {badge}
+      </h3>
       {children}
     </div>
   );
 }
 
-function Field({ label, value }: { label: string; value: string | null | undefined }) {
+function Field({
+  label,
+  value,
+  badge,
+}: {
+  label: string;
+  value: string | null | undefined;
+  badge?: React.ReactNode;
+}) {
   if (!value) return null;
   return (
-    <Section label={label}>
+    <Section label={label} badge={badge}>
       <p className="whitespace-pre-wrap">{value}</p>
     </Section>
   );
