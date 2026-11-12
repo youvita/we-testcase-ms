@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { prisma } from "@/lib/prisma";
 import { createProject, createTestCase, resetDatabase } from "@/test/db";
 
+import { setCaseQuestions } from "./case-questions.service";
 import { resolvePoQuestion, settleAnswer } from "./clarification.service";
 import { reviewDrafts } from "./test-case-draft.service";
 import { updateCaseText, updateTestCase } from "./test-case.service";
@@ -35,10 +36,23 @@ const questionsOf = async (requirementId: string) =>
 const caseQuestionsOf = async (testCaseId: string) =>
   (await prisma.testCase.findUniqueOrThrow({ where: { id: testCaseId } })).openQuestions;
 
-const edit = (testCaseId: string, moduleId: string, tcId: string, openQuestions: string) =>
-  updateTestCase(testCaseId, { moduleId, tcId, title: tcId, testType: "FUNCTIONAL", priority: "MEDIUM", openQuestions });
+const edit = (testCaseId: string, _moduleId: string, _tcId: string, openQuestions: string) =>
+  setCaseQuestions(testCaseId, openQuestions);
 
 describe("a test case's open questions, kept in one place", () => {
+  it("leaves them alone when the case's edit form is saved", async () => {
+    const { module, requirement, linked } = await setUp();
+    const before = await questionsOf(requirement.id);
+    await updateTestCase(linked.id, {
+      moduleId: module.id,
+      tcId: "TC-1",
+      title: "Renamed",
+      testType: "FUNCTIONAL",
+      priority: "MEDIUM",
+    });
+    expect(await questionsOf(requirement.id)).toBe(before);
+  });
+
   it("saves a verifying case's questions on its requirement, not on the case", async () => {
     const { module, requirement, linked } = await setUp();
     // QA settles one question and adds another, from the case's edit form.

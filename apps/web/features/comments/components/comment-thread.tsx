@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useState } from "react";
+import { Fragment, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { CornerDownRight, HelpCircle, Loader2, MessageSquare, Send, Trash2 } from "lucide-react";
 import { toast } from "sonner";
@@ -27,6 +27,7 @@ import type { PoContext } from "@/features/requirements/components/po-questions"
 
 import type { CaseText } from "./apply-answer-dialog";
 import { CaseUpdatePrompt } from "./case-update-prompt";
+import { OpenQuestionsPanel } from "./open-questions-panel";
 import { RequirementQuestionItem, type RequirementQuestionGroup } from "./requirement-questions";
 
 /**
@@ -47,6 +48,7 @@ export function CommentThread({
   caseText,
   requirementQuestions = [],
   po,
+  openQuestions,
 }: {
   testCaseId: string;
   comments: CommentWithAuthor[];
@@ -67,9 +69,19 @@ export function CommentThread({
   requirementQuestions?: RequirementQuestionGroup[];
   /** Who may ask and answer the requirement questions. */
   po?: PoContext;
+  /** The case's open questions, kept at the top of its discussion. */
+  openQuestions?: { text: string | null; note: string | null; canEdit: boolean };
 }) {
   const router = useRouter();
   const [body, setBody] = useState("");
+  const composer = useRef<HTMLTextAreaElement>(null);
+
+  /** Start a comment asking the PO the open questions. */
+  function askOpenQuestions(questions: string) {
+    setBody(`Could you clarify:\n${questions}`);
+    composer.current?.focus();
+    composer.current?.scrollIntoView({ block: "center", behavior: "smooth" });
+  }
   const [posting, setPosting] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   // The comment being replied to, and the reply.
@@ -197,6 +209,16 @@ export function CommentThread({
       </CardHeader>
 
       <CardContent className="space-y-4">
+        {openQuestions && (
+          <OpenQuestionsPanel
+            testCaseId={testCaseId}
+            text={openQuestions.text}
+            note={openQuestions.note}
+            canEdit={openQuestions.canEdit}
+            forPo={canAnswer}
+            onAsk={canComment && !canAnswer ? askOpenQuestions : undefined}
+          />
+        )}
         {total === 0 ? (
           <EmptyState
             icon={MessageSquare}
@@ -369,6 +391,7 @@ export function CommentThread({
         {canComment && (
           <div className="space-y-2 border-t pt-4">
             <Textarea
+              ref={composer}
               rows={3}
               value={body}
               onChange={(event) => setBody(event.target.value)}

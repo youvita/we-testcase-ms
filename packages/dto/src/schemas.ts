@@ -223,6 +223,9 @@ export const caseTextSchema = z.object({
 
 export type CaseTextInput = z.infer<typeof caseTextSchema>;
 
+/** A case's open questions, edited on their own. */
+export const caseOpenQuestionsSchema = z.object({ openQuestions: optionalText(4000) });
+
 export const settleAnswerSchema = z.object({
   update: caseTextSchema.optional(),
 });

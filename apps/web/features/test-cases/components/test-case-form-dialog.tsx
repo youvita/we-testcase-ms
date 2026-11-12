@@ -36,7 +36,6 @@ import {
   TEST_TYPE_LABELS,
 } from "@/lib/constants";
 import { testCaseSchema, type TestCaseInput } from "@/lib/validations";
-import { caseQuestions, keptOnNote, splitOpenQuestions } from "@/utils/open-questions";
 import { ApiError, api, errorMessage } from "@/utils/api-client";
 import type { Platform, SubModuleOption, TestCaseWithDetails } from "@/types";
 
@@ -80,8 +79,6 @@ export function TestCaseFormDialog({
   const router = useRouter();
   const isEdit = Boolean(testCaseId);
   const [loading, setLoading] = useState(false);
-  /** Where its open questions are kept: the requirements it verifies, if any. */
-  const [keptOn, setKeptOn] = useState<string[]>([]);
 
   /** Modules added from this dialog, before the page has been refreshed. */
   const [createdModules, setCreatedModules] = useState<ModuleOption[]>([]);
@@ -119,7 +116,6 @@ export function TestCaseFormDialog({
       preconditions: "",
       steps: "",
       expectedResult: "",
-      openQuestions: "",
       testType: "FUNCTIONAL",
       priority: "MEDIUM",
       platform: platforms[0] ?? "WEB",
@@ -141,7 +137,6 @@ export function TestCaseFormDialog({
         preconditions: "",
         steps: "",
         expectedResult: "",
-      openQuestions: "",
         testType: "FUNCTIONAL",
         priority: "MEDIUM",
         platform: platformsRef.current[0] ?? "WEB",
@@ -160,23 +155,17 @@ export function TestCaseFormDialog({
       .get<TestCaseWithDetails>(`/api/test-cases/${testCaseId}`)
       .then((testCase) => {
         if (cancelled) return;
-        // An older case's "(confirm with PO)" markers, split out to edit.
-        const text = splitOpenQuestions(testCase);
-        // One list: its requirements', with any of its own still to move there.
-        const questions = caseQuestions(
-          text.openQuestions,
-          testCase.requirements.map(({ requirement }) => requirement),
-        );
-        setKeptOn(questions.keptOn);
+        // As stored: its open questions are kept in the Discussion panel, so
+        // an older case's "(confirm with PO)" markers stay in its text here
+        // rather than being split off into a field this form does not have.
         reset({
           moduleId: testCase.moduleId,
           subModule: testCase.subModule ?? "",
           tcId: testCase.tcId,
           title: testCase.title,
-          preconditions: text.preconditions ?? "",
-          steps: text.steps ?? "",
-          expectedResult: text.expectedResult ?? "",
-          openQuestions: questions.text ?? "",
+          preconditions: testCase.preconditions ?? "",
+          steps: testCase.steps ?? "",
+          expectedResult: testCase.expectedResult ?? "",
           testType: testCase.testType,
           priority: testCase.priority,
           platform: testCase.platform,
@@ -543,21 +532,6 @@ export function TestCaseFormDialog({
                 placeholder="The user reaches the dashboard."
                 {...register("expectedResult")}
               />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="openQuestions">Open questions for the PO</Label>
-              <Textarea
-                id="openQuestions"
-                rows={2}
-                placeholder="- What exactly should the error message say?"
-                {...register("openQuestions")}
-              />
-              <p className="text-xs text-muted-foreground">
-                {isEdit && keptOn.length > 0
-                  ? keptOnNote(keptOn)
-                  : "What is still unclear, kept out of the expected result so it stays a check."}
-              </p>
             </div>
           </form>
         )}

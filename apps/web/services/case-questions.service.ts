@@ -1,4 +1,5 @@
-import type { Tx } from "@/lib/prisma";
+import { notFound } from "@/lib/api";
+import { prisma, type Tx } from "@/lib/prisma";
 import { addQuestions, distributeQuestions } from "@/utils/open-questions";
 
 /**
@@ -48,4 +49,18 @@ export async function addRequirementQuestions(tx: Tx, requirementId: string, tex
   if (openQuestions !== requirement.openQuestions) {
     await tx.requirement.update({ where: { id: requirementId }, data: { openQuestions } });
   }
+}
+
+/**
+ * Edit a case's open questions on their own — from the Discussion panel,
+ * where QA and the PO keep them. Saved where they are kept (see above).
+ */
+export async function setCaseQuestions(testCaseId: string, text: string | null | undefined) {
+  const testCase = await prisma.testCase.findUnique({ where: { id: testCaseId }, select: { id: true } });
+  if (!testCase) throw notFound("Test case");
+  await prisma.$transaction(async (tx) => {
+    const openQuestions = await saveCaseQuestions(tx, testCaseId, text);
+    await tx.testCase.update({ where: { id: testCaseId }, data: { openQuestions } });
+  });
+  return { saved: true };
 }

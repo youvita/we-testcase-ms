@@ -434,25 +434,23 @@ export async function updateTestCase(
     data: { requirementChangedAt: null },
   });
 
-  return prisma.$transaction(async (tx) =>
-    tx.testCase.update({
-      where: { id: testCaseId },
-      data: {
-        moduleId: mod.id,
-        subModule: input.subModule ?? null,
-        tcId,
-        title: input.title.trim(),
-        preconditions: input.preconditions ?? null,
-        steps: input.steps ?? null,
-        expectedResult: input.expectedResult ?? null,
-        // Kept on its requirements, when it verifies any.
-        openQuestions: await saveCaseQuestions(tx, testCaseId, input.openQuestions),
-        testType: input.testType ?? "FUNCTIONAL",
-        priority: input.priority ?? "MEDIUM",
-        platform,
-      },
-    }),
-  );
+  // Its open questions are not edited here: QA and the PO keep them in the
+  // Discussion panel (setCaseQuestions), where they are asked and answered.
+  return prisma.testCase.update({
+    where: { id: testCaseId },
+    data: {
+      moduleId: mod.id,
+      subModule: input.subModule ?? null,
+      tcId,
+      title: input.title.trim(),
+      preconditions: input.preconditions ?? null,
+      steps: input.steps ?? null,
+      expectedResult: input.expectedResult ?? null,
+      testType: input.testType ?? "FUNCTIONAL",
+      priority: input.priority ?? "MEDIUM",
+      platform,
+    },
+  });
 }
 
 /** QA checked the case against its changed requirements: it still holds. */

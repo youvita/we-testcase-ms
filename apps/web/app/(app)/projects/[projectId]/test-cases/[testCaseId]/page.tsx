@@ -2,7 +2,7 @@ import { PLATFORM_LABELS } from "@/lib/constants";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight, CircleHelp } from "lucide-react";
 
 import { Breadcrumbs } from "@/components/layout/breadcrumbs";
 import { Button } from "@/components/ui/button";
@@ -57,8 +57,7 @@ import {
   listSubModules,
 } from "@/services/test-case.service";
 import { formatDateTime } from "@/utils/format";
-import { caseQuestions, keptOnNote, splitOpenQuestions } from "@/utils/open-questions";
-import { OpenQuestions } from "@/components/shared/open-questions";
+import { caseQuestions, keptOnNote, questionLines, splitOpenQuestions } from "@/utils/open-questions";
 import { answersToApply } from "@/utils/po-answers";
 
 export async function generateMetadata({
@@ -172,6 +171,7 @@ export default async function TestCaseDetailPage({
     text.openQuestions,
     testCase.requirements.map(({ requirement }) => requirement),
   );
+  const openCount = questionLines(questions.text).length;
   const unappliedAnswers = canEditCase ? answersToApply(comments).size : 0;
   const details: { label: string; value: string | null }[] = [
     { label: "Preconditions", value: text.preconditions },
@@ -324,6 +324,17 @@ export default async function TestCaseDetailPage({
                       <div key={detail.label} className="space-y-1.5">
                         <h3 className="flex flex-wrap items-center gap-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
                           {detail.label}
+                          {detail.label === "Expected result" && openCount > 0 && (
+                            // Its open questions live in the discussion; the check
+                            // is not final while any is open.
+                            <a
+                              href="#open-questions"
+                              className="inline-flex items-center gap-1 rounded-full bg-status-blocked/10 px-2 py-0.5 normal-case tracking-normal text-status-blocked hover:underline"
+                            >
+                              <CircleHelp className="size-3" aria-hidden />
+                              {openCount} open question{openCount === 1 ? "" : "s"}
+                            </a>
+                          )}
                           {detail.label === "Expected result" && unappliedAnswers > 0 && (
                             <a
                               href="#discussion"
@@ -338,7 +349,6 @@ export default async function TestCaseDetailPage({
                     ) : null,
                   )
                 )}
-                {questions.text && <OpenQuestions text={questions.text} note={keptOnNote(questions.keptOn)} />}
                 {testCase.requirements.length > 0 && (
                   <div className="space-y-1.5">
                     <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
@@ -463,6 +473,11 @@ export default async function TestCaseDetailPage({
               canModerate={isAdmin(user.role)}
               canAnswer={canAnswerPo(user.role)}
               requirementQuestions={requirementQuestions}
+              openQuestions={{
+                text: questions.text,
+                note: keptOnNote(questions.keptOn),
+                canEdit: canEditCase,
+              }}
               po={{
                 admins,
                 currentUserId: user.id,
