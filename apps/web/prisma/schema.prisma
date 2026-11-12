@@ -98,6 +98,14 @@ enum FixStatus {
   NOT_A_BUG
 }
 
+/// What a post in a test case discussion is for. A question needs an answer
+/// from someone who is not in the thread, so it is announced differently and
+/// stands out in the thread itself.
+enum CommentKind {
+  COMMENT
+  PO_QUESTION
+}
+
 /// What a requirements document is. Only a label — extraction treats every
 /// kind the same way.
 enum RequirementDocKind {
@@ -413,10 +421,11 @@ model FixStatusEvent {
 /// result and belongs to whoever ran the test, whereas these are a conversation
 /// anyone signed in may join without touching the audit trail.
 model Comment {
-  id        String   @id @default(cuid())
+  id        String      @id @default(cuid())
   body      String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  kind      CommentKind @default(COMMENT)
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
 
   /// Soft delete. Removing a post outright would tear a hole in a conversation
   /// other posts reply to, so the row stays and the UI shows a tombstone. The

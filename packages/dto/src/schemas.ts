@@ -3,6 +3,7 @@ import { z } from "zod";
 import {
   AI_MODELS,
   CLOSING_FIX_STATUSES,
+  COMMENT_KINDS,
   EXECUTION_STATUSES,
   FIX_STATUSES,
   GENERATION_DEPTHS,
@@ -247,6 +248,8 @@ export type ExecutionEditInput = z.input<typeof executionEditSchema>;
 
 export const commentSchema = z.object({
   body: trimmed(4000).min(1, "Write something before posting"),
+  /** Absent means a plain comment: every client that predates PO questions. */
+  kind: z.enum(COMMENT_KINDS).default("COMMENT"),
 });
 
 export type CommentInput = z.infer<typeof commentSchema>;

@@ -1,3 +1,5 @@
+import { after } from "next/server";
+
 import { ROLES } from "@/lib/constants";
 import { ok, readJson, route } from "@/lib/api";
 import { assertProjectAccess } from "@/lib/project-access";
@@ -6,6 +8,7 @@ import {
   createRequirement,
   listRequirements,
 } from "@/services/requirement.service";
+import { notifyRequirementQuestions } from "@/services/notify.service";
 
 type Ctx = { params: Promise<{ projectId: string }> };
 
@@ -24,6 +27,8 @@ export const POST = route<Ctx>(
     const { docId, ...body } = requirementCreateSchema.parse(
       await readJson(request),
     );
-    return ok(await createRequirement(projectId, docId, body), 201);
+    const requirement = await createRequirement(projectId, docId, body);
+    after(() => notifyRequirementQuestions(requirement.id, user, null));
+    return ok(requirement, 201);
   },
 );

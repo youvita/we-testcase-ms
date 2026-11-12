@@ -35,6 +35,15 @@ export const EXECUTION_STATUSES = [
 export type ExecutionStatus = (typeof EXECUTION_STATUSES)[number];
 
 // ---------------------------------------------------------------------------
+// Comment kind
+// ---------------------------------------------------------------------------
+
+/** A plain post, or one raised as a question for the product owner. */
+export const COMMENT_KINDS = ["COMMENT", "PO_QUESTION"] as const;
+
+export type CommentKind = (typeof COMMENT_KINDS)[number];
+
+// ---------------------------------------------------------------------------
 // Fix status
 // ---------------------------------------------------------------------------
 

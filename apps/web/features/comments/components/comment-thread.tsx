@@ -2,11 +2,12 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2, MessageSquare, Send, Trash2 } from "lucide-react";
+import { HelpCircle, Loader2, MessageSquare, Send, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Card,
   CardContent,
@@ -44,6 +45,9 @@ export function CommentThread({
 }) {
   const router = useRouter();
   const [body, setBody] = useState("");
+  // A question for the product owner goes to the team's Telegram group as a
+  // question rather than as another comment, and is marked as one here.
+  const [askPo, setAskPo] = useState(false);
   const [posting, setPosting] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
@@ -55,8 +59,10 @@ export function CommentThread({
     try {
       await api.post(`/api/test-cases/${testCaseId}/comments`, {
         body: trimmed,
+        kind: askPo ? "PO_QUESTION" : "COMMENT",
       });
       setBody("");
+      setAskPo(false);
       router.refresh();
     } catch (error) {
       toast.error(errorMessage(error));
@@ -123,6 +129,12 @@ export function CommentThread({
                       <span className="text-xs text-muted-foreground">
                         {formatDateTime(comment.createdAt)}
                       </span>
+                      {comment.kind === "PO_QUESTION" && !withdrawn && (
+                        <span className="inline-flex items-center gap-1 rounded-full border border-status-blocked/30 bg-status-blocked/10 px-1.5 py-0.5 text-[11px] font-medium text-status-blocked">
+                          <HelpCircle className="size-3" />
+                          For the product owner
+                        </span>
+                      )}
                     </div>
                     {withdrawn ? (
                       // A tombstone, not a gap: replies below this one still need
@@ -167,10 +179,21 @@ export function CommentThread({
               rows={3}
               value={body}
               onChange={(event) => setBody(event.target.value)}
-              placeholder="Build number, root cause, what you changed, what QA should check…"
+              placeholder={
+                askPo
+                  ? "What is unclear, and what would unblock the test…"
+                  : "Build number, root cause, what you changed, what QA should check…"
+              }
               aria-label="Write a comment"
             />
-            <div className="flex justify-end">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <label className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Checkbox
+                  checked={askPo}
+                  onCheckedChange={(checked) => setAskPo(checked === true)}
+                />
+                Ask the product owner
+              </label>
               <Button
                 size="sm"
                 onClick={handlePost}
@@ -178,10 +201,12 @@ export function CommentThread({
               >
                 {posting ? (
                   <Loader2 className="mr-2 size-4 animate-spin" />
+                ) : askPo ? (
+                  <HelpCircle className="mr-2 size-4" />
                 ) : (
                   <Send className="mr-2 size-4" />
                 )}
-                Post comment
+                {askPo ? "Ask product owner" : "Post comment"}
               </Button>
             </div>
           </div>

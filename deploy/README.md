@@ -207,26 +207,6 @@ That installs a user LaunchAgent labeled `macmini`. Keep Docker Desktop running.
 
 Secrets stay on disk. Do not put `.env.production` in GitHub secrets.
 
-### Deploy notifications (Telegram)
-
-Every deploy reports to Telegram, pass or fail. Both values live in
-`.env.production` on this Mac, beside the other production secrets, so nothing
-has to be stored in GitHub:
-
-```ini
-TELEGRAM_BOT_TOKEN="123456:ABC…"   # @BotFather
-TELEGRAM_CHAT_ID="-1001234567"     # negative for a group
-```
-
-Get the chat id by messaging the bot (or adding it to the group) and reading
-`https://api.telegram.org/bot<token>/getUpdates`.
-
-`deploy/scripts/notify-telegram.sh` reads them, searching the same places
-`ci-deploy.sh` does, so it still works when the deploy failed before the env
-file was linked into the CI checkout. Repository secrets of the same name win
-when set. With neither, it logs that it is not configured and exits 0 — a
-missing notification never turns a good deploy red.
-
 ### After that
 
 | Task | How |
@@ -237,6 +217,35 @@ missing notification never turns a good deploy red.
 
 The Actions checkout is a separate work folder. Named Docker volumes and
 containers stay the same (`name: we-testcase-ms` in `docker-compose.prod.yml`).
+
+---
+
+## Telegram notifications
+
+The app posts to one Telegram group when someone is waiting on a person who is
+not looking at the app:
+
+| Event | Message |
+| --- | --- |
+| Comment added to a test case | 💬 New comment · TC-0012 |
+| Comment raised with **Ask the product owner** | ❓ Question for the product owner · TC-0012 |
+| Requirement saved with open questions | ❓ Open questions for the product owner · FR-012 |
+
+Both values go in `.env.production` beside the other secrets:
+
+```ini
+TELEGRAM_BOT_TOKEN="123456:ABC…"   # @BotFather
+TELEGRAM_CHAT_ID="-1001234567"     # negative for a group
+```
+
+Get the chat id by messaging the bot (or adding it to the group) and reading
+`https://api.telegram.org/bot<token>/getUpdates`.
+
+With either unset the app sends nothing — that is the normal state for a local
+checkout. Sending happens after the response (`after()`), so a Telegram outage
+slows nobody down and cannot fail a comment that was already saved; it is
+logged and dropped. Messages carry a link back only when `NEXT_PUBLIC_APP_URL`
+is set, since the free Quick Tunnel's hostname changes on every restart.
 
 ---
 

@@ -172,6 +172,24 @@ export async function createRequirement(
   });
 }
 
+/**
+ * The open questions as they stand.
+ *
+ * Read before a save so a notification can tell a new question from an edit
+ * that happened to leave one in place. One primary-key lookup on an edit that
+ * happens rarely; not worth threading through updateRequirement, which also
+ * runs from extraction where nobody is asking anyone anything.
+ */
+export async function readOpenQuestions(
+  requirementId: string,
+): Promise<string | null> {
+  const requirement = await prisma.requirement.findUnique({
+    where: { id: requirementId },
+    select: { openQuestions: true },
+  });
+  return requirement?.openQuestions ?? null;
+}
+
 export async function updateRequirement(
   requirementId: string,
   input: RequirementInput,

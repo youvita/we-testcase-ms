@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { forbidden, notFound } from "@/lib/api";
 import { isAdmin } from "@/lib/permissions";
 import type { Role } from "@/lib/constants";
+import type { CommentKind } from "@wetestcase/dto";
 import type { CommentWithAuthor } from "@/types";
 
 const authorSelect = {
@@ -36,6 +37,7 @@ export async function createComment(
   testCaseId: string,
   authorId: string,
   body: string,
+  kind: CommentKind = "COMMENT",
 ): Promise<CommentWithAuthor> {
   const testCase = await prisma.testCase.findUnique({
     where: { id: testCaseId },
@@ -44,7 +46,7 @@ export async function createComment(
   if (!testCase) throw notFound("Test case");
 
   return prisma.comment.create({
-    data: { testCaseId, authorId, body },
+    data: { testCaseId, authorId, body, kind },
     include: {
       author: authorSelect,
       deletedBy: { select: { id: true, name: true } },
