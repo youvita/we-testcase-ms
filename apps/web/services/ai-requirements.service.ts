@@ -18,6 +18,7 @@ import {
 } from "@wetestcase/dto";
 import { splitDocument } from "@/utils/document-text";
 
+import { telegramRequirementsToVerify } from "./telegram.service";
 import { defineJob, enqueueJob } from "./ai-job.service";
 import { resolveProjectPlatform } from "./project.service";
 import {
@@ -314,6 +315,7 @@ defineJob("EXTRACT_REQUIREMENTS", async (job) => {
       );
     }
     const tally = await reading.finish();
+    telegramRequirementsToVerify(docId);
     if (!reading.previous.length) return `Found ${found} requirements`;
     return [
       `Version ${reading.version}: ${found} requirements`,

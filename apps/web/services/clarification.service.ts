@@ -7,6 +7,7 @@ import type { Role } from "@/lib/constants";
 import type { CommentWithAuthor } from "@/types";
 import { withoutQuestions } from "@/utils/open-questions";
 import { saveCaseQuestions } from "./case-questions.service";
+import { telegramCommentPosted, telegramQuestionAsked, telegramQuestionReplied } from "./telegram.service";
 import type {
   NotificationDto,
   NotificationList,
@@ -80,7 +81,7 @@ export async function answerQuestion(
   if (!question || question.kind !== "QUESTION" || question.deletedAt) throw notFound("Question");
   assertCanAnswer(answerer.role);
 
-  return prisma.$transaction(async (tx) => {
+  const saved = await prisma.$transaction(async (tx) => {
     const answer = await tx.comment.create({
       data: {
         testCaseId: question.testCaseId,
@@ -111,6 +112,8 @@ export async function answerQuestion(
     });
     return answer;
   });
+  telegramCommentPosted(saved.id);
+  return saved;
 }
 
 /**
@@ -265,7 +268,7 @@ export async function askPoQuestion(
   const toUserId = input.toUserId || undefined;
   const recipients = await recipientsFor(asker.id, toUserId);
 
-  return prisma.$transaction(async (tx) => {
+  const saved = await prisma.$transaction(async (tx) => {
     const question = await tx.poQuestion.create({
       data: {
         projectId,
@@ -287,6 +290,8 @@ export async function askPoQuestion(
     });
     return toPoQuestionDto(question);
   });
+  telegramQuestionAsked(saved.id);
+  return saved;
 }
 
 /**
@@ -327,7 +332,7 @@ export async function replyToPoQuestion(
   }
   recipients = [...new Set(recipients)].filter((id) => id !== author.id);
 
-  return prisma.$transaction(async (tx) => {
+  const saved = await prisma.$transaction(async (tx) => {
     const reply = await tx.poQuestionReply.create({ data: { questionId, authorId: author.id, body } });
     await tx.poQuestion.update({
       where: { id: questionId },
@@ -354,6 +359,9 @@ export async function replyToPoQuestion(
       await tx.poQuestion.findUniqueOrThrow({ where: { id: questionId }, include: poQuestionInclude }),
     );
   });
+  const replyId = saved.replies.at(-1)?.id;
+  if (replyId) telegramQuestionReplied(questionId, replyId);
+  return saved;
 }
 
 /**

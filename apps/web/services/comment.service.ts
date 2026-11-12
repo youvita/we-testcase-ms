@@ -6,6 +6,7 @@ import type { CommentWithAuthor } from "@/types";
 import type { CommentInput } from "@wetestcase/dto";
 
 import { answerQuestion, listAdmins } from "./clarification.service";
+import { telegramCommentPosted } from "./telegram.service";
 
 const authorSelect = {
   select: { id: true, name: true, email: true, image: true, role: true },
@@ -76,7 +77,7 @@ export async function postComment(
     : testCase.project.productOwnerId
       ? [testCase.project.productOwnerId]
       : (await listAdmins()).map((admin) => admin.id);
-  return prisma.$transaction(async (tx) => {
+  const saved = await prisma.$transaction(async (tx) => {
     const comment = await tx.comment.create({
       data: { testCaseId, authorId: author.id, body: input.body },
       include: postInclude,
@@ -94,6 +95,8 @@ export async function postComment(
     });
     return comment;
   });
+  telegramCommentPosted(saved.id);
+  return saved;
 }
 
 /**
@@ -147,7 +150,7 @@ async function reply(
   if (root.questionToId) thread.add(root.questionToId);
   thread.delete(author.id);
 
-  return prisma.$transaction(async (tx) => {
+  const saved = await prisma.$transaction(async (tx) => {
     const posted = await tx.comment.create({
       data: { testCaseId, authorId: author.id, body, answerToId: root.id },
       include: postInclude,
@@ -168,6 +171,8 @@ async function reply(
     });
     return posted;
   });
+  telegramCommentPosted(saved.id);
+  return saved;
 }
 
 /**
