@@ -191,10 +191,14 @@ export async function assertAttachmentAccess(
       execution: {
         select: { testCase: { select: { project: { select: accessSelect } } } },
       },
+      comment: {
+        select: { deletedAt: true, testCase: { select: { project: { select: accessSelect } } } },
+      },
     },
   });
-  if (!found) throw notFound("Attachment");
-  if (!canAccessProject(found.execution.testCase.project, user)) {
+  // On a result or a post — and a withdrawn post's files are withdrawn too.
+  const project = found?.execution?.testCase.project ?? found?.comment?.testCase.project;
+  if (!project || found?.comment?.deletedAt || !canAccessProject(project, user)) {
     throw notFound("Attachment");
   }
 }

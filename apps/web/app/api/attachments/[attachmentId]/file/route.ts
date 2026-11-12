@@ -2,6 +2,7 @@ import {
   attachmentETag,
   parseRangeHeader,
   readAttachmentBytes,
+  opensInline,
   statAttachment,
 } from "@/services/attachment.service";
 import { route } from "@/lib/api";
@@ -47,14 +48,18 @@ export const GET = route<Ctx>({}, async (request, { params, user }) => {
   const bytes = await readAttachmentBytes(attachment, range ?? undefined);
 
   const headers: Record<string, string> = {
-    "Content-Type": attachment.mimeType,
+    "Content-Type": attachment.mimeType.startsWith("text/")
+      ? `${attachment.mimeType}; charset=utf-8`
+      : attachment.mimeType,
     "Content-Length": String(bytes.length),
     "Accept-Ranges": "bytes",
     // Attachment bytes never change once written, but the URL requires a
     // session, so keep it private to the browser cache.
     "Cache-Control": "private, max-age=31536000, immutable",
     ETag: etag,
-    "Content-Disposition": `inline; filename="${attachment.fileName}"`,
+    // Images, video, PDFs and plain text open in the browser; anything else
+    // (Office files, zips, CSV, JSON) is a download.
+    "Content-Disposition": `${opensInline(attachment.mimeType) ? "inline" : "attachment"}; filename*=UTF-8''${encodeURIComponent(attachment.fileName)}`,
     "X-Content-Type-Options": "nosniff",
   };
 

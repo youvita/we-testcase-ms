@@ -135,6 +135,8 @@ export type CommentWithAuthor = Comment & {
   questionTo?: Pick<User, "id" | "name"> | null;
   /** Who put a question's answer into the case, or said it needed no change. */
   settledBy?: Pick<User, "id" | "name"> | null;
+  /** Files posted with it; none on a withdrawn one. */
+  attachments?: Attachment[];
 };
 
 /** A logged developer triage change, with who made it. */

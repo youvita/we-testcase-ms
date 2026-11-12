@@ -1,10 +1,15 @@
 import { ROLES } from "@/lib/constants";
-import { ok, readJson, route } from "@/lib/api";
+import { badRequest, ok, readJson, route } from "@/lib/api";
+import { isMultipart } from "@/lib/document-upload";
 import { assertTestCaseAccess } from "@/lib/project-access";
-import { commentSchema } from "@/lib/validations";
+import { commentSchema, commentWithFilesSchema } from "@/lib/validations";
+import { prepareCommentFiles } from "@/services/attachment.service";
 import { listComments, postComment } from "@/services/comment.service";
 
 type Ctx = { params: Promise<{ testCaseId: string }> };
+
+// Files are written with node fs.
+export const runtime = "nodejs";
 
 export const GET = route<Ctx>({}, async (_request, { params, user }) => {
   const { testCaseId } = await params;
@@ -24,8 +29,21 @@ export const POST = route<Ctx>(
   async (request, { params, user }) => {
     const { testCaseId } = await params;
     await assertTestCaseAccess(testCaseId, user);
-    const input = commentSchema.parse(await readJson(request));
-    const comment = await postComment(testCaseId, user, input);
-    return ok(comment, 201);
+    if (!isMultipart(request)) {
+      const input = commentSchema.parse(await readJson(request));
+      return ok(await postComment(testCaseId, user, input), 201);
+    }
+
+    // With files: multipart, the text under `body`, each file under `files`.
+    const form = await request.formData().catch(() => {
+      throw badRequest("Expected a multipart form upload");
+    });
+    const files = form.getAll("files").filter((file): file is File => file instanceof File);
+    const input = (files.length ? commentWithFilesSchema : commentSchema).parse({
+      body: form.get("body") ?? "",
+      replyToId: form.get("replyToId") ?? undefined,
+    });
+    const prepared = await prepareCommentFiles(files);
+    return ok(await postComment(testCaseId, user, input, prepared), 201);
   },
 );

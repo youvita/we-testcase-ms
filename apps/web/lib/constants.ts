@@ -166,6 +166,9 @@ export const MAX_VIDEO_UPLOAD_BYTES = Number(
   process.env.MAX_VIDEO_UPLOAD_BYTES ?? 50 * 1024 * 1024,
 );
 
+/** How many files one discussion post may carry. */
+export const MAX_COMMENT_FILES = 5;
+
 export function isVideoMimeType(mimeType: string) {
   return (ALLOWED_VIDEO_MIME_TYPES as readonly string[]).includes(mimeType);
 }

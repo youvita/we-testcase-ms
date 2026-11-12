@@ -1,10 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { Download, FileVideo, ImageIcon } from "lucide-react";
+import { Download, FileArchive, FileSpreadsheet, FileText, FileVideo, ImageIcon } from "lucide-react";
 
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
-import { isVideoMimeType } from "@/lib/constants";
+import { ALLOWED_UPLOAD_MIME_TYPES, isVideoMimeType } from "@/lib/constants";
 import { withBasePath } from "@/lib/base-path";
 import { formatBytes } from "@/utils/format";
 import type { Attachment } from "@/types";
@@ -33,6 +33,28 @@ export function AttachmentGallery({
         {attachments.map((attachment) => {
           const isVideo = isVideoMimeType(attachment.mimeType);
           const Icon = isVideo ? FileVideo : ImageIcon;
+
+          // A document opens in a new tab (PDF, text) or downloads; only
+          // pictures and video play here.
+          if (!(ALLOWED_UPLOAD_MIME_TYPES as readonly string[]).includes(attachment.mimeType)) {
+            const DocIcon = documentIcon(attachment.mimeType);
+            return (
+              <li key={attachment.id}>
+                <a
+                  href={withBasePath(`/api/attachments/${attachment.id}/file`)}
+                  target="_blank"
+                  rel="noopener"
+                  className="flex w-full items-center gap-2 rounded text-left text-sm transition-colors hover:text-primary"
+                >
+                  <DocIcon className="size-4 shrink-0 text-muted-foreground" aria-hidden />
+                  <span className="min-w-0 truncate">{attachment.fileName}</span>
+                  <span className="shrink-0 text-xs text-muted-foreground">
+                    {formatBytes(attachment.fileSize)}
+                  </span>
+                </a>
+              </li>
+            );
+          }
 
           return (
             <li key={attachment.id}>
@@ -115,4 +137,12 @@ export function AttachmentGallery({
       </Dialog>
     </>
   );
+}
+
+function documentIcon(mimeType: string) {
+  if (mimeType.includes("spreadsheet") || mimeType.includes("excel") || mimeType === "text/csv") {
+    return FileSpreadsheet;
+  }
+  if (mimeType === "application/zip") return FileArchive;
+  return FileText;
 }

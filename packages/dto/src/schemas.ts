@@ -338,6 +338,9 @@ export const commentSchema = z.object({
 
 export type CommentInput = z.infer<typeof commentSchema>;
 
+/** A post sent with files: then the text may be left empty. */
+export const commentWithFilesSchema = commentSchema.extend({ body: trimmed(4000) });
+
 /** Ask the PO about a case: one admin, or every admin when `toUserId` is empty. */
 export const questionSchema = z.object({
   body: trimmed(4000).min(1, "Write the question first"),

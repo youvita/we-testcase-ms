@@ -6,6 +6,7 @@ import { isAdmin } from "@/lib/permissions";
 import type { Role } from "@/lib/constants";
 import type { CommentWithAuthor } from "@/types";
 import { withoutQuestions } from "@/utils/open-questions";
+import { withFiles, type PreparedFile } from "./attachment.service";
 import { saveCaseQuestions } from "./case-questions.service";
 import { telegramCommentPosted, telegramQuestionAsked, telegramQuestionReplied } from "./telegram.service";
 import type {
@@ -32,6 +33,7 @@ const commentInclude = {
   author: { select: { id: true, name: true, email: true, image: true, role: true } },
   deletedBy: { select: { id: true, name: true } },
   questionTo: { select: { id: true, name: true } },
+  attachments: true,
 } as const;
 
 /** Whom QA can ask: every active admin. */
@@ -73,15 +75,24 @@ export async function answerQuestion(
   questionId: string,
   answerer: { id: string; role: Role },
   body: string,
+  files: PreparedFile[] = [],
 ): Promise<CommentWithAuthor> {
   const question = await prisma.comment.findUnique({
     where: { id: questionId },
-    select: { id: true, kind: true, testCaseId: true, authorId: true, deletedAt: true, answeredAt: true },
+    select: {
+      id: true,
+      kind: true,
+      testCaseId: true,
+      authorId: true,
+      deletedAt: true,
+      answeredAt: true,
+      testCase: { select: { projectId: true } },
+    },
   });
   if (!question || question.kind !== "QUESTION" || question.deletedAt) throw notFound("Question");
   assertCanAnswer(answerer.role);
 
-  const saved = await prisma.$transaction(async (tx) => {
+  const saved = await withFiles(question.testCase.projectId, files, (attachments) => prisma.$transaction(async (tx) => {
     const answer = await tx.comment.create({
       data: {
         testCaseId: question.testCaseId,
@@ -89,6 +100,7 @@ export async function answerQuestion(
         body,
         kind: "ANSWER",
         answerToId: question.id,
+        attachments: { create: attachments },
       },
       include: commentInclude,
     });
@@ -111,7 +123,7 @@ export async function answerQuestion(
       data: { readAt: new Date() },
     });
     return answer;
-  });
+  }));
   telegramCommentPosted(saved.id);
   return saved;
 }

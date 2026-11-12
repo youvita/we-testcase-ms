@@ -514,6 +514,9 @@ model Comment {
   answerTo   Comment?  @relation("CommentAnswer", fields: [answerToId], references: [id], onDelete: SetNull)
   answers    Comment[] @relation("CommentAnswer")
 
+  /// Screenshots, logs and documents posted with it.
+  attachments Attachment[]
+
   notifications Notification[]
 
   @@index([testCaseId, createdAt])
@@ -616,10 +619,15 @@ model Attachment {
   mimeType  String
   createdAt DateTime @default(now())
 
-  executionId String
-  execution   TestExecution @relation(fields: [executionId], references: [id], onDelete: Cascade)
+  /// What it is attached to: a recorded result, or a post in a case's
+  /// discussion — exactly one of the two (a check constraint holds to it).
+  executionId String?
+  execution   TestExecution? @relation(fields: [executionId], references: [id], onDelete: Cascade)
+  commentId   String?
+  comment     Comment?       @relation(fields: [commentId], references: [id], onDelete: Cascade)
 
   @@index([executionId])
+  @@index([commentId])
 }
 
 // ---------------------------------------------------------------------------

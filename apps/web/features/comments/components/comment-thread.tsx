@@ -29,6 +29,8 @@ import type { CaseText } from "./apply-answer-dialog";
 import { CaseUpdatePrompt } from "./case-update-prompt";
 import { OpenQuestionsPanel } from "./open-questions-panel";
 import { RequirementQuestionItem, type RequirementQuestionGroup } from "./requirement-questions";
+import { AttachmentGallery } from "@/features/executions/components/attachment-gallery";
+import { AttachButton, PendingFiles, addFiles, commentPayload, pastedFiles } from "./comment-files";
 
 /**
  * QA ↔ developer discussion on a test case.
@@ -74,6 +76,7 @@ export function CommentThread({
 }) {
   const router = useRouter();
   const [body, setBody] = useState("");
+  const [files, setFiles] = useState<File[]>([]);
   const composer = useRef<HTMLTextAreaElement>(null);
 
   /** Start a comment asking the PO the open questions. */
@@ -87,6 +90,7 @@ export function CommentThread({
   // The comment being replied to, and the reply.
   const [answering, setAnswering] = useState<string | null>(null);
   const [answer, setAnswer] = useState("");
+  const [answerFiles, setAnswerFiles] = useState<File[]>([]);
   const [sendingAnswer, setSendingAnswer] = useState(false);
   const byId = new Map(comments.map((comment) => [comment.id, comment]));
   // Each thread together: a comment, then the replies under it.
@@ -152,11 +156,12 @@ export function CommentThread({
 
   async function handleAnswer(questionId: string) {
     const trimmed = answer.trim();
-    if (!trimmed) return;
+    if (!trimmed && answerFiles.length === 0) return;
     setSendingAnswer(true);
     try {
-      await api.post(`/api/test-cases/${testCaseId}/comments`, { body: trimmed, replyToId: questionId });
+      await api.post(`/api/test-cases/${testCaseId}/comments`, commentPayload(trimmed, answerFiles, questionId));
       setAnswer("");
+      setAnswerFiles([]);
       setAnswering(null);
       toast.success("Replied — the people in this thread are notified");
       router.refresh();
@@ -169,14 +174,13 @@ export function CommentThread({
 
   async function handlePost() {
     const trimmed = body.trim();
-    if (!trimmed) return;
+    if (!trimmed && files.length === 0) return;
 
     setPosting(true);
     try {
-      await api.post(`/api/test-cases/${testCaseId}/comments`, {
-        body: trimmed,
-      });
+      await api.post(`/api/test-cases/${testCaseId}/comments`, commentPayload(trimmed, files));
       setBody("");
+      setFiles([]);
       router.refresh();
     } catch (error) {
       toast.error(errorMessage(error));
@@ -268,7 +272,14 @@ export function CommentThread({
                           : ""}
                       </p>
                     ) : (
-                      <p className="preserve-lines text-sm">{comment.body}</p>
+                      <>
+                        {comment.body && <p className="preserve-lines text-sm">{comment.body}</p>}
+                        {comment.attachments && comment.attachments.length > 0 && (
+                          <div className="pt-0.5">
+                            <AttachmentGallery attachments={comment.attachments} />
+                          </div>
+                        )}
+                      </>
                     )}
                     {question && !withdrawn && (
                       // Where the question stands, in one quiet line; only a
@@ -300,6 +311,7 @@ export function CommentThread({
                         onClick={() => {
                           setAnswering(comment.id);
                           setAnswer("");
+                          setAnswerFiles([]);
                         }}
                       >
                         <CornerDownRight className="mr-1.5 size-3.5" />
@@ -313,6 +325,10 @@ export function CommentThread({
                           autoFocus
                           value={answer}
                           onChange={(event) => setAnswer(event.target.value)}
+                          onPaste={(event) => {
+                            const pasted = pastedFiles(event);
+                            if (pasted.length) setAnswerFiles(addFiles(answerFiles, pasted));
+                          }}
                           placeholder={
                             question && canAnswer
                               ? "The answer QA can test against — the message, the limit, the rule…"
@@ -320,13 +336,17 @@ export function CommentThread({
                           }
                           aria-label={question && canAnswer ? "Write the answer" : "Write a reply"}
                         />
-                        <div className="flex justify-end gap-2">
+                        <PendingFiles files={answerFiles} onChange={setAnswerFiles} disabled={sendingAnswer} />
+                        <div className="flex items-center justify-end gap-2">
+                          <span className="mr-auto">
+                            <AttachButton files={answerFiles} onChange={setAnswerFiles} disabled={sendingAnswer} />
+                          </span>
                           <Button size="sm" variant="ghost" disabled={sendingAnswer} onClick={() => setAnswering(null)}>
                             Cancel
                           </Button>
                           <Button
                             size="sm"
-                            disabled={sendingAnswer || !answer.trim()}
+                            disabled={sendingAnswer || (!answer.trim() && answerFiles.length === 0)}
                             onClick={() => void handleAnswer(comment.id)}
                           >
                             {sendingAnswer ? (
@@ -395,14 +415,20 @@ export function CommentThread({
               rows={3}
               value={body}
               onChange={(event) => setBody(event.target.value)}
+              onPaste={(event) => {
+                const pasted = pastedFiles(event);
+                if (pasted.length) setFiles(addFiles(files, pasted));
+              }}
               placeholder="Write a comment…"
               aria-label="Write a comment"
             />
-            <div className="flex justify-end">
+            <PendingFiles files={files} onChange={setFiles} disabled={posting} />
+            <div className="flex items-center justify-between gap-2">
+              <AttachButton files={files} onChange={setFiles} disabled={posting} />
               <Button
                 size="sm"
                 onClick={handlePost}
-                disabled={posting || !body.trim()}
+                disabled={posting || (!body.trim() && files.length === 0)}
               >
                 {posting ? (
                   <Loader2 className="mr-2 size-4 animate-spin" />

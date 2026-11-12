@@ -23,6 +23,7 @@ export {
   executionSchema,
   executionEditSchema,
   commentSchema,
+  commentWithFilesSchema,
   poQuestionSchema,
   poQuestionResolveSchema,
   notificationsReadSchema,

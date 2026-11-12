@@ -5,6 +5,7 @@ import type { Role } from "@/lib/constants";
 import type { CommentWithAuthor } from "@/types";
 import type { CommentInput } from "@wetestcase/dto";
 
+import { deleteCommentAttachments, withFiles, type PreparedFile } from "./attachment.service";
 import { answerQuestion, listAdmins } from "./clarification.service";
 import { telegramCommentPosted } from "./telegram.service";
 
@@ -30,11 +31,12 @@ export async function listComments(
       deletedBy: { select: { id: true, name: true } },
       questionTo: { select: { id: true, name: true } },
       settledBy: { select: { id: true, name: true } },
+      attachments: { orderBy: { createdAt: "asc" } },
     },
   });
 
   return comments.map((comment) =>
-    comment.deletedAt ? { ...comment, body: "" } : comment,
+    comment.deletedAt ? { ...comment, body: "", attachments: [] } : comment,
   );
 }
 
@@ -42,6 +44,7 @@ const postInclude = {
   author: authorSelect,
   deletedBy: { select: { id: true, name: true } },
   questionTo: { select: { id: true, name: true } },
+  attachments: true,
 } as const;
 
 /**
@@ -58,11 +61,13 @@ export async function postComment(
   testCaseId: string,
   author: { id: string; role: Role },
   input: CommentInput,
+  files: PreparedFile[] = [],
 ): Promise<CommentWithAuthor> {
   const testCase = await prisma.testCase.findUnique({
     where: { id: testCaseId },
     select: {
       id: true,
+      projectId: true,
       project: { select: { productOwnerId: true, members: { select: { userId: true } } } },
       executions: { orderBy: { executedAt: "desc" }, take: 1, select: { testerId: true } },
       comments: { where: { deletedAt: null }, select: { authorId: true } },
@@ -70,16 +75,18 @@ export async function postComment(
   });
   if (!testCase) throw notFound("Test case");
 
-  if (input.replyToId) return reply(testCaseId, author, input.replyToId, input.body);
+  if (input.replyToId) {
+    return reply(testCaseId, testCase.projectId, author, input.replyToId, input.body, files);
+  }
 
   const recipients = isAdmin(author.role)
     ? workingOn(testCase)
     : testCase.project.productOwnerId
       ? [testCase.project.productOwnerId]
       : (await listAdmins()).map((admin) => admin.id);
-  const saved = await prisma.$transaction(async (tx) => {
+  const saved = await withFiles(testCase.projectId, files, (attachments) => prisma.$transaction(async (tx) => {
     const comment = await tx.comment.create({
-      data: { testCaseId, authorId: author.id, body: input.body },
+      data: { testCaseId, authorId: author.id, body: input.body, attachments: { create: attachments } },
       include: postInclude,
     });
     await tx.notification.createMany({
@@ -94,7 +101,7 @@ export async function postComment(
         })),
     });
     return comment;
-  });
+  }));
   telegramCommentPosted(saved.id);
   return saved;
 }
@@ -118,9 +125,11 @@ function workingOn(testCase: {
 
 async function reply(
   testCaseId: string,
+  projectId: string,
   author: { id: string; role: Role },
   replyToId: string,
   body: string,
+  files: PreparedFile[],
 ): Promise<CommentWithAuthor> {
   const target = await prisma.comment.findUnique({
     where: { id: replyToId },
@@ -142,7 +151,7 @@ async function reply(
 
   // The PO replying to a question answers it, with the answer's own flow.
   if (root.kind === "QUESTION" && isAdmin(author.role)) {
-    const answer = await answerQuestion(root.id, author, body);
+    const answer = await answerQuestion(root.id, author, body, files);
     return prisma.comment.findUniqueOrThrow({ where: { id: answer.id }, include: postInclude });
   }
 
@@ -150,9 +159,9 @@ async function reply(
   if (root.questionToId) thread.add(root.questionToId);
   thread.delete(author.id);
 
-  const saved = await prisma.$transaction(async (tx) => {
+  const saved = await withFiles(projectId, files, (attachments) => prisma.$transaction(async (tx) => {
     const posted = await tx.comment.create({
-      data: { testCaseId, authorId: author.id, body, answerToId: root.id },
+      data: { testCaseId, authorId: author.id, body, answerToId: root.id, attachments: { create: attachments } },
       include: postInclude,
     });
     await tx.notification.createMany({
@@ -170,7 +179,7 @@ async function reply(
       data: { readAt: new Date() },
     });
     return posted;
-  });
+  }));
   telegramCommentPosted(saved.id);
   return saved;
 }
@@ -204,4 +213,6 @@ export async function deleteComment(
     where: { id: commentId },
     data: { deletedAt: new Date(), deletedById: actor.id },
   });
+  // Its files go with it: nobody can open them any more.
+  await deleteCommentAttachments(commentId);
 }

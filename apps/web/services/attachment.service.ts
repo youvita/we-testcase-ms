@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { badRequest, notFound } from "@/lib/api";
 import {
   ALLOWED_UPLOAD_MIME_TYPES,
+  MAX_COMMENT_FILES,
   MAX_UPLOAD_BYTES,
   MAX_VIDEO_UPLOAD_BYTES,
   isVideoMimeType,
@@ -106,6 +107,156 @@ function sniffMime(buffer: Buffer): string | null {
   }
 
   return null;
+}
+
+// ---------------------------------------------------------------------------
+// Files posted in a case's discussion
+// ---------------------------------------------------------------------------
+
+const MAX_DOCUMENT_BYTES = 10 * 1024 * 1024;
+
+/** Documents a discussion takes beside images and video, by extension. */
+const DOCUMENT_TYPES: Record<string, { mime: string; kind: "pdf" | "zip" | "ole" | "text" }> = {
+  ".pdf": { mime: "application/pdf", kind: "pdf" },
+  ".docx": { mime: "application/vnd.openxmlformats-officedocument.wordprocessingml.document", kind: "zip" },
+  ".xlsx": { mime: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", kind: "zip" },
+  ".pptx": { mime: "application/vnd.openxmlformats-officedocument.presentationml.presentation", kind: "zip" },
+  ".doc": { mime: "application/msword", kind: "ole" },
+  ".xls": { mime: "application/vnd.ms-excel", kind: "ole" },
+  ".zip": { mime: "application/zip", kind: "zip" },
+  ".txt": { mime: "text/plain", kind: "text" },
+  ".log": { mime: "text/plain", kind: "text" },
+  ".md": { mime: "text/plain", kind: "text" },
+  ".csv": { mime: "text/csv", kind: "text" },
+  ".json": { mime: "application/json", kind: "text" },
+};
+
+/**
+ * A document's type: its extension says what it claims to be, and its bytes
+ * must agree — a PDF starts `%PDF-`, Office files are zip or OLE containers,
+ * and text has no NUL bytes. Anything else is refused.
+ */
+function documentType(name: string, buffer: Buffer): { mime: string; extension: string } | null {
+  const extension = path.extname(name).toLowerCase();
+  const type = DOCUMENT_TYPES[extension];
+  if (!type) return null;
+  const head = buffer.subarray(0, 8);
+  const fits =
+    type.kind === "pdf"
+      ? head.subarray(0, 5).toString("latin1") === "%PDF-"
+      : type.kind === "zip"
+        ? head[0] === 0x50 && head[1] === 0x4b && head[2] === 0x03 && head[3] === 0x04
+        : type.kind === "ole"
+          ? head.equals(Buffer.from([0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1]))
+          : !buffer.subarray(0, 64 * 1024).includes(0);
+  return fits ? { mime: type.mime, extension } : null;
+}
+
+export type PreparedFile = {
+  fileName: string;
+  mimeType: string;
+  extension: string;
+  bytes: Buffer;
+};
+
+/**
+ * Check the files posted with a comment before anything is saved: what they
+ * are (from their bytes), how many, and how big. Throws a 400 naming the file.
+ */
+export async function prepareCommentFiles(files: File[]): Promise<PreparedFile[]> {
+  if (files.length > MAX_COMMENT_FILES) {
+    throw badRequest(`Attach at most ${MAX_COMMENT_FILES} files to one comment`);
+  }
+  const prepared: PreparedFile[] = [];
+  for (const file of files) {
+    const fileName = safeDisplayName(file.name);
+    const bytes = Buffer.from(await file.arrayBuffer());
+    if (bytes.length === 0) throw badRequest(`“${fileName}” is empty`);
+
+    const sniffed = sniffMime(bytes);
+    if (sniffed && ALLOWED_UPLOAD_MIME_TYPES.includes(sniffed as never)) {
+      const limit = isVideoMimeType(sniffed) ? MAX_VIDEO_UPLOAD_BYTES : MAX_UPLOAD_BYTES;
+      if (bytes.length > limit) {
+        throw badRequest(`“${fileName}” is larger than ${Math.round(limit / 1024 / 1024)} MB`);
+      }
+      prepared.push({ fileName, mimeType: sniffed, extension: EXTENSION_BY_MIME[sniffed] ?? ".bin", bytes });
+      continue;
+    }
+
+    const document = documentType(file.name, bytes);
+    if (!document) {
+      throw badRequest(
+        `“${fileName}” can't be attached — use an image, a video, a PDF, an Office file, a zip, or a text or log file`,
+      );
+    }
+    if (bytes.length > MAX_DOCUMENT_BYTES) {
+      throw badRequest(`“${fileName}” is larger than ${MAX_DOCUMENT_BYTES / 1024 / 1024} MB`);
+    }
+    prepared.push({ fileName, mimeType: document.mime, extension: document.extension, bytes });
+  }
+  return prepared;
+}
+
+/**
+ * Write a post's files to disk, ahead of the post itself: what comes back is
+ * the rows to create with it, and `discard` takes the files away again should
+ * the post not be saved.
+ */
+export async function storeCommentFiles(projectId: string, files: PreparedFile[]) {
+  const rows: { fileName: string; filePath: string; fileSize: number; mimeType: string }[] = [];
+  const discard = () => Promise.all(rows.map((row) => unlink(resolveStoredPath(row.filePath)).catch(() => {})));
+  try {
+    for (const file of files) {
+      const filePath = path.join(projectId, "comments", `${randomUUID()}${file.extension}`);
+      const absolute = resolveStoredPath(filePath);
+      await mkdir(path.dirname(absolute), { recursive: true });
+      await writeFile(absolute, file.bytes);
+      rows.push({ fileName: file.fileName, filePath, fileSize: file.bytes.length, mimeType: file.mimeType });
+    }
+  } catch (error) {
+    await discard();
+    throw error;
+  }
+  return { rows, discard };
+}
+
+/**
+ * Save a post with its files: the files go to disk first, their rows with
+ * the post — and should the post fail, the files are taken away again.
+ */
+export async function withFiles<T>(
+  projectId: string,
+  files: PreparedFile[],
+  save: (rows: Awaited<ReturnType<typeof storeCommentFiles>>["rows"]) => Promise<T>,
+): Promise<T> {
+  if (files.length === 0) return save([]);
+  const { rows, discard } = await storeCommentFiles(projectId, files);
+  try {
+    return await save(rows);
+  } catch (error) {
+    await discard();
+    throw error;
+  }
+}
+
+/** Take a withdrawn post's files away: rows and bytes. */
+export async function deleteCommentAttachments(commentId: string) {
+  const attachments = await prisma.attachment.findMany({
+    where: { commentId },
+    select: { filePath: true },
+  });
+  if (attachments.length === 0) return;
+  await prisma.attachment.deleteMany({ where: { commentId } });
+  await Promise.all(attachments.map((a) => unlink(resolveStoredPath(a.filePath)).catch(() => {})));
+}
+
+/** Whether a stored type is safe to show in the browser rather than download. */
+export function opensInline(mimeType: string) {
+  return (
+    ALLOWED_UPLOAD_MIME_TYPES.includes(mimeType as never) ||
+    mimeType === "application/pdf" ||
+    mimeType === "text/plain"
+  );
 }
 
 export async function saveAttachment(
