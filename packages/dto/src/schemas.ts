@@ -60,14 +60,32 @@ const optionalDate = z
 // Auth
 // ---------------------------------------------------------------------------
 
+/**
+ * A username: what Better Auth's username plugin accepts (3–30 letters,
+ * numbers, dots and underscores). It is stored lowercase, so "Vita" and
+ * "vita" are the same name.
+ */
+export const usernameSchema = z
+  .string()
+  .trim()
+  .min(3, "Username must be at least 3 characters")
+  .max(30, "Username must be at most 30 characters")
+  .regex(/^[a-zA-Z0-9_.]+$/, "Use only letters, numbers, dots and underscores");
+
+/** Sign in with either: anything with an @ is taken as the email. */
 export const loginSchema = z.object({
-  email: z.string().trim().email("Enter a valid email address"),
+  login: z.string().trim().min(1, "Enter your email or username"),
   password: z.string().min(1, "Password is required"),
 });
+
+export function isEmailLogin(login: string): boolean {
+  return login.includes("@");
+}
 
 export const registerSchema = z
   .object({
     name: trimmed(120).min(2, "Name must be at least 2 characters"),
+    username: usernameSchema,
     email: z.string().trim().email("Enter a valid email address"),
     password: z.string().min(8, "Password must be at least 8 characters"),
     confirmPassword: z.string().min(1, "Confirm your password"),
@@ -82,6 +100,7 @@ export type RegisterInput = z.infer<typeof registerSchema>;
 
 export const profileSchema = z.object({
   name: trimmed(120).min(2, "Name must be at least 2 characters"),
+  username: usernameSchema,
 });
 
 export const changePasswordSchema = z
@@ -406,6 +425,7 @@ export type FixStatusInput = z.infer<typeof fixStatusSchema>;
 
 export const userCreateSchema = z.object({
   name: trimmed(120).min(2, "Name must be at least 2 characters"),
+  username: usernameSchema,
   email: z.string().trim().email("Enter a valid email address"),
   password: z.string().min(8, "Password must be at least 8 characters"),
   role: roleSchema,
@@ -413,6 +433,7 @@ export const userCreateSchema = z.object({
 
 export const userUpdateSchema = z.object({
   name: trimmed(120).min(2, "Name must be at least 2 characters").optional(),
+  username: usernameSchema.optional(),
   role: roleSchema.optional(),
   isActive: z.boolean().optional(),
 });

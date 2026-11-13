@@ -23,9 +23,9 @@ const prisma = new PrismaClient();
 const DEMO_PASSWORD = "Password123!";
 
 const USERS = [
-  { name: "Alice Admin", email: "admin@example.com", role: "ADMIN" },
-  { name: "Quinn Tester", email: "qa@example.com", role: "QA" },
-  { name: "Dev Duong", email: "dev@example.com", role: "DEVELOPER" },
+  { name: "Alice Admin", email: "admin@example.com", username: "admin", role: "ADMIN" },
+  { name: "Quinn Tester", email: "qa@example.com", username: "qa", role: "QA" },
+  { name: "Dev Duong", email: "dev@example.com", username: "dev", role: "DEVELOPER" },
 ] as const;
 
 const MODULES = [
@@ -286,18 +286,24 @@ const FAILURE_NOTES: Record<string, { actual: string; comment: string }> = {
   },
 };
 
-async function createUser(name: string, email: string, role: string) {
+async function createUser(name: string, email: string, username: string, role: string) {
   const existing = await prisma.user.findUnique({ where: { email } });
   if (existing) {
-    // Keep the role in sync but never touch an existing password.
+    // Keep the role in sync but never touch an existing password, or a
+    // username someone already chose.
     return prisma.user.update({
       where: { id: existing.id },
-      data: { role, name, isActive: true },
+      data: {
+        role,
+        name,
+        isActive: true,
+        ...(existing.username ? {} : { username, displayUsername: username }),
+      },
     });
   }
 
   await auth.api.signUpEmail({
-    body: { name, email, password: DEMO_PASSWORD },
+    body: { name, email, username, password: DEMO_PASSWORD },
   });
 
   // `role` is `input: false` in the auth config, so it cannot be set at
@@ -310,7 +316,7 @@ async function main() {
 
   const users = [];
   for (const u of USERS) {
-    const user = await createUser(u.name, u.email, u.role);
+    const user = await createUser(u.name, u.email, u.username, u.role);
     users.push(user);
     console.log(`  user  ${user.email} (${user.role})`);
   }
@@ -403,7 +409,7 @@ async function main() {
   );
   console.log("\nDone. Sign in with any of:");
   for (const u of USERS) {
-    console.log(`  ${u.email.padEnd(20)} ${DEMO_PASSWORD}   (${u.role})`);
+    console.log(`  ${u.email.padEnd(20)} or ${u.username.padEnd(6)} ${DEMO_PASSWORD}   (${u.role})`);
   }
 }
 

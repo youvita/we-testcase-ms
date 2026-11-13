@@ -130,7 +130,7 @@ function RoleField({
 // Create
 // ---------------------------------------------------------------------------
 
-const CREATE_FIELDS = ["name", "email", "password", "role"] as const;
+const CREATE_FIELDS = ["name", "username", "email", "password", "role"] as const;
 
 function CreateUserForm({ onDone }: { onDone: () => void }) {
   const router = useRouter();
@@ -142,7 +142,7 @@ function CreateUserForm({ onDone }: { onDone: () => void }) {
     formState: { errors, isSubmitting },
   } = useForm<UserCreateInput>({
     resolver: zodResolver(userCreateSchema),
-    defaultValues: { name: "", email: "", password: "", role: ROLES.QA },
+    defaultValues: { name: "", username: "", email: "", password: "", role: ROLES.QA },
   });
 
   async function onSubmit(values: UserCreateInput) {
@@ -168,6 +168,27 @@ function CreateUserForm({ onDone }: { onDone: () => void }) {
           {...register("name")}
         />
         <FieldError message={errors.name?.message} />
+      </div>
+
+      <div className="space-y-2">
+        <Label htmlFor="username">Username</Label>
+        <Input
+          id="username"
+          autoComplete="off"
+          autoCapitalize="none"
+          autoCorrect="off"
+          spellCheck={false}
+          placeholder="quinn.tester"
+          aria-invalid={Boolean(errors.username)}
+          {...register("username")}
+        />
+        {errors.username ? (
+          <FieldError message={errors.username.message} />
+        ) : (
+          <p className="text-xs text-muted-foreground">
+            They can sign in with this or their email.
+          </p>
+        )}
       </div>
 
       <div className="space-y-2">
@@ -226,7 +247,7 @@ function CreateUserForm({ onDone }: { onDone: () => void }) {
 // Edit
 // ---------------------------------------------------------------------------
 
-const UPDATE_FIELDS = ["name", "role", "isActive"] as const;
+const UPDATE_FIELDS = ["name", "username", "role", "isActive"] as const;
 
 function EditUserForm({
   user,
@@ -248,6 +269,7 @@ function EditUserForm({
     resolver: zodResolver(userUpdateSchema),
     defaultValues: {
       name: user.name,
+      username: user.username ?? "",
       role: user.role,
       isActive: user.isActive,
     },
@@ -275,6 +297,27 @@ function EditUserForm({
           {...register("name")}
         />
         <FieldError message={errors.name?.message} />
+      </div>
+
+      <div className="space-y-2">
+        <Label htmlFor="username">Username</Label>
+        <Input
+          id="username"
+          autoComplete="off"
+          autoCapitalize="none"
+          autoCorrect="off"
+          spellCheck={false}
+          placeholder="quinn.tester"
+          aria-invalid={Boolean(errors.username)}
+          {...register("username")}
+        />
+        {errors.username ? (
+          <FieldError message={errors.username.message} />
+        ) : (
+          <p className="text-xs text-muted-foreground">
+            They can sign in with this or their email.
+          </p>
+        )}
       </div>
 
       <div className="space-y-2">
@@ -370,7 +413,7 @@ export function UserFormDialog(props: UserFormDialogProps) {
           <DialogDescription>
             {props.mode === "create"
               ? "Create an account and choose what the person can do."
-              : `Update the name, role and status for ${props.user.name}.`}
+              : `Update the name, username, role and status for ${props.user.name}.`}
           </DialogDescription>
         </DialogHeader>
 

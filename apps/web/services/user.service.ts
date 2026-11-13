@@ -9,6 +9,8 @@ const publicSelect = {
   id: true,
   name: true,
   email: true,
+  username: true,
+  displayUsername: true,
   image: true,
   role: true,
   isActive: true,
@@ -19,6 +21,8 @@ type UserRow = {
   id: string;
   name: string;
   email: string;
+  username: string | null;
+  displayUsername: string | null;
   image: string | null;
   role: string;
   isActive: boolean;
@@ -26,8 +30,26 @@ type UserRow = {
 };
 
 /** Narrow the database row's String role to the Role union. */
-function toPublicUser(row: UserRow): PublicUser {
-  return { ...row, role: toRole(row.role) };
+function toPublicUser({ displayUsername, ...row }: UserRow): PublicUser {
+  return { ...row, username: displayUsername ?? row.username, role: toRole(row.role) };
+}
+
+/**
+ * Check a username is free, the way the username plugin stores it (lowercase).
+ * Returns what to write: `username` lowercase, `displayUsername` as typed.
+ */
+async function claimUsername(
+  typed: string,
+  exceptUserId?: string,
+): Promise<{ username: string; displayUsername: string }> {
+  const displayUsername = typed.trim();
+  const username = displayUsername.toLowerCase();
+  const taken = await prisma.user.findFirst({
+    where: { username, ...(exceptUserId ? { NOT: { id: exceptUserId } } : {}) },
+    select: { id: true },
+  });
+  if (taken) throw conflict("That username is taken", { username: ["That username is taken"] });
+  return { username, displayUsername };
 }
 
 export async function listUsers(search?: string): Promise<PublicUser[]> {
@@ -38,6 +60,7 @@ export async function listUsers(search?: string): Promise<PublicUser[]> {
           OR: [
             { name: { contains: term, mode: "insensitive" } },
             { email: { contains: term, mode: "insensitive" } },
+            { username: { contains: term, mode: "insensitive" } },
           ],
         }
       : undefined,
@@ -82,6 +105,7 @@ export async function createUser(input: UserCreateInput): Promise<PublicUser> {
     select: { id: true },
   });
   if (existing) throw conflict("A user with this email already exists");
+  const names = await claimUsername(input.username);
 
   const ctx = await auth.$context;
 
@@ -92,6 +116,7 @@ export async function createUser(input: UserCreateInput): Promise<PublicUser> {
   const created = await ctx.internalAdapter.createUser({
     name: input.name.trim(),
     email,
+    ...names,
     emailVerified: false,
     // Set here rather than accepted from a sign-up body: `role` is
     // `input: false` in the auth config so clients cannot choose their own.
@@ -151,10 +176,13 @@ export async function updateUser(
     }
   }
 
+  const names = input.username !== undefined ? await claimUsername(input.username, userId) : undefined;
+
   const updated = await prisma.user.update({
     where: { id: userId },
     data: {
       ...(input.name !== undefined ? { name: input.name.trim() } : {}),
+      ...names,
       ...(input.role !== undefined ? { role: input.role } : {}),
       ...(input.isActive !== undefined ? { isActive: input.isActive } : {}),
     },

@@ -1,6 +1,7 @@
 import { betterAuth } from "better-auth";
 import { prismaAdapter } from "better-auth/adapters/prisma";
 import { nextCookies } from "better-auth/next-js";
+import { username } from "better-auth/plugins";
 
 import { prisma } from "@/lib/prisma";
 import { ROLES } from "@/lib/constants";
@@ -89,8 +90,13 @@ export const auth = betterAuth({
   // in schema.prisma declare `id String @id` with no database default, so
   // disabling `advanced.database.generateId` here would make every insert fail.
 
-  // Must stay last: lets server actions and route handlers set auth cookies.
-  plugins: [nextCookies()],
+  plugins: [
+    // Sign in with a username as well as the email. It also checks a new or
+    // changed username (3–30 of letters, numbers, _ and .) and that it is free.
+    username({ minUsernameLength: 3, maxUsernameLength: 30 }),
+    // Must stay last: lets server actions and route handlers set auth cookies.
+    nextCookies(),
+  ],
 });
 
 export type Auth = typeof auth;

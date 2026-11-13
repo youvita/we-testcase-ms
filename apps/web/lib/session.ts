@@ -9,6 +9,8 @@ export type SessionUser = {
   id: string;
   name: string;
   email: string;
+  /** As the person typed it (displayUsername); sign-in ignores case. */
+  username: string | null;
   image: string | null;
   role: Role;
   isActive: boolean;
@@ -25,12 +27,15 @@ export const getSessionUser = cache(async (): Promise<SessionUser | null> => {
   const user = session.user as typeof session.user & {
     role?: string | null;
     isActive?: boolean | null;
+    username?: string | null;
+    displayUsername?: string | null;
   };
 
   return {
     id: user.id,
     name: user.name,
     email: user.email,
+    username: user.displayUsername ?? user.username ?? null,
     image: user.image ?? null,
     role: toRole(user.role),
     isActive: user.isActive ?? true,

@@ -1,5 +1,6 @@
 "use client";
 
+import { usernameClient } from "better-auth/client/plugins";
 import { createAuthClient } from "better-auth/react";
 
 /**
@@ -31,6 +32,7 @@ function authBasePath(): string {
 export const authClient = createAuthClient({
   baseURL: publicAppOrigin(),
   basePath: authBasePath(),
+  plugins: [usernameClient()],
 });
 
 export const { signIn, signUp, signOut, useSession, changePassword, updateUser } =

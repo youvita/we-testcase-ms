@@ -93,7 +93,8 @@ export function UserTable({
     return users.filter(
       (user) =>
         user.name.toLowerCase().includes(term) ||
-        user.email.toLowerCase().includes(term),
+        user.email.toLowerCase().includes(term) ||
+        (user.username?.toLowerCase().includes(term) ?? false),
     );
   }, [users, search]);
   const paging = useClientPagination(filtered, search);
@@ -143,7 +144,7 @@ export function UserTable({
       <SearchInput
         value={search}
         onChange={setSearch}
-        placeholder="Search by name or email…"
+        placeholder="Search by name, username or email…"
         className="max-w-sm"
       />
 
@@ -151,7 +152,7 @@ export function UserTable({
         <EmptyState
           icon={Users}
           title="No matching users"
-          description={`Nothing matched “${search.trim()}”. Try a different name or email.`}
+          description={`Nothing matched “${search.trim()}”. Try a different name, username or email.`}
         />
       ) : (
         <div className="overflow-hidden rounded-lg border bg-background">
@@ -194,6 +195,7 @@ export function UserTable({
                             )}
                           </p>
                           <p className="truncate text-xs text-muted-foreground">
+                            {user.username && <>@{user.username} · </>}
                             {user.email}
                           </p>
                         </div>

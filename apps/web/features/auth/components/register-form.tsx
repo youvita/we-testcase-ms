@@ -23,10 +23,11 @@ export function RegisterForm() {
   const {
     register,
     handleSubmit,
+    setError,
     formState: { errors, isSubmitting },
   } = useForm<RegisterInput>({
     resolver: zodResolver(registerSchema),
-    defaultValues: { name: "", email: "", password: "", confirmPassword: "" },
+    defaultValues: { name: "", username: "", email: "", password: "", confirmPassword: "" },
   });
 
   async function onSubmit(values: RegisterInput) {
@@ -36,8 +37,13 @@ export function RegisterForm() {
       name: values.name,
       email: values.email,
       password: values.password,
+      username: values.username,
     });
 
+    if (error?.code === "USERNAME_IS_ALREADY_TAKEN") {
+      setError("username", { message: "That username is taken — try another" });
+      return;
+    }
     if (error) {
       setFormError(error.message ?? "Could not create your account");
       return;
@@ -77,6 +83,27 @@ export function RegisterForm() {
           />
           {errors.name && (
             <p className="text-xs text-destructive">{errors.name.message}</p>
+          )}
+        </div>
+
+        <div className="space-y-2">
+          <Label htmlFor="username">Username</Label>
+          <Input
+            id="username"
+            autoComplete="username"
+            autoCapitalize="none"
+            autoCorrect="off"
+            spellCheck={false}
+            placeholder="quinn.tester"
+            aria-invalid={Boolean(errors.username)}
+            {...register("username")}
+          />
+          {errors.username ? (
+            <p className="text-xs text-destructive">{errors.username.message}</p>
+          ) : (
+            <p className="text-xs text-muted-foreground">
+              Sign in with this or your email. Letters, numbers, dots and underscores.
+            </p>
           )}
         </div>
 

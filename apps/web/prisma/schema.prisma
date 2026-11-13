@@ -193,6 +193,12 @@ model User {
   email         String   @unique
   emailVerified Boolean  @default(false)
   image         String?
+
+  /// A second way to sign in, beside the email (Better Auth's username
+  /// plugin). Stored lowercase, so it is unique regardless of case;
+  /// `displayUsername` keeps it as the person typed it.
+  username        String? @unique
+  displayUsername String?
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 

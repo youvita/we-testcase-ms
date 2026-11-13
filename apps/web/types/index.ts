@@ -60,7 +60,11 @@ export type PublicUser = Omit<
     "id" | "name" | "email" | "image" | "role" | "isActive" | "createdAt"
   >,
   "role"
-> & { role: Role };
+> & {
+  role: Role;
+  /** As the person typed it; sign-in ignores case. */
+  username: string | null;
+};
 
 /** A person on a project — product owner or one of the people in charge. */
 export type ProjectPerson = Pick<User, "id" | "name" | "email" | "image">;

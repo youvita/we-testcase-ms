@@ -14,7 +14,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { PasswordInput } from "@/components/ui/password-input";
 import { signIn } from "@/lib/auth-client";
-import { loginSchema, type LoginInput } from "@/lib/validations";
+import { isEmailLogin, loginSchema, type LoginInput } from "@/lib/validations";
 
 const ERROR_MESSAGES: Record<string, string> = {
   "account-disabled":
@@ -35,21 +35,25 @@ export function LoginForm() {
     formState: { errors, isSubmitting },
   } = useForm<LoginInput>({
     resolver: zodResolver(loginSchema),
-    defaultValues: { email: "", password: "" },
+    defaultValues: { login: "", password: "" },
   });
 
   async function onSubmit(values: LoginInput) {
     setFormError(null);
 
-    const { error } = await signIn.email({
-      email: values.email,
-      password: values.password,
-    });
+    // One box for both: an @ means an email, anything else a username.
+    const { error } = isEmailLogin(values.login)
+      ? await signIn.email({ email: values.login, password: values.password })
+      : await signIn.username({ username: values.login, password: values.password });
 
     if (error) {
-      // Better Auth returns the same message for unknown email and bad
-      // password, which is what we want — don't reveal which one it was.
-      setFormError(error.message ?? "Invalid email or password");
+      // One message for an unknown account and a wrong password — don't
+      // reveal which one it was, or that the username exists.
+      setFormError(
+        error.status === 401 || error.status === 422 || error.status === 400
+          ? "Wrong email, username or password"
+          : (error.message ?? "Could not sign in"),
+      );
       return;
     }
 
@@ -85,17 +89,20 @@ export function LoginForm() {
 
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-4" noValidate>
         <div className="space-y-2">
-          <Label htmlFor="email">Email</Label>
+          <Label htmlFor="login">Email or username</Label>
           <Input
-            id="email"
-            type="email"
-            autoComplete="email"
-            placeholder="you@company.com"
-            aria-invalid={Boolean(errors.email)}
-            {...register("email")}
+            id="login"
+            type="text"
+            autoComplete="username"
+            autoCapitalize="none"
+            autoCorrect="off"
+            spellCheck={false}
+            placeholder="you@company.com or username"
+            aria-invalid={Boolean(errors.login)}
+            {...register("login")}
           />
-          {errors.email && (
-            <p className="text-xs text-destructive">{errors.email.message}</p>
+          {errors.login && (
+            <p className="text-xs text-destructive">{errors.login.message}</p>
           )}
         </div>
 

@@ -34,6 +34,8 @@ export class HttpError extends Error {
   constructor(
     readonly status: number,
     message: string,
+    /** Messages for the form fields at fault, shown beside them. */
+    readonly fieldErrors?: Record<string, string[]>,
   ) {
     super(message);
     this.name = "HttpError";
@@ -46,7 +48,8 @@ export const forbidden = (message = "You do not have permission to do that") =>
   new HttpError(403, message);
 export const unauthorized = (message = "You must be signed in") =>
   new HttpError(401, message);
-export const conflict = (message: string) => new HttpError(409, message);
+export const conflict = (message: string, fieldErrors?: Record<string, string[]>) =>
+  new HttpError(409, message, fieldErrors);
 export const badRequest = (message: string) => new HttpError(400, message);
 
 /**
@@ -56,7 +59,7 @@ export const badRequest = (message: string) => new HttpError(400, message);
  */
 export function toErrorResponse(error: unknown) {
   if (error instanceof HttpError) {
-    return fail(error.message, error.status);
+    return fail(error.message, error.status, error.fieldErrors);
   }
 
   if (error instanceof ZodError) {
