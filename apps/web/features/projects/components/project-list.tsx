@@ -131,6 +131,8 @@ export function ProjectList({
   return (
     <div className="space-y-5">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+        {/* Search and status together: what "Find a project" points at. */}
+        <div data-tour="projects-find" className="flex flex-col gap-3 sm:flex-row sm:items-center">
         <SearchInput
           value={search}
           onChange={setSearch}
@@ -152,13 +154,17 @@ export function ProjectList({
             ))}
           </SelectContent>
         </Select>
+        </div>
 
         <div className="flex-1" />
 
-        <ViewToggle value={view} onChange={setView} />
+        <span data-tour="projects-view" className="inline-flex">
+          <ViewToggle value={view} onChange={setView} />
+        </span>
 
         {canManage && (
           <Button
+            data-tour="projects-new"
             onClick={() => {
               setEditing(undefined);
               setFormOpen(true);
@@ -198,7 +204,7 @@ export function ProjectList({
           }
         />
       ) : view === "card" ? (
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        <div data-tour="projects-list" className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {paging.pageItems.map((project) => (
             <Card
               key={project.id}
@@ -282,7 +288,7 @@ export function ProjectList({
           ))}
         </div>
       ) : (
-        <Card className="overflow-hidden">
+        <Card data-tour="projects-list" className="overflow-hidden">
           <Table containerClassName={SCROLL_BOX}>
             <TableHeader className={cn(STICKY_HEADER, "bg-card")}>
               <TableRow>

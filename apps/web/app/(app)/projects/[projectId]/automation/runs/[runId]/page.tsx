@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 
+import { PageTour } from "@/components/coach-marks/tours";
 import { Breadcrumbs } from "@/components/layout/breadcrumbs";
 import { PageHeader } from "@/components/shared/page-header";
 import { RunDetail } from "@/features/automation/components/run-detail";
@@ -44,6 +45,7 @@ export default async function RunPage({
 
   return (
     <div className="space-y-6">
+      <PageTour page="run" userId={user.id} />
       <Breadcrumbs
         items={[
           { label: "Projects", href: "/projects" },

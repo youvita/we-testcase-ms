@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 
+import { PageTour } from "@/components/coach-marks/tours";
 import { Breadcrumbs } from "@/components/layout/breadcrumbs";
 import { PageHeader } from "@/components/shared/page-header";
 import { CreateUserButton } from "@/features/users/components/user-form-dialog";
@@ -33,12 +34,17 @@ export default async function AdminUsersPage() {
 
   return (
     <div className="space-y-6">
+      <PageTour page="users" userId={admin.id} />
       <Breadcrumbs items={[{ label: "Users" }]} />
 
       <PageHeader
         title="Users"
         description="Create accounts, change roles and disable access for your team."
-        actions={<CreateUserButton />}
+        actions={
+          <span data-tour="users-add" className="inline-flex">
+            <CreateUserButton />
+          </span>
+        }
       >
         <p className="text-sm text-muted-foreground">
           {users.length === 0

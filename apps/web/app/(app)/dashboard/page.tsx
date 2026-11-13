@@ -10,6 +10,7 @@ import {
   XCircle,
 } from "lucide-react";
 
+import { PageTour } from "@/components/coach-marks/tours";
 import { Breadcrumbs } from "@/components/layout/breadcrumbs";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -61,6 +62,7 @@ export default async function DashboardPage() {
 
   return (
     <div className="space-y-6">
+      <PageTour page="dashboard" userId={user.id} />
       <Breadcrumbs items={[{ label: "Dashboard" }]} />
 
       <PageHeader
@@ -78,7 +80,7 @@ export default async function DashboardPage() {
         }
       />
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-6">
+      <div data-tour="dash-stats" className="grid gap-4 sm:grid-cols-2 xl:grid-cols-6">
         <StatCard
           label="Projects"
           value={summary.totalProjects}
@@ -120,7 +122,7 @@ export default async function DashboardPage() {
       {/* Both cards are direct grid children so the grid's default stretch
           makes them share a row height — wrapping either one in a <div> would
           stretch the wrapper and leave the card itself short. */}
-      <div className="grid gap-6 lg:grid-cols-3">
+      <div data-tour="dash-charts" className="grid gap-6 lg:grid-cols-3">
         <StatusDonut stats={stats} />
         <DailyExecutionChart
           data={summary.daily}
@@ -129,7 +131,7 @@ export default async function DashboardPage() {
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">
-        <Card>
+        <Card data-tour="dash-projects">
           <CardHeader>
             <CardTitle className="text-base">Project progress</CardTitle>
             <CardDescription>
@@ -180,7 +182,7 @@ export default async function DashboardPage() {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card data-tour="dash-activity">
           <CardHeader>
             <CardTitle className="text-base">Recent activity</CardTitle>
             <CardDescription>The latest recorded results.</CardDescription>

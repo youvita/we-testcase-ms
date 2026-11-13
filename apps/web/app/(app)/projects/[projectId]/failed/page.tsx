@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { PartyPopper } from "lucide-react";
 
+import { PageTour } from "@/components/coach-marks/tours";
 import { Breadcrumbs } from "@/components/layout/breadcrumbs";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -52,6 +53,7 @@ export default async function FailedCasesPage({
 
   return (
     <div className="space-y-6">
+      <PageTour page="failed" userId={user.id} />
       <Breadcrumbs
         items={[
           { label: "Projects", href: "/projects" },
@@ -68,12 +70,14 @@ export default async function FailedCasesPage({
             : `${failed} failed and ${blocked} blocked, grouped by test type.`
         }
         actions={
+          <span data-tour="failed-export" className="inline-flex">
           <ExportMenu
             projectId={projectId}
             excelScope="failed"
             platforms={project.platforms}
             environments={reportEnvironments}
           />
+          </span>
         }
       />
 
@@ -91,7 +95,7 @@ export default async function FailedCasesPage({
           }
         />
       ) : (
-        <div className="space-y-4">
+        <div data-tour="failed-list" className="space-y-4">
           {cases.map((testCase) => {
             const latest = testCase.executions[0];
 

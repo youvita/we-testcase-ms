@@ -82,6 +82,7 @@ export function NotificationBell() {
           variant="ghost"
           size="icon"
           className="relative"
+          data-tour="notifications"
           aria-label={list.unread ? `Notifications, ${list.unread} unread` : "Notifications"}
         >
           <Bell className="size-5" />

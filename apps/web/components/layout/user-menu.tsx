@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { KeyRound, Loader2, LogOut, Sparkles, UserRound } from "lucide-react";
+import { Compass, KeyRound, Loader2, LogOut, Sparkles, UserRound } from "lucide-react";
 import { toast } from "sonner";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -18,6 +18,7 @@ import {
 import { RoleBadge } from "@/components/shared/priority-badge";
 import { ClaudeConnectionDialog } from "@/features/ai/components/claude-connection-dialog";
 import { ChangePasswordDialog } from "@/features/profile/components/change-password-dialog";
+import { replayGuide } from "@/components/coach-marks/coach-marks";
 import { ProfileDialog } from "@/features/profile/components/profile-dialog";
 import { signOut } from "@/lib/auth-client";
 import type { SessionUser } from "@/lib/session";
@@ -51,6 +52,7 @@ export function UserMenu({ user }: { user: SessionUser }) {
             variant="ghost"
             className="h-9 gap-2 px-2"
             aria-label="Account menu"
+            data-tour="account"
           >
             <Avatar className="size-7">
               {user.image && <AvatarImage src={user.image} alt="" />}
@@ -82,6 +84,10 @@ export function UserMenu({ user }: { user: SessionUser }) {
           <DropdownMenuItem onSelect={() => setClaudeOpen(true)}>
             <Sparkles className="mr-2 size-4" />
             Claude subscription
+          </DropdownMenuItem>
+          <DropdownMenuItem onSelect={() => replayGuide()}>
+            <Compass className="mr-2 size-4" />
+            Show the guide
           </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem

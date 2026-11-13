@@ -264,7 +264,7 @@ export function TestCaseTable({
   }
 
   return (
-    <div className="space-y-4">
+    <div data-tour="cases-table" className="space-y-4">
       {canManage && selectedCases.length > 0 && (
         <div className="flex flex-wrap items-center gap-3 rounded-lg border bg-muted/40 px-4 py-2.5">
           <span className="text-sm font-medium">

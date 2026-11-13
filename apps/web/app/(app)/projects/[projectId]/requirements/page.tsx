@@ -8,6 +8,7 @@ import {
   Sparkles,
 } from "lucide-react";
 
+import { PageTour } from "@/components/coach-marks/tours";
 import { Breadcrumbs } from "@/components/layout/breadcrumbs";
 import { PageHeader } from "@/components/shared/page-header";
 import { StatCard } from "@/components/shared/stat-card";
@@ -68,6 +69,7 @@ export default async function RequirementsPage({
 
   return (
     <div className="space-y-6">
+      <PageTour page="requirements" userId={user.id} />
       <Breadcrumbs
         items={[
           { label: "Projects", href: "/projects" },
@@ -81,7 +83,7 @@ export default async function RequirementsPage({
         description="Upload the PRD or FRD, let the AI read it into requirements, then draft and review test cases that trace back to them."
       />
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div data-tour="req-stats" className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard
           label="Requirements"
           value={inForce.length}

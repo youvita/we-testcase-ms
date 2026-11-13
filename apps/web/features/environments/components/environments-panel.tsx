@@ -89,7 +89,7 @@ export function EnvironmentsPanel({
           description="Add the environment your scripts run against — for example SIT with its web and API base URLs and a test account."
           action={
             canManage ? (
-              <Button onClick={() => setEditing("new")}>
+              <Button onClick={() => setEditing("new")} data-tour="env-add">
                 <Plus className="mr-2 size-4" />
                 Add environment
               </Button>
@@ -100,7 +100,7 @@ export function EnvironmentsPanel({
         <>
           {canManage && (
             <div className="flex justify-end">
-              <Button onClick={() => setEditing("new")}>
+              <Button onClick={() => setEditing("new")} data-tour="env-add">
                 <Plus className="mr-2 size-4" />
                 Add environment
               </Button>
@@ -118,6 +118,7 @@ export function EnvironmentsPanel({
                     <div className="flex gap-1">
                       {!env.isDefault && (
                         <Button
+                          data-tour="env-default"
                           size="icon"
                           variant="ghost"
                           aria-label={`Make ${env.name} the default`}

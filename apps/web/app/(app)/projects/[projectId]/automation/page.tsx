@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Bot, CheckCircle2, Server, XCircle } from "lucide-react";
 
+import { PageTour } from "@/components/coach-marks/tours";
 import { Breadcrumbs } from "@/components/layout/breadcrumbs";
 import { PageHeader } from "@/components/shared/page-header";
 import { StatCard } from "@/components/shared/stat-card";
@@ -55,6 +56,7 @@ export default async function AutomationPage({
 
   return (
     <div className="space-y-6">
+      <PageTour page="automation" userId={user.id} />
       <Breadcrumbs
         items={[
           { label: "Projects", href: "/projects" },
@@ -68,7 +70,7 @@ export default async function AutomationPage({
         description="Run Playwright scripts for Web and API test cases against one of the project's environments. Results land on the test cases with screenshots and traces."
       />
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div data-tour="auto-stats" className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard
           label="Automated cases"
           value={automatedCount}

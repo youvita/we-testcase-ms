@@ -224,7 +224,7 @@ export function RequirementsWorkspace({
 
       <Tabs value={tab} onValueChange={setTab}>
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <TabsList>
+          <TabsList data-tour="req-tabs">
             <TabsTrigger value="requirements">
               Requirements ({requirements.filter((req) => req.status === "ACTIVE").length})
             </TabsTrigger>
@@ -239,7 +239,7 @@ export function RequirementsWorkspace({
             <TabsTrigger value="documents">Documents ({docs.length})</TabsTrigger>
           </TabsList>
           {canChat && requirements.length > 0 && (
-            <Button variant="outline" size="sm" onClick={() => setChatOpen(true)}>
+            <Button variant="outline" size="sm" onClick={() => setChatOpen(true)} data-tour="req-ask-ai">
               <Sparkles className="mr-2 size-4" /> Ask AI
             </Button>
           )}

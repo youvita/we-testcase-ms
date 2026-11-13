@@ -108,6 +108,7 @@ export function AutomationWorkspace({
           <Button
             variant="outline"
             disabled={automatedCount === 0}
+            data-tour="auto-download"
             title="Every automated case as a Playwright project (.zip), to run outside TestCase MS"
             onClick={() => void downloadProjectScripts(projectId)}
           >
@@ -117,6 +118,7 @@ export function AutomationWorkspace({
           {canManage && (
             <Button
               disabled={automatedCount === 0 || environments.length === 0}
+              data-tour="auto-new-run"
               onClick={() => setNewRunOpen(true)}
             >
               <Play className="mr-2 size-4" />
@@ -140,6 +142,7 @@ export function AutomationWorkspace({
       )}
 
       {runs.total === 0 ? (
+        <div data-tour="auto-runs">
         <EmptyState
           icon={Bot}
           title="No runs yet"
@@ -149,8 +152,9 @@ export function AutomationWorkspace({
               : `${automatedCount} case${automatedCount === 1 ? " has" : "s have"} a script. Start a run against one of the project's environments.`
           }
         />
+        </div>
       ) : (
-        <Card className="overflow-hidden">
+        <Card data-tour="auto-runs" className="overflow-hidden">
           {/* The runs scroll inside the card, under a header that stays put,
               so the page — buttons, pages — stays where it is. */}
           <Table containerClassName={SCROLL_BOX}>

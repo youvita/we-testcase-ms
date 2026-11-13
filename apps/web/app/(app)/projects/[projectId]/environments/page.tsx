@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 
+import { PageTour } from "@/components/coach-marks/tours";
 import { Breadcrumbs } from "@/components/layout/breadcrumbs";
 import { PageHeader } from "@/components/shared/page-header";
 import { EnvironmentsPanel } from "@/features/environments/components/environments-panel";
@@ -33,6 +34,7 @@ export default async function EnvironmentsPage({
 
   return (
     <div className="space-y-6">
+      <PageTour page="environments" userId={user.id} />
       <Breadcrumbs
         items={[
           { label: "Projects", href: "/projects" },

@@ -29,6 +29,7 @@ export function MobileNav({ role }: { role: Role }) {
           size="icon"
           className="lg:hidden"
           aria-label="Open navigation"
+          data-tour="nav-menu"
         >
           <Menu className="size-5" />
         </Button>

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ChevronLeft, ChevronRight, CircleHelp } from "lucide-react";
 
+import { PageTour } from "@/components/coach-marks/tours";
 import { Breadcrumbs } from "@/components/layout/breadcrumbs";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -184,6 +185,7 @@ export default async function TestCaseDetailPage({
       <TestCaseDetailShell
         header={
           <>
+            <PageTour page="test-case" userId={user.id} />
             <Breadcrumbs
               items={[
                 { label: "Projects", href: "/projects" },
@@ -204,8 +206,13 @@ export default async function TestCaseDetailPage({
               description={`${testCase.tcId} · ${testCase.module.name}${testCase.subModule ? ` › ${testCase.subModule}` : ""}`}
               actions={
                 <div className="flex items-center gap-2">
-                  {canExecute && <RecordResultButton />}
+                  {canExecute && (
+                    <span data-tour="case-record" className="inline-flex">
+                      <RecordResultButton />
+                    </span>
+                  )}
 
+                  <span data-tour="case-nav" className="inline-flex items-center gap-2">
                   {neighbours.prevId ? (
                     <Button variant="outline" size="icon" asChild>
                       <Link
@@ -245,6 +252,7 @@ export default async function TestCaseDetailPage({
                       <ChevronRight className="size-4" />
                     </Button>
                   )}
+                  </span>
                 </div>
               }
             >
@@ -264,7 +272,7 @@ export default async function TestCaseDetailPage({
         }
         left={
           <>
-            <Card>
+            <Card data-tour="case-details">
               <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2 space-y-0">
                 <CardTitle className="text-base">Test case</CardTitle>
                 <div className="flex flex-wrap items-center gap-2">
@@ -381,6 +389,7 @@ export default async function TestCaseDetailPage({
               </CardContent>
             </Card>
 
+            <div data-tour="case-script">
             <AutomationScriptCard
               projectId={projectId}
               testCaseId={testCase.id}
@@ -408,6 +417,9 @@ export default async function TestCaseDetailPage({
               }
             />
 
+            </div>
+
+            <div data-tour="case-history">
             <ExecutionHistory
               projectId={projectId}
               executions={testCase.executions}
@@ -422,6 +434,7 @@ export default async function TestCaseDetailPage({
                 expectedResult: testCase.expectedResult,
               }}
             />
+            </div>
           </>
         }
         right={
@@ -435,12 +448,14 @@ export default async function TestCaseDetailPage({
             )}
 
             {canTriage && (
+              <div data-tour="case-fix">
               <FixStatusPanel
                 testCaseId={testCase.id}
                 fixStatus={testCase.fixStatus}
                 fixStatusAt={testCase.fixStatusAt}
                 fixStatusBy={testCase.fixStatusBy}
               />
+              </div>
             )}
 
             {showTimeline && (
@@ -465,6 +480,7 @@ export default async function TestCaseDetailPage({
               />
             )}
 
+            <div data-tour="case-discussion">
             <CommentThread
               testCaseId={testCase.id}
               comments={comments}
@@ -507,6 +523,7 @@ export default async function TestCaseDetailPage({
                   : undefined
               }
             />
+            </div>
           </>
         }
       />

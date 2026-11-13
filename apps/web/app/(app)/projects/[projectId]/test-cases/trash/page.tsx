@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 
+import { PageTour } from "@/components/coach-marks/tours";
 import { Breadcrumbs } from "@/components/layout/breadcrumbs";
 import { PageHeader } from "@/components/shared/page-header";
 import { TrashPanel } from "@/features/test-cases/components/trash-panel";
@@ -29,6 +30,7 @@ export default async function TrashPage({
 
   return (
     <div className="space-y-6">
+      <PageTour page="trash" userId={user.id} />
       <Breadcrumbs
         items={[
           { label: "Projects", href: "/projects" },
@@ -42,11 +44,13 @@ export default async function TrashPage({
         description="Deleted test cases stay here with their history, comments and scripts until someone restores them or deletes them forever. Their TC IDs stay taken meanwhile."
       />
 
-      <TrashPanel
-        projectId={projectId}
-        items={items}
-        canManage={canManageTestCases(user.role)}
-      />
+      <div data-tour="trash-list">
+        <TrashPanel
+          projectId={projectId}
+          items={items}
+          canManage={canManageTestCases(user.role)}
+        />
+      </div>
     </div>
   );
 }

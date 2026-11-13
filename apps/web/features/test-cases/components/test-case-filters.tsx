@@ -88,7 +88,7 @@ export function TestCaseFilters({
     moreActive > 0;
 
   return (
-    <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
+    <div data-tour="cases-filters" className="flex flex-col gap-3 lg:flex-row lg:items-center">
       <SearchInput
         value={search}
         onChange={(value) => setParams({ search: value })}

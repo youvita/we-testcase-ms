@@ -106,7 +106,7 @@ export function TrashPanel({
   return (
     <div className="space-y-3">
       {canManage && (
-        <div className="flex flex-wrap items-center gap-2">
+        <div data-tour="trash-actions" className="flex flex-wrap items-center gap-2">
           <span className="mr-auto text-sm text-muted-foreground">
             {chosen.length > 0 ? `${chosen.length} selected` : plural(items.length)}
           </span>

@@ -87,16 +87,18 @@ export function TestCaseToolbar({
 
   return (
     <>
-      <ExportMenu
-        projectId={projectId}
-        excelScope="cases"
-        platforms={platforms}
-        withListFilters
-        onImport={() => setImportOpen(true)}
-      />
+      <span data-tour="cases-excel" className="inline-flex">
+        <ExportMenu
+          projectId={projectId}
+          excelScope="cases"
+          platforms={platforms}
+          withListFilters
+          onImport={() => setImportOpen(true)}
+        />
+      </span>
 
       {platforms.includes("WEB") && (
-        <Button variant="outline" disabled={exploring} onClick={() => setExploreOpen(true)}>
+        <Button variant="outline" disabled={exploring} onClick={() => setExploreOpen(true)} data-tour="cases-explore">
           {exploring ? (
             <Loader2 className="mr-2 size-4 animate-spin" />
           ) : (
@@ -109,14 +111,14 @@ export function TestCaseToolbar({
       )}
 
 
-      <Button variant="outline" onClick={() => setCopyOpen(true)}>
+      <Button variant="outline" onClick={() => setCopyOpen(true)} data-tour="cases-copy">
         <Copy className="mr-2 size-4" />
         Copy to project
       </Button>
 
       {/* Enabled even with no modules: the dialog creates the first one itself,
           so a new project is not a dead end here. */}
-      <Button onClick={() => setFormOpen(true)}>
+      <Button onClick={() => setFormOpen(true)} data-tour="cases-new">
         <Plus className="mr-2 size-4" />
         New test case
       </Button>

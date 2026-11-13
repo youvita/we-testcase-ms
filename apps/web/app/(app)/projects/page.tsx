@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 
+import { PageTour } from "@/components/coach-marks/tours";
 import { Breadcrumbs } from "@/components/layout/breadcrumbs";
 import { PageHeader } from "@/components/shared/page-header";
 import { ProjectList } from "@/features/projects/components/project-list";
@@ -37,6 +38,7 @@ export default async function ProjectsPage({
 
   return (
     <div className="space-y-6">
+      <PageTour page="projects" userId={user.id} />
       <Breadcrumbs items={[{ label: "Projects" }]} />
 
       <PageHeader

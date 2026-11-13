@@ -140,7 +140,7 @@ export function UserTable({
   }
 
   return (
-    <div className="space-y-4">
+    <div data-tour="users-table" className="space-y-4">
       <SearchInput
         value={search}
         onChange={setSearch}

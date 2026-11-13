@@ -1,3 +1,4 @@
+import { AppTour } from "@/components/coach-marks/tours";
 import { MobileNav } from "@/components/layout/mobile-nav";
 import { NotificationBell } from "@/components/layout/notification-bell";
 import { SidebarNav } from "@/components/layout/sidebar-nav";
@@ -29,6 +30,9 @@ export default async function AppLayout({
           {children}
         </main>
       </div>
+
+      {/* The first-time guide around the app; once per person. */}
+      <AppTour userId={user.id} name={user.name} role={user.role} />
     </div>
   );
 }

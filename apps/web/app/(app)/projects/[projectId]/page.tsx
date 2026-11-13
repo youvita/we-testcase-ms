@@ -15,6 +15,7 @@ import {
   XCircle,
 } from "lucide-react";
 
+import { ProjectTour } from "@/components/coach-marks/tours";
 import { Breadcrumbs } from "@/components/layout/breadcrumbs";
 import { Button } from "@/components/ui/button";
 import {
@@ -94,6 +95,8 @@ export default async function ProjectOverviewPage({
 
   return (
     <div className="space-y-6">
+      {/* The first time in a project: what its pages are for. */}
+      <ProjectTour userId={user.id} />
       <Breadcrumbs
         items={[
           { label: "Projects", href: "/projects" },
@@ -106,9 +109,11 @@ export default async function ProjectOverviewPage({
         description={project.description ?? undefined}
         actions={
           <>
-            <ExportMenu projectId={projectId} format="pdf" environments={reportEnvironments} />
+            <span data-tour="project-export" className="inline-flex">
+              <ExportMenu projectId={projectId} format="pdf" environments={reportEnvironments} />
+            </span>
             <Button asChild>
-              <Link href={`/projects/${projectId}/test-cases`}>
+              <Link href={`/projects/${projectId}/test-cases`} data-tour="project-test-cases">
                 <ListChecks className="mr-2 size-4" />
                 Test cases
               </Link>
@@ -154,7 +159,7 @@ export default async function ProjectOverviewPage({
             they squeezed the project name. */}
         <nav aria-label="Project pages" className="flex flex-wrap gap-2">
           <Button variant="outline" asChild>
-            <Link href={`/projects/${projectId}/failed`}>
+            <Link href={`/projects/${projectId}/failed`} data-tour="project-failed">
               <BugPlay className="mr-2 size-4" />
               Failed &amp; blocked
               {problemCount > 0 && (
@@ -165,19 +170,19 @@ export default async function ProjectOverviewPage({
             </Link>
           </Button>
           <Button variant="outline" asChild>
-            <Link href={`/projects/${projectId}/automation`}>
+            <Link href={`/projects/${projectId}/automation`} data-tour="project-automation">
               <Bot className="mr-2 size-4" />
               Automation
             </Link>
           </Button>
           <Button variant="outline" asChild>
-            <Link href={`/projects/${projectId}/environments`}>
+            <Link href={`/projects/${projectId}/environments`} data-tour="project-environments">
               <Server className="mr-2 size-4" />
               Environments
             </Link>
           </Button>
           <Button variant="outline" asChild>
-            <Link href={`/projects/${projectId}/requirements`}>
+            <Link href={`/projects/${projectId}/requirements`} data-tour="project-requirements">
               <FileText className="mr-2 size-4" />
               Requirements
             </Link>

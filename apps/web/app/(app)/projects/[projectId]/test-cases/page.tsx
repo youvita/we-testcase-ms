@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 
+import { PageTour } from "@/components/coach-marks/tours";
 import { Breadcrumbs } from "@/components/layout/breadcrumbs";
 import { PageHeader } from "@/components/shared/page-header";
 import { ScriptJobsPanel } from "@/features/automation/components/script-jobs-panel";
@@ -54,6 +55,7 @@ export default async function TestCasesPage({
 
   return (
     <div className="space-y-6">
+      <PageTour page="test-cases" userId={user.id} />
       <Breadcrumbs
         items={[
           { label: "Projects", href: "/projects" },
@@ -69,11 +71,13 @@ export default async function TestCasesPage({
           <>
             {/* Those who can import get one Excel menu from the toolbar. */}
             {!canManage && (
-              <ExportMenu
-                projectId={projectId}
-                excelScope="cases"
-                withListFilters
-              />
+              <span data-tour="cases-excel" className="inline-flex">
+                <ExportMenu
+                  projectId={projectId}
+                  excelScope="cases"
+                  withListFilters
+                />
+              </span>
             )}
             {canManage && (
               <TestCaseToolbar

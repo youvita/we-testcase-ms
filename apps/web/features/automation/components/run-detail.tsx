@@ -159,7 +159,7 @@ export function RunDetail({
 
   return (
     <div className="space-y-4">
-      <Card>
+      <Card data-tour="run-summary">
         <CardContent className="space-y-3 p-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex flex-wrap items-center gap-3 text-sm">
@@ -206,6 +206,7 @@ export function RunDetail({
           )}
 
           {run.liveView && run.status === "RUNNING" && (
+            <div data-tour="run-live">
             <LiveView
               runId={run.id}
               labels={Object.fromEntries(
@@ -215,6 +216,7 @@ export function RunDetail({
                 ]),
               )}
             />
+            </div>
           )}
 
           {run.error && (
@@ -225,7 +227,7 @@ export function RunDetail({
         </CardContent>
       </Card>
 
-      <Card className="overflow-hidden">
+      <Card data-tour="run-results" className="overflow-hidden">
         <CardContent className={cn("divide-y overflow-y-auto p-0", SCROLL_BOX)}>
           {paging.pageItems.map((item) => (
             <RunItemRow
