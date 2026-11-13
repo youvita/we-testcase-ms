@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { CheckCircle2, Loader2, Unplug } from "lucide-react";
+import { useEffect, useState, type ReactNode } from "react";
+import { Check, CheckCircle2, Copy, Loader2, PlugZap, Unplug } from "lucide-react";
 import { toast } from "sonner";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -20,6 +20,80 @@ import type { ClaudeConnectionStatus } from "@wetestcase/dto";
 import { api, errorMessage } from "@/utils/api-client";
 import { normalizeToken } from "@/utils/claude-token";
 import { formatDate } from "@/utils/format";
+
+type Platform = "mac" | "windows";
+
+function detectPlatform(): Platform {
+  if (typeof navigator === "undefined") return "mac";
+  return /windows/i.test(navigator.userAgent) ? "windows" : "mac";
+}
+
+function Kbd({ children }: { children: ReactNode }) {
+  return (
+    <kbd className="rounded border bg-muted px-1 py-0.5 font-sans text-[11px] font-medium text-foreground">
+      {children}
+    </kbd>
+  );
+}
+
+/**
+ * Per system: how to open the terminal, and one command that works whether or
+ * not Claude Code is already there. It installs only when `claude` is missing
+ * (the official installers), then starts the sign-in. The installer's folder
+ * is put first on PATH for that one run, because the terminal that ran the
+ * installer has not picked up the new PATH yet — and an install from
+ * Homebrew, npm or WinGet is still found behind it. Same as WePlanner's.
+ */
+const PLATFORM_STEPS: Record<Platform, { label: string; openTerminal: ReactNode; enter: string; command: string }> = {
+  mac: {
+    label: "Mac",
+    openTerminal: (
+      <>
+        Press <Kbd>⌘ Command</Kbd> + <Kbd>Space</Kbd>, type <strong className="text-foreground">Terminal</strong>,
+        and press <Kbd>Return</Kbd>.
+      </>
+    ),
+    enter: "Return",
+    command:
+      'command -v claude >/dev/null || curl -fsSL https://claude.ai/install.sh | bash; PATH="$HOME/.local/bin:$PATH" claude setup-token',
+  },
+  windows: {
+    label: "Windows",
+    openTerminal: (
+      <>
+        Press the <Kbd>Windows</Kbd> key, type <strong className="text-foreground">PowerShell</strong>, and press{" "}
+        <Kbd>Enter</Kbd>.
+      </>
+    ),
+    enter: "Enter",
+    command:
+      'if (-not (Get-Command claude -ErrorAction SilentlyContinue)) { irm https://claude.ai/install.ps1 | iex }; $env:Path = "$env:USERPROFILE\\.local\\bin;$env:Path"; claude setup-token',
+  },
+};
+
+/** A command with a Copy button — the one thing on this dialog that must be exact. */
+function CopyCommand({ command }: { command: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <div className="flex items-start gap-2 rounded-lg border bg-muted/60 px-3 py-2">
+      <code className="min-w-0 flex-1 break-all font-mono text-[11px] leading-relaxed text-foreground">{command}</code>
+      <button
+        type="button"
+        onClick={() => {
+          void navigator.clipboard?.writeText(command).then(() => {
+            setCopied(true);
+            window.setTimeout(() => setCopied(false), 1500);
+          });
+        }}
+        className="flex shrink-0 items-center gap-1 rounded-md px-1.5 py-1 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-background hover:text-foreground"
+        aria-label="Copy command"
+      >
+        {copied ? <Check className="size-3.5 text-status-passed" /> : <Copy className="size-3.5" />}
+        {copied ? "Copied" : "Copy"}
+      </button>
+    </div>
+  );
+}
 
 /**
  * Connect, replace or disconnect the person's own Claude subscription.
@@ -40,6 +114,9 @@ export function ClaudeConnectionDialog({
   const [status, setStatus] = useState<ClaudeConnectionStatus | null>(null);
   const [token, setToken] = useState("");
   const [busy, setBusy] = useState(false);
+  const [platform, setPlatform] = useState<Platform>("mac");
+  // After mount, so the server render and the first client render agree.
+  useEffect(() => setPlatform(detectPlatform()), []);
 
   useEffect(() => {
     if (!open) return;
@@ -84,10 +161,12 @@ export function ClaudeConnectionDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>Claude subscription</DialogTitle>
+          <DialogTitle>
+            {status?.connected ? "Claude subscription" : "Connect your Claude subscription"}
+          </DialogTitle>
           <DialogDescription>
-            AI features — reading PRDs and drafting test cases — run on your own
-            Claude Pro or Max plan. Nobody else&apos;s work uses it.
+            AI features run on your own Claude Pro or Max plan. The token is
+            stored encrypted on this server and used only for your own requests.
           </DialogDescription>
         </DialogHeader>
 
@@ -108,8 +187,7 @@ export function ClaudeConnectionDialog({
               <div className="flex items-center justify-between gap-3 rounded-md border px-3 py-2 text-sm">
                 <span className="flex items-center gap-2">
                   <CheckCircle2 className="size-4 text-status-passed" />
-                  Connected · token ending{" "}
-                  <span className="font-mono">{status.tokenHint}</span>
+                  Connected
                   {status.connectedAt && (
                     <span className="text-muted-foreground">
                       since {formatDate(status.connectedAt)}
@@ -128,37 +206,57 @@ export function ClaudeConnectionDialog({
               </div>
             )}
 
-            <ol className="list-decimal space-y-1 pl-5 text-sm text-muted-foreground">
+            {/* Detected, but switchable: someone may be reading this on one
+                machine and setting up on another. */}
+            <div className="inline-flex w-fit rounded-lg border bg-muted/50 p-0.5">
+              {(Object.keys(PLATFORM_STEPS) as Platform[]).map((entry) => (
+                <button
+                  key={entry}
+                  type="button"
+                  onClick={() => setPlatform(entry)}
+                  aria-pressed={platform === entry}
+                  className={
+                    platform === entry
+                      ? "rounded-md bg-background px-3 py-1 text-xs font-medium text-foreground shadow-sm"
+                      : "rounded-md px-3 py-1 text-xs font-medium text-muted-foreground hover:text-foreground"
+                  }
+                >
+                  {PLATFORM_STEPS[entry].label}
+                </button>
+              ))}
+            </div>
+
+            <ol className="flex list-decimal flex-col gap-3 pl-5 text-sm text-muted-foreground">
+              <li>{PLATFORM_STEPS[platform].openTerminal}</li>
+              {/* Not `flex` on the <li> itself: that drops its list number. */}
               <li>
-                If your terminal says{" "}
-                <span className="font-mono">command not found: claude</span>,
-                install the Claude CLI first:{" "}
-                <code className="rounded bg-muted px-1 py-0.5 font-mono text-foreground">
-                  npm install -g @anthropic-ai/claude-code
-                </code>
+                <div className="flex flex-col gap-1.5">
+                  <span>
+                    Copy this, paste it into the window that opened, and press{" "}
+                    <Kbd>{PLATFORM_STEPS[platform].enter}</Kbd>. It installs Claude
+                    Code if you don&apos;t have it yet.
+                  </span>
+                  <CopyCommand command={PLATFORM_STEPS[platform].command} />
+                </div>
               </li>
               <li>
-                Run{" "}
-                <code className="rounded bg-muted px-1 py-0.5 font-mono text-foreground">
-                  claude setup-token
-                </code>{" "}
-                and sign in with the Claude account that has your Pro or Max
-                plan.
+                Your browser opens Claude&apos;s sign-in page. Sign in with your
+                Claude Pro or Max account and approve.
               </li>
               <li>
-                Paste the token it prints (it starts with{" "}
-                <span className="font-mono">sk-ant-oat</span>) below.
+                Back in the terminal, copy everything it printed and paste it
+                below — the token is picked out automatically.
               </li>
             </ol>
 
             <div className="space-y-2">
               <Label htmlFor="claude-token">
-                {status.connected ? "Replace with a new token" : "Subscription token"}
+                {status.connected ? "Replace with a new token" : "Token"}
               </Label>
               <PasswordInput
                 id="claude-token"
                 autoComplete="off"
-                placeholder="sk-ant-oat…"
+                placeholder="Paste the token (sk-ant-oat01-…) here"
                 value={token}
                 onChange={(event) => setToken(event.target.value)}
                 onPaste={(event) => {
@@ -171,10 +269,13 @@ export function ClaudeConnectionDialog({
                   event.preventDefault();
                   setToken(normalizeToken(pasted));
                 }}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" && !busy && token.trim().length >= 20) void handleConnect();
+                }}
               />
               <p className="text-xs text-muted-foreground">
-                Copied from a wrapped terminal line? Spaces and line breaks are
-                removed for you. Stored encrypted on this server and never shown
+                Pasting the whole terminal output is fine — wrapped lines and
+                the text around the token are removed for you. Never shown
                 again. API keys are not accepted.
               </p>
             </div>
@@ -190,8 +291,8 @@ export function ClaudeConnectionDialog({
               disabled={busy || token.trim().length < 20}
               onClick={() => void handleConnect()}
             >
-              {busy && <Loader2 className="mr-2 size-4 animate-spin" />}
-              {busy ? "Checking…" : "Connect"}
+              {busy ? <Loader2 className="mr-2 size-4 animate-spin" /> : <PlugZap className="mr-2 size-4" />}
+              {busy ? "Checking…" : "Verify & save"}
             </Button>
           )}
         </DialogFooter>
