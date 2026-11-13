@@ -2,12 +2,12 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { CornerDownRight, HelpCircle, Loader2, Send } from "lucide-react";
+import { CornerDownRight, HelpCircle } from "lucide-react";
 import { toast } from "sonner";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
+import { ReplyBox } from "./reply-box";
 import type { PoContext } from "@/features/requirements/components/po-questions";
 import { cn } from "@/lib/utils";
 import { api, errorMessage } from "@/utils/api-client";
@@ -132,25 +132,16 @@ export function RequirementQuestionItem({
       )}
 
       {replying && (
-        <li className="ml-9 space-y-2">
-          <Textarea
-            rows={3}
-            autoFocus
+        <li>
+          <ReplyBox
             value={draft}
-            disabled={busy === "reply"}
-            onChange={(event) => setDraft(event.target.value)}
-            placeholder={po.canAnswer ? "Answer…" : "Follow up…"}
-            aria-label={po.canAnswer ? "Answer the question" : "Follow up on the question"}
+            onChange={setDraft}
+            onSend={() => void reply()}
+            onCancel={() => setReplying(false)}
+            sending={busy === "reply"}
+            replyTo={(question.replies.at(-1)?.author ?? question.asker).name}
+            ariaLabel={po.canAnswer ? "Answer the question" : "Follow up on the question"}
           />
-          <div className="flex justify-end gap-2">
-            <Button size="sm" variant="ghost" disabled={busy === "reply"} onClick={() => setReplying(false)}>
-              Cancel
-            </Button>
-            <Button size="sm" disabled={busy === "reply" || !draft.trim()} onClick={() => void reply()}>
-              {busy === "reply" ? <Loader2 className="mr-2 size-4 animate-spin" /> : <Send className="mr-2 size-4" />}
-              {po.canAnswer ? "Send answer" : "Send reply"}
-            </Button>
-          </div>
         </li>
       )}
     </>

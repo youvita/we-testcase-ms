@@ -6,7 +6,7 @@ import { CornerDownRight, MessageCircleQuestion } from "lucide-react";
 import { toast } from "sonner";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Textarea } from "@/components/ui/textarea";
+import { ReplyBox } from "@/features/comments/components/reply-box";
 import { cn } from "@/lib/utils";
 import { api, errorMessage } from "@/utils/api-client";
 import { formatRelative, initials } from "@/utils/format";
@@ -165,29 +165,16 @@ function PoQuestionThread({
             </button>
           )}
           {canReply && replying && (
-            <div className="mt-2 space-y-1">
-              <Textarea
-                rows={2}
-                autoFocus
+            <div className="mt-2">
+              <ReplyBox
                 value={draft}
-                disabled={busy === "reply"}
-                onChange={(event) => setDraft(event.target.value)}
-                onKeyDown={(event) => {
-                  // Enter sends; Shift+Enter is a new line; Esc gives up.
-                  if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
-                    event.preventDefault();
-                    void reply();
-                  } else if (event.key === "Escape") {
-                    setReplying(false);
-                  }
-                }}
-                placeholder={po.canAnswer ? "Answer…" : "Follow up…"}
-                aria-label={po.canAnswer ? "Answer the question" : "Follow up on the question"}
-                className="min-h-0 resize-none"
+                onChange={setDraft}
+                onSend={() => void reply()}
+                onCancel={() => setReplying(false)}
+                sending={busy === "reply"}
+                replyTo={(question.replies.at(-1)?.author ?? question.asker).name}
+                ariaLabel={po.canAnswer ? "Answer the question" : "Follow up on the question"}
               />
-              <p className="text-[11px] text-muted-foreground">
-                {busy === "reply" ? "Sending…" : "Enter to send · Shift+Enter for a new line · Esc to cancel"}
-              </p>
             </div>
           )}
         </div>

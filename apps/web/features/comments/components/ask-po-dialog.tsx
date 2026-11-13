@@ -23,6 +23,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { ImproveWritingButton } from "@/features/ai/components/improve-writing-button";
 import { api, errorMessage } from "@/utils/api-client";
 
 const EVERY_ADMIN = "__all";
@@ -58,6 +59,7 @@ export function AskPoDialog({
   const [open, setOpen] = useState(false);
   const [to, setTo] = useState(EVERY_ADMIN);
   const [body, setBody] = useState("");
+  const [improving, setImproving] = useState(false);
   const [sending, setSending] = useState(false);
 
   function start() {
@@ -132,8 +134,10 @@ export function AskPoDialog({
                 rows={6}
                 value={body}
                 onChange={(event) => setBody(event.target.value)}
+                disabled={improving}
                 placeholder="What should the error message say when the amount is zero?"
               />
+              <ImproveWritingButton text={body} onChange={setBody} disabled={sending} onBusyChange={setImproving} />
             </div>
           </div>
 
@@ -141,7 +145,7 @@ export function AskPoDialog({
             <Button variant="outline" disabled={sending} onClick={() => setOpen(false)}>
               Cancel
             </Button>
-            <Button disabled={sending || !body.trim()} onClick={() => void send()}>
+            <Button disabled={sending || improving || !body.trim()} onClick={() => void send()}>
               {sending ? <Loader2 className="mr-2 size-4 animate-spin" /> : <Send className="mr-2 size-4" />}
               Send question
             </Button>

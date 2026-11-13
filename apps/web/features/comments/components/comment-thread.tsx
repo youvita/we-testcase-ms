@@ -15,6 +15,8 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
+import { ImproveWritingButton } from "@/features/ai/components/improve-writing-button";
+import { ReplyBox } from "./reply-box";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { EmptyState } from "@/components/shared/empty-state";
 import { ROLE_LABELS, toRole } from "@/lib/constants";
@@ -83,6 +85,7 @@ export function CommentThread({
 }) {
   const router = useRouter();
   const [body, setBody] = useState("");
+  const [improving, setImproving] = useState(false);
   const [files, setFiles] = useState<File[]>([]);
   const composer = useRef<HTMLTextAreaElement>(null);
 
@@ -364,47 +367,6 @@ export function CommentThread({
                         {question && canAnswer ? "Answer" : "Reply"}
                       </Button>
                     )}
-                    {answering === comment.id && (
-                      <div className="mt-2 space-y-2">
-                        <Textarea
-                          rows={3}
-                          autoFocus
-                          value={answer}
-                          onChange={(event) => setAnswer(event.target.value)}
-                          onPaste={(event) => {
-                            const pasted = pastedFiles(event);
-                            if (pasted.length) setAnswerFiles(addFiles(answerFiles, pasted));
-                          }}
-                          placeholder={
-                            question && canAnswer
-                              ? "The answer QA can test against — the message, the limit, the rule…"
-                              : `Reply to ${comment.author.name}…`
-                          }
-                          aria-label={question && canAnswer ? "Write the answer" : "Write a reply"}
-                        />
-                        <PendingFiles files={answerFiles} onChange={setAnswerFiles} disabled={sendingAnswer} />
-                        <div className="flex items-center justify-end gap-2">
-                          <span className="mr-auto">
-                            <AttachButton files={answerFiles} onChange={setAnswerFiles} disabled={sendingAnswer} />
-                          </span>
-                          <Button size="sm" variant="ghost" disabled={sendingAnswer} onClick={() => setAnswering(null)}>
-                            Cancel
-                          </Button>
-                          <Button
-                            size="sm"
-                            disabled={sendingAnswer || (!answer.trim() && answerFiles.length === 0)}
-                            onClick={() => void handleAnswer(comment.id)}
-                          >
-                            {sendingAnswer ? (
-                              <Loader2 className="mr-2 size-4 animate-spin" />
-                            ) : (
-                              <Send className="mr-2 size-4" />
-                            )}
-                            {question && canAnswer ? "Send answer" : "Send reply"}
-                          </Button>
-                        </div>
-                      </div>
-                    )}
                   </div>
 
                   {!withdrawn &&
@@ -425,6 +387,23 @@ export function CommentThread({
                       </Button>
                     )}
                 </li>
+                {answering === comment.id && (
+                  // Its own row under the comment, the thread's full width:
+                  // beside the avatar and the delete button it was cramped.
+                  <li>
+                    <ReplyBox
+                      value={answer}
+                      onChange={setAnswer}
+                      onSend={() => void handleAnswer(comment.id)}
+                      onCancel={() => setAnswering(null)}
+                      sending={sendingAnswer}
+                      files={answerFiles}
+                      onFilesChange={setAnswerFiles}
+                      replyTo={comment.author.name}
+                      ariaLabel={question && canAnswer ? "Write the answer" : "Write a reply"}
+                    />
+                  </li>
+                )}
                 {!promptFor && quietAfter.has(comment.id) && caseText && byId.get(quietAfter.get(comment.id)!) && (
                   <CaseUpdatePrompt
                     quiet
@@ -502,6 +481,7 @@ export function CommentThread({
               rows={3}
               value={body}
               onChange={(event) => setBody(event.target.value)}
+              disabled={improving}
               onPaste={(event) => {
                 const pasted = pastedFiles(event);
                 if (pasted.length) setFiles(addFiles(files, pasted));
@@ -511,16 +491,15 @@ export function CommentThread({
             />
             <PendingFiles files={files} onChange={setFiles} disabled={posting} />
             <div className="flex items-center justify-between gap-2">
-              {askingOn ? (
-                // A requirement's questions are text only.
-                <span />
-              ) : (
-                <AttachButton files={files} onChange={setFiles} disabled={posting} />
-              )}
+              <div className="flex items-center gap-1">
+                {/* A requirement's questions are text only. */}
+                {!askingOn && <AttachButton files={files} onChange={setFiles} disabled={posting || improving} />}
+                <ImproveWritingButton text={body} onChange={setBody} disabled={posting} onBusyChange={setImproving} />
+              </div>
               <Button
                 size="sm"
                 onClick={handlePost}
-                disabled={posting || (!body.trim() && files.length === 0)}
+                disabled={posting || improving || (!body.trim() && files.length === 0)}
               >
                 {posting ? (
                   <Loader2 className="mr-2 size-4 animate-spin" />

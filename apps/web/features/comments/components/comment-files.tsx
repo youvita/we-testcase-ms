@@ -82,10 +82,13 @@ export function AttachButton({
   files,
   onChange,
   disabled,
+  compact = false,
 }: {
   files: File[];
   onChange: (files: File[]) => void;
   disabled?: boolean;
+  /** Icon only, for a narrow reply box. */
+  compact?: boolean;
 }) {
   const input = useRef<HTMLInputElement>(null);
   return (
@@ -108,10 +111,11 @@ export function AttachButton({
         className="h-8 px-2 text-muted-foreground"
         disabled={disabled || files.length >= MAX_COMMENT_FILES}
         onClick={() => input.current?.click()}
-        title="Images, video, PDF, Office files, zip, text or logs — or paste a screenshot"
+        title="Attach — images, video, PDF, Office files, zip, text or logs, or paste a screenshot"
+        aria-label={compact ? "Attach files" : undefined}
       >
-        <Paperclip className="mr-1.5 size-4" />
-        Attach
+        <Paperclip className={compact ? "size-4" : "mr-1.5 size-4"} />
+        {!compact && "Attach"}
       </Button>
     </>
   );
