@@ -145,6 +145,175 @@ export async function askClaude(options: {
   return text;
 }
 
+/** Waiting for a chat answer: shorter than a job's, a person is watching. */
+const STREAM_TIMEOUT_MS = 5 * 60_000;
+
+export type StreamMessage = {
+  role: "user" | "assistant";
+  /** Text, or text with images before it. */
+  content: string | { text: string; images: ClaudeImage[] };
+};
+
+export type StreamEvent =
+  | { type: "text"; text: string }
+  | { type: "usage"; inputTokens: number; outputTokens: number };
+
+function toApiContent(content: StreamMessage["content"]) {
+  if (typeof content === "string") return content;
+  if (!content.images.length) return content.text;
+  return [
+    ...content.images.map((image) => ({
+      type: "image",
+      source: { type: "base64", media_type: image.mediaType, data: image.data },
+    })),
+    { type: "text", text: content.text },
+  ];
+}
+
+const count = (value: unknown) => (typeof value === "number" && Number.isFinite(value) ? value : 0);
+
+/**
+ * A conversation turn, streamed: yields the answer's text as it arrives, and
+ * its token counts at the end.
+ *
+ * For the chat panel, where a person waits on the reply. Errors before the
+ * first text throw as with `askClaude`; one after it throws mid-iteration,
+ * and what was yielded so far stays the caller's to show.
+ */
+export async function* streamClaude(options: {
+  token: string;
+  system: string;
+  messages: StreamMessage[];
+  model?: string;
+  /** How hard the model works on it; the bridge passes it to the CLI. */
+  effort?: "low" | "medium" | "high";
+  /** Let it think before answering. Off unless asked, as with the API. */
+  thinking?: boolean;
+  maxTokens?: number;
+  signal?: AbortSignal;
+}): AsyncGenerator<StreamEvent> {
+  const base = process.env.CLAUDE_BRIDGE_URL?.trim().replace(/\/$/, "");
+  if (!base) {
+    throw new AiError("AI is not set up on this server: CLAUDE_BRIDGE_URL is missing.");
+  }
+  const signal = options.signal
+    ? AbortSignal.any([AbortSignal.timeout(STREAM_TIMEOUT_MS), options.signal])
+    : AbortSignal.timeout(STREAM_TIMEOUT_MS);
+  const maxTokens = options.maxTokens ?? 16_000;
+
+  let response: Response | undefined;
+  for (let attempt = 0; !response; attempt += 1) {
+    try {
+      response = await fetch(`${base}/v1/messages`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "anthropic-version": "2023-06-01",
+          "x-api-key": options.token,
+        },
+        body: JSON.stringify({
+          model: options.model ?? defaultModel(),
+          max_tokens: maxTokens,
+          system: options.system,
+          messages: options.messages.map((message) => ({
+            role: message.role,
+            content: toApiContent(message.content),
+          })),
+          stream: true,
+          ...(options.thinking ? { thinking: { type: "enabled", budget_tokens: 10_000 } } : {}),
+          ...(options.effort ? { output_config: { effort: options.effort } } : {}),
+        }),
+        signal,
+      });
+    } catch (error) {
+      if (options.signal?.aborted) throw error;
+      if (error instanceof Error && error.name === "TimeoutError") {
+        throw new AiError("The AI took too long to answer.");
+      }
+      const delay = BRIDGE_RETRY_DELAYS_MS[attempt];
+      if (notConnected(error) && delay !== undefined) {
+        await wait(delay);
+        continue;
+      }
+      throw new AiError(
+        "Could not reach the Claude bridge. Check that the claude-bridge container is running.",
+      );
+    }
+  }
+
+  if (!response.ok || !response.body) {
+    const body = (await response.json().catch(() => null)) as { error?: { message?: string } } | null;
+    throw new AiError(body?.error?.message ?? `The AI request failed with status ${response.status}`);
+  }
+
+  const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
+  let buffer = "";
+  let inputTokens = 0;
+  let outputTokens = 0;
+  try {
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += value;
+      // Server-sent events: blank-line separated, the JSON on a `data:` line.
+      let end: number;
+      while ((end = buffer.indexOf("\n\n")) !== -1) {
+        const event = buffer.slice(0, end);
+        buffer = buffer.slice(end + 2);
+        const data = event
+          .split("\n")
+          .filter((line) => line.startsWith("data:"))
+          .map((line) => line.slice(5).trim())
+          .join("");
+        if (!data) continue;
+        let parsed: {
+          type?: string;
+          delta?: { type?: string; text?: string };
+          error?: { message?: string };
+          message?: { usage?: Record<string, unknown> };
+          usage?: Record<string, unknown>;
+        };
+        try {
+          parsed = JSON.parse(data);
+        } catch {
+          continue;
+        }
+        switch (parsed.type) {
+          case "content_block_delta":
+            if (parsed.delta?.type === "text_delta" && parsed.delta.text) {
+              yield { type: "text", text: parsed.delta.text };
+            }
+            break;
+          case "message_start": {
+            const usage = parsed.message?.usage ?? {};
+            inputTokens =
+              count(usage.input_tokens) +
+              count(usage.cache_creation_input_tokens) +
+              count(usage.cache_read_input_tokens);
+            break;
+          }
+          case "message_delta":
+            outputTokens = count(parsed.usage?.output_tokens) || outputTokens;
+            break;
+          case "message_stop":
+            yield { type: "usage", inputTokens, outputTokens };
+            break;
+          case "error":
+            throw new AiError(parsed.error?.message ?? "The AI stopped with an error.");
+        }
+      }
+    }
+  } catch (error) {
+    if (error instanceof Error && error.name === "TimeoutError") {
+      throw new AiError("The AI took too long to answer.");
+    }
+    throw error;
+  } finally {
+    // Stopped early (the person closed the panel): drop the bridge's stream too.
+    await reader.cancel().catch(() => {});
+  }
+}
+
 /**
  * Pull the JSON out of a model reply.
  *

@@ -112,6 +112,7 @@ export default async function RequirementsPage({
 
       <RequirementsWorkspace
         projectId={projectId}
+        projectName={project.name}
         docs={docs}
         requirements={requirements}
         drafts={drafts}

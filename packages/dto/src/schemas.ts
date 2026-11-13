@@ -786,3 +786,70 @@ export const testCaseQuerySchema = z.object({
 });
 
 export type TestCaseQuery = z.output<typeof testCaseQuerySchema>;
+
+/**
+ * One question to the requirements chat, with the conversation so far. The
+ * conversation lives in the browser only; each question sends it whole.
+ * Files and mentioned documents ride on the question itself, not the history.
+ */
+export const aiChatSchema = z.object({
+  messages: z
+    .array(
+      z.object({
+        role: z.enum(["user", "assistant"]),
+        content: z.string().trim().min(1).max(20_000),
+      }),
+    )
+    .min(1)
+    .max(40, "This conversation is long — start a new chat.")
+    .refine((messages) => messages[messages.length - 1]?.role === "user", {
+      message: "The last message must be a question.",
+    }),
+  /** Files attached to the question: images as base64, text read in the browser. */
+  attachments: z
+    .array(
+      z.discriminatedUnion("kind", [
+        z.object({
+          kind: z.literal("image"),
+          name: z.string().max(200),
+          mediaType: z.enum(["image/png", "image/jpeg", "image/gif", "image/webp"]),
+          data: z.string().max(3_000_000),
+        }),
+        z.object({
+          kind: z.literal("text"),
+          name: z.string().max(200),
+          text: z.string().max(40_000),
+        }),
+      ]),
+    )
+    .max(4)
+    .optional(),
+  /** Project documents whose full text goes with the question. */
+  docIds: z.array(z.string().min(1)).max(3).optional(),
+  /** The tab it was asked from, so "these" can mean that tab's rows. */
+  tab: z.enum(["requirements", "drafts"]).optional(),
+  model: z.enum(AI_MODELS).optional(),
+  effort: z.enum(["low", "medium", "high"]).optional(),
+  thinking: z.boolean().optional(),
+});
+
+export type AiChatInput = z.infer<typeof aiChatSchema>;
+export type AiChatMessage = AiChatInput["messages"][number];
+export type AiChatAttachment = NonNullable<AiChatInput["attachments"]>[number];
+export type AiChatEffort = NonNullable<AiChatInput["effort"]>;
+
+/**
+ * One line of the chat's answer stream (newline-delimited JSON): text as it
+ * is written, the turn's token counts, or an error that ends it.
+ */
+export type AiChatEvent =
+  | { type: "text"; text: string }
+  | { type: "usage"; inputTokens: number; outputTokens: number }
+  | { type: "error"; message: string };
+
+/** A comment, question or reply to tidy up before it is posted. */
+export const improveWritingSchema = z.object({
+  text: z.string().trim().min(1, "Write something first").max(5_000, "Too long to improve at once (5,000 characters)"),
+});
+
+export type ImproveWritingInput = z.infer<typeof improveWritingSchema>;

@@ -3,7 +3,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
+import { Sparkles } from "lucide-react";
 
+import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ClaudeConnectionDialog } from "@/features/ai/components/claude-connection-dialog";
 import type {
@@ -21,6 +23,7 @@ import { AiJobList, REQUIREMENT_JOBS_QUERY, isSubscriptionError } from "./ai-job
 import { DocumentsPanel } from "./documents-panel";
 import { DraftsPanel } from "./drafts-panel";
 import { ExploreAppDialog, type SignInCase } from "./explore-app-dialog";
+import { RequirementsChat } from "./requirements-chat";
 import { RequirementsPanel } from "./requirements-panel";
 import type { Focus, PoContext } from "./po-questions";
 
@@ -42,6 +45,7 @@ function isActive(job: AiJobDto) {
  */
 export function RequirementsWorkspace({
   projectId,
+  projectName,
   docs,
   requirements,
   drafts,
@@ -57,6 +61,7 @@ export function RequirementsWorkspace({
   focus,
 }: {
   projectId: string;
+  projectName: string;
   docs: RequirementDocDto[];
   requirements: RequirementDto[];
   drafts: TestCaseDraftDto[];
@@ -83,9 +88,21 @@ export function RequirementsWorkspace({
   // A notification opened while already on this page changes only the URL.
   const focusTab = focus?.tab;
   const focusId = focus?.id;
+  // A [code] clicked in the chat; a notification opened later takes over.
+  const [chatFocus, setChatFocus] = useState<Focus | undefined>(undefined);
   useEffect(() => {
     if (focusTab) setTab(focusTab);
+    setChatFocus(undefined);
   }, [focusTab, focusId]);
+  const shownFocus = chatFocus ?? focus;
+  const [chatOpen, setChatOpen] = useState(false);
+  const canChat = canManage || canVerify;
+  const focusFromChat = useCallback((id: string) => {
+    setTab("requirements");
+    // Cleared first so clicking the same code again goes back to it.
+    setChatFocus(undefined);
+    requestAnimationFrame(() => setChatFocus({ tab: "requirements", id }));
+  }, []);
   const [exploreOpen, setExploreOpen] = useState(openExplore);
   const canExplore = platforms.includes("WEB");
   const [connectOpen, setConnectOpen] = useState(false);
@@ -206,20 +223,27 @@ export function RequirementsWorkspace({
       />
 
       <Tabs value={tab} onValueChange={setTab}>
-        <TabsList>
-          <TabsTrigger value="requirements">
-            Requirements ({requirements.filter((req) => req.status === "ACTIVE").length})
-          </TabsTrigger>
-          <TabsTrigger value="drafts">
-            Review drafts
-            {drafts.length > 0 && (
-              <span className="ml-1.5 rounded-full bg-primary px-1.5 text-xs text-primary-foreground">
-                {drafts.length}
-              </span>
-            )}
-          </TabsTrigger>
-          <TabsTrigger value="documents">Documents ({docs.length})</TabsTrigger>
-        </TabsList>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <TabsList>
+            <TabsTrigger value="requirements">
+              Requirements ({requirements.filter((req) => req.status === "ACTIVE").length})
+            </TabsTrigger>
+            <TabsTrigger value="drafts">
+              Review drafts
+              {drafts.length > 0 && (
+                <span className="ml-1.5 rounded-full bg-primary px-1.5 text-xs text-primary-foreground">
+                  {drafts.length}
+                </span>
+              )}
+            </TabsTrigger>
+            <TabsTrigger value="documents">Documents ({docs.length})</TabsTrigger>
+          </TabsList>
+          {canChat && requirements.length > 0 && (
+            <Button variant="outline" size="sm" onClick={() => setChatOpen(true)}>
+              <Sparkles className="mr-2 size-4" /> Ask AI
+            </Button>
+          )}
+        </div>
 
         <TabsContent value="requirements" className="mt-4">
           <RequirementsPanel
@@ -234,7 +258,7 @@ export function RequirementsWorkspace({
             onOpenDocuments={() => setTab("documents")}
             questions={questions.filter((question) => question.requirementId)}
             po={po}
-            focusId={focus?.tab === "requirements" ? focus.id : undefined}
+            focusId={shownFocus?.tab === "requirements" ? shownFocus.id : undefined}
           />
         </TabsContent>
 
@@ -248,7 +272,7 @@ export function RequirementsWorkspace({
             onOpenRequirements={() => setTab("requirements")}
             questions={questions.filter((question) => question.draftId)}
             po={po}
-            focusId={focus?.tab === "drafts" ? focus.id : undefined}
+            focusId={shownFocus?.tab === "drafts" ? shownFocus.id : undefined}
           />
         </TabsContent>
 
@@ -271,6 +295,24 @@ export function RequirementsWorkspace({
         onOpenChange={setExploreOpen}
         startAi={startAi}
       />
+
+      {canChat && (
+        <RequirementsChat
+          projectId={projectId}
+          projectName={projectName}
+          tab={tab === "drafts" ? "drafts" : "requirements"}
+          open={chatOpen}
+          onOpenChange={setChatOpen}
+          requirements={requirements}
+          draftCount={drafts.length}
+          docs={docs.map((doc) => ({ id: doc.id, title: doc.title }))}
+          onFocusRequirement={focusFromChat}
+          onConnect={(after) => {
+            retryRef.current = after;
+            setConnectOpen(true);
+          }}
+        />
+      )}
 
       <ClaudeConnectionDialog
         open={connectOpen}
