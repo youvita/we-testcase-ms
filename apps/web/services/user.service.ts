@@ -1,4 +1,5 @@
 import { auth } from "@/lib/auth";
+import { shownUsername } from "@/utils/username";
 import { prisma } from "@/lib/prisma";
 import { badRequest, conflict, notFound } from "@/lib/api";
 import { ROLES, toRole } from "@/lib/constants";
@@ -31,7 +32,7 @@ type UserRow = {
 
 /** Narrow the database row's String role to the Role union. */
 function toPublicUser({ displayUsername, ...row }: UserRow): PublicUser {
-  return { ...row, username: displayUsername ?? row.username, role: toRole(row.role) };
+  return { ...row, username: shownUsername(row.username, displayUsername), role: toRole(row.role) };
 }
 
 /**

@@ -145,7 +145,12 @@ export function ProfileDialog({
 
       if (values.username !== (user.username ?? "")) {
         // Checked by the server too: the format, and that nobody has it.
-        const { error } = await updateUser({ username: values.username });
+        // Both: on an update the plugin changes only the fields it is sent,
+        // and the shown name (displayUsername) would stay the old one.
+        const { error } = await updateUser({
+          username: values.username,
+          displayUsername: values.username,
+        });
         if (error?.code === "USERNAME_IS_ALREADY_TAKEN") {
           setError("username", { message: "That username is taken — try another" });
           return;

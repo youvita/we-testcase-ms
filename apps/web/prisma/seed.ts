@@ -24,7 +24,7 @@ const DEMO_PASSWORD = "Password123!";
 
 const USERS = [
   { name: "Alice Admin", email: "admin@example.com", username: "admin", role: "ADMIN" },
-  { name: "Quinn Tester", email: "qa@example.com", username: "qa", role: "QA" },
+  { name: "Quinn Tester", email: "qa@example.com", username: "quinn", role: "QA" },
   { name: "Dev Duong", email: "dev@example.com", username: "dev", role: "DEVELOPER" },
 ] as const;
 

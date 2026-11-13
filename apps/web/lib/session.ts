@@ -4,6 +4,7 @@ import { cache } from "react";
 
 import { auth } from "@/lib/auth";
 import { toRole, type Role } from "@/lib/constants";
+import { shownUsername } from "@/utils/username";
 
 export type SessionUser = {
   id: string;
@@ -35,7 +36,7 @@ export const getSessionUser = cache(async (): Promise<SessionUser | null> => {
     id: user.id,
     name: user.name,
     email: user.email,
-    username: user.displayUsername ?? user.username ?? null,
+    username: shownUsername(user.username, user.displayUsername),
     image: user.image ?? null,
     role: toRole(user.role),
     isActive: user.isActive ?? true,
