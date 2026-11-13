@@ -26,7 +26,9 @@ const AvatarImage = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <AvatarPrimitive.Image
     ref={ref}
-    className={cn("aspect-square h-full w-full", className)}
+    // Cover, not stretch: uploads are not cropped, so a portrait or landscape
+    // photo would otherwise be squashed into the circle.
+    className={cn("aspect-square h-full w-full object-cover", className)}
     {...props}
   />
 ));
