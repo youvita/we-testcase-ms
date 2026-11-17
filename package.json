@@ -2,7 +2,7 @@
   "name": "wetestcase-ms",
   "version": "0.1.0",
   "private": true,
-  "description": "TestCase MS monorepo — web app + shared DTOs",
+  "description": "WeTestCase monorepo — web app + shared DTOs",
   "workspaces": [
     "apps/*",
     "packages/*"
@@ -26,7 +26,8 @@
     "tunnel:own": "docker compose -f docker-compose.prod.yml --env-file .env.production --profile quick up -d --no-deps web quicktunnel",
     "tunnel:own:url": "docker logs wetestcase-quick-tunnel 2>&1 | grep -oE 'https://[a-z0-9-]+\\.trycloudflare\\.com' | tail -1",
     "tunnel:own:down": "docker compose -f docker-compose.prod.yml --env-file .env.production --profile quick stop quicktunnel web && docker compose -f docker-compose.prod.yml --env-file .env.production --profile quick rm -f quicktunnel web",
-    "docker:stack:up": "./deploy/scripts/stack-up.sh"
+    "docker:stack:up": "./deploy/scripts/stack-up.sh",
+    "guide:build": "node scripts/user-guide/build.mjs"
   },
   "engines": {
     "node": ">=20"
