@@ -36,7 +36,7 @@ export function SidebarNav({
         </span>
         <span className="min-w-0">
           <span className="block truncate text-sm font-semibold leading-tight">
-            TestCase MS
+            WeTestCase
           </span>
           <span className="block truncate text-xs text-sidebar-foreground/60">
             Test management

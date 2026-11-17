@@ -11,7 +11,7 @@ export default function AuthLayout({
           <span className="flex size-9 items-center justify-center rounded-lg bg-white/10">
             <FlaskConical className="size-5" aria-hidden />
           </span>
-          <span className="text-base font-semibold">TestCase MS</span>
+          <span className="text-base font-semibold">WeTestCase</span>
         </div>
 
         <div className="max-w-md space-y-4">

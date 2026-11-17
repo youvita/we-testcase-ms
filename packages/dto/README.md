@@ -1,6 +1,6 @@
 # @wetestcase/dto
 
-Shared **DTOs** for TestCase MS: enums, Zod request/query schemas, and pure
+Shared **DTOs** for WeTestCase: enums, Zod request/query schemas, and pure
 response types. Framework-free — safe to import from the Next app, scripts, or
 a future second client.
 

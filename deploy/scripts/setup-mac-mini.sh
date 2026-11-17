@@ -5,7 +5,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT"
 
-echo "==> TestCase MS — Mac mini setup"
+echo "==> WeTestCase — Mac mini setup"
 echo "    project root: $ROOT"
 echo
 

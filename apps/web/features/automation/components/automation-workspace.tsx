@@ -109,7 +109,7 @@ export function AutomationWorkspace({
             variant="outline"
             disabled={automatedCount === 0}
             data-tour="auto-download"
-            title="Every automated case as a Playwright project (.zip), to run outside TestCase MS"
+            title="Every automated case as a Playwright project (.zip), to run outside WeTestCase"
             onClick={() => void downloadProjectScripts(projectId)}
           >
             <Download className="mr-2 size-4" />

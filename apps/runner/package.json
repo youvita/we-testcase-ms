@@ -2,7 +2,7 @@
   "name": "@wetestcase/runner",
   "version": "0.1.0",
   "private": true,
-  "description": "Executes automated test runs with Playwright for TestCase MS",
+  "description": "Executes automated test runs with Playwright for WeTestCase",
   "type": "module",
   "scripts": {
     "start": "node src/index.ts",

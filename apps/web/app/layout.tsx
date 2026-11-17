@@ -7,8 +7,8 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: {
-    default: "TestCase MS",
-    template: "%s · TestCase MS",
+    default: "WeTestCase",
+    template: "%s · WeTestCase",
   },
   description:
     "Online test case management — import Excel test cases, execute them online and track progress in real time.",

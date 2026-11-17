@@ -1,5 +1,5 @@
 /**
- * The TestCase MS runner: executes automated test runs with Playwright.
+ * The WeTestCase runner: executes automated test runs with Playwright.
  *
  * It holds no database credentials and serves nothing. It asks the app for
  * work and reports back, all over the app's /api/runner/* routes with a shared

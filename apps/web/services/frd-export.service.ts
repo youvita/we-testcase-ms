@@ -41,7 +41,7 @@ export async function exportCaseFrd(testCaseId: string) {
   const body = [...docs.values()]
     .map((doc) => `<!-- ${doc.kind}: ${doc.title}${doc.fileName ? ` (uploaded as ${doc.fileName})` : ""} -->\n\n${doc.content}`)
     .join("\n\n---\n\n");
-  const content = `<!-- Exported from TestCase MS for ${testCase.tcId}, which verifies:\n${verifies}\n-->\n\n${body}\n`;
+  const content = `<!-- Exported from WeTestCase for ${testCase.tcId}, which verifies:\n${verifies}\n-->\n\n${body}\n`;
 
   const only = docs.size === 1 ? [...docs.values()][0]! : null;
   const base = (only?.title ?? `${testCase.tcId} requirements`).replace(/[^A-Za-z0-9._ -]+/g, "-").trim() || "FRD";

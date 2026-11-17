@@ -29,7 +29,7 @@ const trustedOrigins = [
 ].filter((origin): origin is string => Boolean(origin));
 
 export const auth = betterAuth({
-  appName: "TestCase MS",
+  appName: "WeTestCase",
   secret: process.env.BETTER_AUTH_SECRET,
 
   /**

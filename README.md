@@ -1,4 +1,4 @@
-# TestCase MS — Online Test Case Management
+# WeTestCase — Online Test Case Management
 
 A web-based test case management system that replaces Excel-based test execution
 while letting teams keep using their existing Excel templates.

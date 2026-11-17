@@ -91,7 +91,7 @@ function caseHeader(testCase: ExportCase): string {
     ? `${testCase.moduleName} › ${testCase.subModule}`
     : testCase.moduleName;
   return `// ${testCase.tcId} — ${testCase.title}
-// ${group} · ${testCase.platform === "API" ? "API" : "Web"} · exported from TestCase MS`;
+// ${group} · ${testCase.platform === "API" ? "API" : "Web"} · exported from WeTestCase`;
 }
 
 /** Variables the scripts use: vars.NAME. */
@@ -190,7 +190,7 @@ ${testBody(testCase)}`;
 
 const CONFIG_FILE = `import { defineConfig } from "@playwright/test";
 
-// The same settings the TestCase MS runner uses.
+// The same settings the WeTestCase runner uses.
 export default defineConfig({
   testDir: "./tests",
   timeout: 60_000,
@@ -215,7 +215,7 @@ function readme(
 ): string {
   return `# ${projectName} — automated tests
 
-Exported from TestCase MS: ${cases.length} test case${cases.length === 1 ? "" : "s"}, one file each under \`tests/<module>/<sub-module>/\`.
+Exported from WeTestCase: ${cases.length} test case${cases.length === 1 ? "" : "s"}, one file each under \`tests/<module>/<sub-module>/\`.
 
 ## Run them
 
@@ -239,7 +239,7 @@ In CI, set the same names as environment variables instead of a file.
 ## Editing
 
 Each file is the script saved on its test case, wrapped in a Playwright test.
-Changes made here do not go back to TestCase MS — paste them into the case's
+Changes made here do not go back to WeTestCase — paste them into the case's
 script there if the platform should run them too.
 `;
 }

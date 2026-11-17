@@ -1036,7 +1036,7 @@ export async function buildPdfReport(projectId: string, environment?: string): P
   const doc = await PDFDocument.create();
   doc.setTitle(`${project.name} — Summary Report`);
   doc.setSubject("Test execution summary report");
-  doc.setCreator("TestCase MS");
+  doc.setCreator("WeTestCase");
 
   const font = await doc.embedFont(StandardFonts.Helvetica);
   const bold = await doc.embedFont(StandardFonts.HelveticaBold);

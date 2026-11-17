@@ -25,7 +25,7 @@ export function AppTour({ userId, name, role }: { userId: string; name: string; 
           <FlaskConical className="size-6" />
         </Art>
       ),
-      title: `Welcome to TestCase MS, ${firstName}`,
+      title: `Welcome to WeTestCase, ${firstName}`,
       body: "Plan, run and track your project's test cases in one place. Here is a quick look around — it takes under a minute.",
     },
     {
@@ -155,7 +155,7 @@ const PAGE_TOURS = {
   automation: [
     { target: "auto-stats", title: "Automation at a glance", body: "How many cases have a script, and how the latest runs went." },
     { target: "auto-new-run", title: "New run", body: "Run the scripted cases in a browser against one of the project's environments." },
-    { target: "auto-download", title: "Download all scripts", body: "Every script as a Playwright project, to run outside TestCase MS." },
+    { target: "auto-download", title: "Download all scripts", body: "Every script as a Playwright project, to run outside WeTestCase." },
     { target: "auto-runs", title: "Runs", body: "Each run and how it went. Open one to watch it live or see what failed." },
   ],
   run: [
