@@ -48,6 +48,11 @@ export function AppTour({ userId, name, role }: { userId: string; name: string; 
         ]
       : []),
     {
+      target: ["user-guide", "nav-menu"],
+      title: "User guide",
+      body: "How to use the whole system, page by page with screenshots. Read it here, or download the PDF.",
+    },
+    {
       target: "notifications",
       title: "Notifications",
       body: "Answers to your questions, replies to your comments and fixes ready to retest show up here.",

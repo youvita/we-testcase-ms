@@ -34,6 +34,12 @@ const PROJECT = process.env.GUIDE_PROJECT ?? "Weloan365 Mobile Banking";
 const CASE = process.env.GUIDE_CASE ?? "TC-TRF-002";
 const OUT = path.resolve(process.env.GUIDE_OUT ?? path.join(here, "../../apps/web/public/user-guide.pdf"));
 /**
+ * The same guide as a web page, beside the PDF: the app's preview shows it,
+ * since a PDF inside a page depends on each browser's viewer (some phones
+ * show only its first page).
+ */
+const OUT_HTML = OUT.replace(/\.pdf$/i, ".html");
+/**
  * Pages are photographed in a window this tall (CSS px), not as a full-page
  * capture: some pages scroll inside a column, which a full-page capture
  * leaves blank. A section can ask for more with `height`.
@@ -257,6 +263,23 @@ const html = `<!doctype html><html><head><meta charset="utf-8"><title>${TITLE} �
   td, th { border-bottom: 1px solid #e2e8f0; padding: 7px 8px; text-align: left; vertical-align: top; }
   th { color: #475569; font-weight: 600; }
   code { font: 9.5pt ui-monospace, Menlo, monospace; background: #f1f5f9; padding: 1px 4px; border-radius: 4px; }
+  /* On screen (the in-app preview): white pages on grey, like a book. */
+  @media screen {
+    html { background: #e2e8f0; }
+    body { padding: 24px 12px; }
+    .cover, .contents, section {
+      background: white; max-width: 210mm; margin: 0 auto 20px; padding: 16mm 15mm; border-radius: 6px;
+      box-shadow: 0 1px 3px rgba(15, 23, 42, .12), 0 8px 24px rgba(15, 23, 42, .06);
+    }
+    .cover { height: auto; min-height: 240mm; }
+    @media (max-width: 640px) {
+      body { padding: 12px 8px; }
+      .cover, .contents, section { padding: 22px 16px; }
+      .cover { min-height: 0; padding-top: 72px; padding-bottom: 72px; }
+      .contents ol { columns: 1; }
+      .pair { flex-direction: column; }
+    }
+  }
 </style></head><body>
 <div class="cover"><div class="mark">✓</div><h1>${TITLE}</h1><p class="sub">${SUBTITLE}</p>
 <p class="meta">How to plan, run and track test cases — page by page.<br>${today}</p></div>
@@ -269,6 +292,7 @@ ${sectionsHtml}
 const pdfPage = await context.newPage();
 await pdfPage.setContent(html, { waitUntil: "load" });
 await mkdir(path.dirname(OUT), { recursive: true });
+await writeFile(OUT_HTML, html);
 await writeFile(
   OUT,
   await pdfPage.pdf({
@@ -280,5 +304,5 @@ await writeFile(
     margin: { top: "16mm", bottom: "18mm", left: "15mm", right: "15mm" },
   }),
 );
-console.log(`Wrote ${path.relative(process.cwd(), OUT)}`);
+console.log(`Wrote ${path.relative(process.cwd(), OUT)} and ${path.basename(OUT_HTML)}`);
 await browser.close();

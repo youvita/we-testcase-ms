@@ -51,8 +51,9 @@ export const SECTIONS = [
       { target: "nav-dashboard", label: "Dashboard", text: "Progress across every project." },
       { target: "nav-projects", label: "Projects", text: "Where the work lives: each project's test cases, requirements, runs and reports." },
       { target: "nav-admin-users", label: "Users", text: "Admins only: add people, set roles, reset passwords." },
+      { target: "user-guide", label: "User guide", text: "This guide: read it in the app, or download the PDF." },
       { target: "notifications", label: "Notifications", text: "Answers to your questions, replies to your comments, and fixes ready to retest. A number shows how many are unread." },
-      { target: "account", label: "Your account", text: "Profile, password, Claude subscription, the on-screen guide and this user guide." },
+      { target: "account", label: "Your account", text: "Profile, password, Claude subscription and the on-screen guide." },
     ],
     tips: [
       "The first time you open each page, a short on-screen guide points out its parts. **Show the guide** in the account menu plays it again.",
@@ -308,7 +309,6 @@ export const SECTIONS = [
       "**Change password** — enter the current one, then the new one twice.",
       "**Claude subscription** — connect your own Claude Pro or Max plan; every AI feature runs on it. The steps for Mac and Windows are on that screen.",
       "**Show the guide** — play the on-screen guide for the page you are on.",
-      "**Download user guide** — this document.",
       "**Sign out**.",
     ],
   },

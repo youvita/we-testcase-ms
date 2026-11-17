@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { BookOpen, Compass, KeyRound, Loader2, LogOut, Sparkles, UserRound } from "lucide-react";
+import { Compass, KeyRound, Loader2, LogOut, Sparkles, UserRound } from "lucide-react";
 import { toast } from "sonner";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -18,7 +18,6 @@ import {
 import { RoleBadge } from "@/components/shared/priority-badge";
 import { ClaudeConnectionDialog } from "@/features/ai/components/claude-connection-dialog";
 import { ChangePasswordDialog } from "@/features/profile/components/change-password-dialog";
-import { withBasePath } from "@/lib/base-path";
 import { replayGuide } from "@/components/coach-marks/coach-marks";
 import { ProfileDialog } from "@/features/profile/components/profile-dialog";
 import { signOut } from "@/lib/auth-client";
@@ -89,13 +88,6 @@ export function UserMenu({ user }: { user: SessionUser }) {
           <DropdownMenuItem onSelect={() => replayGuide()}>
             <Compass className="mr-2 size-4" />
             Show the guide
-          </DropdownMenuItem>
-          <DropdownMenuItem asChild>
-            {/* Built by scripts/user-guide (npm run guide:build). */}
-            <a href={withBasePath("/user-guide.pdf")} download="WeTestCase user guide.pdf">
-              <BookOpen className="mr-2 size-4" />
-              Download user guide
-            </a>
           </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem

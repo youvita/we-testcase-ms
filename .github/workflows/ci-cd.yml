@@ -142,7 +142,9 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: user-guide
-          path: apps/web/public/user-guide.pdf
+          path: |
+            apps/web/public/user-guide.pdf
+            apps/web/public/user-guide.html
           if-no-files-found: error
           retention-days: 30
 

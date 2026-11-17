@@ -9,6 +9,7 @@ import type { Role } from "@/lib/constants";
 import { ROLE_DESCRIPTIONS, ROLE_LABELS } from "@/lib/constants";
 
 import { isNavItemActive, navItemsForRole } from "./nav-config";
+import { UserGuideButton } from "./user-guide-button";
 
 /**
  * Primary navigation. Rendered inside the fixed desktop sidebar and inside the
@@ -69,7 +70,11 @@ export function SidebarNav({
         })}
       </nav>
 
-      <div className="border-t border-sidebar-border px-4 py-4">
+      <div className="px-2">
+        <UserGuideButton onClick={onNavigate} />
+      </div>
+
+      <div className="-mt-4 border-t border-sidebar-border px-4 py-4">
         <p className="text-xs font-medium text-sidebar-foreground/80">
           Signed in as {ROLE_LABELS[role]}
         </p>
