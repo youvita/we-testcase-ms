@@ -671,6 +671,26 @@ export const automationScriptSchema = z.object({
     .refine((code) => code.trim().length > 0, "Write the script first"),
 });
 
+/**
+ * "Explain with AI" on a script: the code as it is in the editor (saved or
+ * not), the lines picked out, if any, and the conversation so far — the last
+ * message is the person's question.
+ */
+export const scriptExplainSchema = z.object({
+  code: z.string().max(100_000, "The script is too long").refine((code) => code.trim().length > 0, "There is no script to explain"),
+  /** 1-based, inclusive. */
+  lines: z
+    .object({ from: z.number().int().min(1), to: z.number().int().min(1) })
+    .refine((range) => range.to >= range.from)
+    .nullish(),
+  messages: z
+    .array(z.object({ role: z.enum(["user", "assistant"]), text: z.string().trim().min(1).max(8_000) }))
+    .min(1)
+    .max(20)
+    .refine((messages) => messages.at(-1)?.role === "user", "Ask a question first"),
+});
+export type ScriptExplainInput = z.infer<typeof scriptExplainSchema>;
+
 export const testRunCreateSchema = z
   .object({
     environmentId: z.string().min(1, "Select an environment"),

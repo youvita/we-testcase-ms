@@ -98,6 +98,8 @@ export function ScriptEditor({
   readOnly,
   placeholder,
   onSave,
+  onSelectLines,
+  onExplain,
 }: {
   value: string;
   onChange: (value: string) => void;
@@ -108,11 +110,19 @@ export function ScriptEditor({
   placeholder?: string;
   /** Ctrl/Cmd+S. */
   onSave?: () => void;
+  /** The lines picked out (1-based), or null when nothing is selected. */
+  onSelectLines?: (lines: { from: number; to: number } | null) => void;
+  /** "Explain with AI" in the right-click menu, for the lines picked out. */
+  onExplain?: (lines: { from: number; to: number } | null) => void;
 }) {
   const [monaco, setMonaco] = useState<Monaco | null>(null);
   const [lines, setLines] = useState(() => value.split("\n").length);
   const saveRef = useRef(onSave);
   saveRef.current = onSave;
+  const selectRef = useRef(onSelectLines);
+  selectRef.current = onSelectLines;
+  const explainRef = useRef(onExplain);
+  explainRef.current = onExplain;
 
   // What is in scope follows the case's platform and the project's variables.
   const variableKey = variables.map((v) => `${v.key}:${v.secret}`).join(",");
@@ -135,6 +145,25 @@ export function ScriptEditor({
     setMonaco(instance);
     editor.addCommand(instance.KeyMod.CtrlCmd | instance.KeyCode.KeyS, () => saveRef.current?.());
     editor.onDidChangeModelContent(() => setLines(editor.getModel()?.getLineCount() ?? 1));
+
+    // A selection ending at the start of a line does not take that line in.
+    const picked = () => {
+      const selection = editor.getSelection();
+      if (!selection || selection.isEmpty()) return null;
+      const to =
+        selection.endColumn === 1 && selection.endLineNumber > selection.startLineNumber
+          ? selection.endLineNumber - 1
+          : selection.endLineNumber;
+      return { from: selection.startLineNumber, to };
+    };
+    editor.onDidChangeCursorSelection(() => selectRef.current?.(picked()));
+    editor.addAction({
+      id: "wetestcase.explain",
+      label: "Explain with AI",
+      contextMenuGroupId: "navigation",
+      contextMenuOrder: 0,
+      run: () => explainRef.current?.(picked()),
+    });
   };
 
   const height = Math.min(MAX_LINES, Math.max(MIN_LINES, lines + 1)) * LINE_HEIGHT + 16;

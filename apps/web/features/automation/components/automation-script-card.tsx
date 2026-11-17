@@ -35,6 +35,7 @@ import { formatRelative } from "@/utils/format";
 import { NewRunDialog } from "./new-run-dialog";
 import { RunStatusBadge } from "./run-status-badge";
 import { ScriptEditor } from "./script-editor";
+import { ScriptExplainPanel, type ScriptLines } from "./script-explain-panel";
 import { ScriptWritingPanel, WriteWithClaudeDialog } from "./script-writer";
 
 const EXAMPLES: Record<"WEB" | "API", string> = {
@@ -128,6 +129,9 @@ export function AutomationScriptCard({
   const [showScript, setShowScript] = useState(false);
   const [writeOpen, setWriteOpen] = useState(false);
   const [connectOpen, setConnectOpen] = useState(false);
+  // "Explain with AI": the lines picked in the editor, and what is explained.
+  const [selectedLines, setSelectedLines] = useState<ScriptLines>(null);
+  const [explaining, setExplaining] = useState<{ lines: ScriptLines } | null>(null);
   const retryRef = useRef<(() => void) | null>(null);
   const [writeJob, setWriteJob] = useAiJob(latestWriteJob, (job) => {
     if (job.status === "SUCCEEDED") toast.success(job.summary ?? "The AI finished the script");
@@ -375,6 +379,8 @@ export function AutomationScriptCard({
               variables={environments.flatMap((env) => env.variables)}
               readOnly={!canManage}
               placeholder={EXAMPLES[platform]}
+              onSelectLines={setSelectedLines}
+              onExplain={(lines) => setExplaining({ lines })}
               onSave={
                 canManage
                   ? () => {
@@ -395,6 +401,20 @@ export function AutomationScriptCard({
                 <span className="text-xs">· {lineCount} line{lineCount === 1 ? "" : "s"}</span>
               </button>
             )
+          )}
+
+          {explaining && editorOpen && code.trim() && (
+            <ScriptExplainPanel
+              key={explaining.lines ? `${explaining.lines.from}-${explaining.lines.to}` : "all"}
+              testCaseId={testCaseId}
+              code={code}
+              lines={explaining.lines}
+              onClose={() => setExplaining(null)}
+              onNeedsConnection={(retry) => {
+                retryRef.current = retry;
+                setConnectOpen(true);
+              }}
+            />
           )}
 
           {(canManage || script) && (
@@ -425,6 +445,19 @@ export function AutomationScriptCard({
                 >
                   <Download className="mr-2 size-4" />
                   Download script
+                </Button>
+              )}
+              {editorOpen && code.trim() && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  title="Select lines in the script to explain just those"
+                  onClick={() => setExplaining({ lines: selectedLines })}
+                >
+                  <Sparkles className="mr-2 size-4" />
+                  {selectedLines
+                    ? `Explain line${selectedLines.from === selectedLines.to ? ` ${selectedLines.from}` : `s ${selectedLines.from}–${selectedLines.to}`}`
+                    : "Explain with AI"}
                 </Button>
               )}
               {canManage && editorOpen && (
