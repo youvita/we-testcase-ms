@@ -92,7 +92,7 @@ import { AskPoDialog } from "@/features/comments/components/ask-po-dialog";
 import { PoQuestionBadge, PoQuestions, type PoContext } from "./po-questions";
 import type { StartAi } from "./requirements-workspace";
 
-type Coverage = "all" | "unverified" | "uncovered" | "covered" | "questions" | "changes" | "removed";
+type Coverage = "all" | "verified" | "unverified" | "uncovered" | "covered" | "questions" | "changes" | "removed";
 
 /** A document's section — the unit a feature is usually written as. */
 type Group = {
@@ -173,6 +173,7 @@ export function RequirementsPanel({
       if (coverage === "uncovered" && req.testCases.length > 0) return false;
       if (coverage === "covered" && req.testCases.length === 0) return false;
       if (coverage === "questions" && !req.openQuestions) return false;
+      if (coverage === "verified" && !req.verifiedAt) return false;
       if (coverage === "unverified" && req.verifiedAt) return false;
       if (!term) return true;
       // A test case's ID finds the requirements it verifies.
@@ -453,6 +454,7 @@ export function RequirementsPanel({
               <SelectItem value="covered">Covered</SelectItem>
               <SelectItem value="questions">With open questions</SelectItem>
               <SelectItem value="changes">Changed in new version</SelectItem>
+              <SelectItem value="verified">Verified by the PO</SelectItem>
               <SelectItem value="unverified">Not verified by the PO</SelectItem>
               <SelectItem value="removed">Removed</SelectItem>
             </SelectContent>
