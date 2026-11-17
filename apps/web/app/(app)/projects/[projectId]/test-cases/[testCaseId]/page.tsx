@@ -16,6 +16,7 @@ import {
 } from "@/components/shared/priority-badge";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { CommentThread } from "@/features/comments/components/comment-thread";
+import { listMentionable } from "@/services/mention.service";
 import { FixStatusPanel } from "@/features/comments/components/fix-status-panel";
 import { ExecutionEditorProvider } from "@/features/executions/components/execution-editor-context";
 import { FixTimeline } from "@/features/executions/components/fix-timeline";
@@ -99,7 +100,7 @@ export default async function TestCaseDetailPage({
   // project's URL.
   if (testCase.projectId !== projectId) notFound();
 
-  const [neighbours, comments, script, environments, lastRunItem, latestWrite, lastFinishedWrite, signInCases] = await Promise.all([
+  const [neighbours, comments, script, environments, lastRunItem, latestWrite, lastFinishedWrite, signInCases, people] = await Promise.all([
     getTestCaseNeighbours(projectId, testCase.tcId),
     listComments(testCaseId),
     getAutomationScript(testCaseId),
@@ -117,6 +118,7 @@ export default async function TestCaseDetailPage({
     getLatestScriptJob(testCaseId),
     getLastFinishedScriptJob(testCaseId),
     listSignInCases(projectId),
+    listMentionable(projectId),
   ]);
   const requirementQuestions = await listRequirementQuestionsForCase(testCaseId);
   const admins = requirementQuestions.length ? await listAdmins() : [];
@@ -485,6 +487,7 @@ export default async function TestCaseDetailPage({
               testCaseId={testCase.id}
               comments={comments}
               currentUserId={user.id}
+              people={people}
               canComment={canPostComment}
               canModerate={isAdmin(user.role)}
               canAnswer={canAnswerPo(user.role)}

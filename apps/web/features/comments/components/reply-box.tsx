@@ -9,6 +9,7 @@ import { useSession } from "@/lib/auth-client";
 import { initials } from "@/utils/format";
 
 import { AttachButton, PendingFiles, addFiles, pastedFiles } from "./comment-files";
+import { useMentions, type MentionablePerson } from "./mentions";
 
 /** Tall enough for a few lines; past that the box scrolls. */
 const MAX_HEIGHT = 160;
@@ -32,6 +33,7 @@ export function ReplyBox({
   ariaLabel,
   files,
   onFilesChange,
+  people = [],
 }: {
   value: string;
   onChange: (value: string) => void;
@@ -43,10 +45,13 @@ export function ReplyBox({
   ariaLabel: string;
   files?: File[];
   onFilesChange?: (files: File[]) => void;
+  /** Who "@" offers; none, and the box has no mentions. */
+  people?: MentionablePerson[];
 }) {
   const [improving, setImproving] = useState(false);
   const me = useSession().data?.user;
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const mentions = useMentions({ people, value, onChange, textareaRef });
   const withFiles = files !== undefined && onFilesChange !== undefined;
   const canSend = !sending && !improving && (value.trim().length > 0 || (withFiles && files.length > 0));
   const locked = sending || improving;
@@ -91,14 +96,20 @@ export function ReplyBox({
         </Avatar>
 
         <div className="min-w-0 flex-1 space-y-1.5">
-          <div className="flex items-end gap-1 rounded-md border border-input bg-background py-1 pl-3 pr-1 shadow-sm focus-within:ring-1 focus-within:ring-ring">
+          <div className="relative flex items-end gap-1 rounded-md border border-input bg-background py-1 pl-3 pr-1 shadow-sm focus-within:ring-1 focus-within:ring-ring">
             <textarea
               ref={textareaRef}
               rows={1}
               autoFocus
               value={value}
               disabled={locked}
-              onChange={(event) => onChange(event.target.value)}
+              onChange={(event) => {
+                onChange(event.target.value);
+                mentions.track(event.target);
+              }}
+              onClick={(event) => mentions.track(event.currentTarget)}
+              onKeyUp={mentions.onKeyUp}
+              onBlur={mentions.close}
               onPaste={
                 withFiles
                   ? (event) => {
@@ -108,6 +119,7 @@ export function ReplyBox({
                   : undefined
               }
               onKeyDown={(event) => {
+                if (mentions.onKeyDown(event)) return;
                 if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
                   event.preventDefault();
                   if (canSend) onSend();
@@ -121,6 +133,7 @@ export function ReplyBox({
               aria-label={ariaLabel}
               className="min-w-0 flex-1 resize-none self-center bg-transparent py-1.5 text-base placeholder:text-muted-foreground focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50 md:text-sm"
             />
+            {mentions.menu}
             {sending ? (
               <span className="flex h-8 items-center gap-1 px-2 text-[11px] text-muted-foreground">
                 <Loader2 className="size-3 animate-spin" /> Sending…

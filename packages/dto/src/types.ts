@@ -233,7 +233,7 @@ export type RequirementDto = {
 /** One entry under the bell in the top bar. */
 export type NotificationDto = {
   id: string;
-  kind: "QUESTION_ASKED" | "QUESTION_ANSWERED" | "QUESTION_REPLIED" | "COMMENT_REPLIED" | "COMMENT_POSTED";
+  kind: "QUESTION_ASKED" | "QUESTION_ANSWERED" | "QUESTION_REPLIED" | "COMMENT_REPLIED" | "COMMENT_POSTED" | "COMMENT_MENTIONED";
   createdAt: string;
   readAt: string | null;
   actor: { id: string; name: string };

@@ -7,6 +7,7 @@ import type { CommentEditInput, CommentInput } from "@wetestcase/dto";
 
 import { deleteCommentAttachments, withFiles, type PreparedFile } from "./attachment.service";
 import { answerQuestion, listAdmins } from "./clarification.service";
+import { notifyMentions } from "./mention.service";
 import { telegramCommentPosted } from "./telegram.service";
 
 const authorSelect = {
@@ -112,6 +113,7 @@ export async function postComment(
     });
     return comment;
   }));
+  await notifyMentions(saved.id);
   telegramCommentPosted(saved.id);
   return saved;
 }
@@ -162,6 +164,7 @@ async function reply(
   // The PO replying to a question answers it, with the answer's own flow.
   if (root.kind === "QUESTION" && isAdmin(author.role)) {
     const answer = await answerQuestion(root.id, author, body, files);
+    await notifyMentions(answer.id);
     return prisma.comment.findUniqueOrThrow({ where: { id: answer.id }, include: postInclude });
   }
 
@@ -190,6 +193,7 @@ async function reply(
     });
     return posted;
   }));
+  await notifyMentions(saved.id);
   telegramCommentPosted(saved.id);
   return saved;
 }
@@ -252,9 +256,12 @@ export async function editComment(
   if (input.body === comment.body) {
     return prisma.comment.findUniqueOrThrow({ where: { id: commentId }, include: postInclude });
   }
-  return prisma.comment.update({
+  const edited = await prisma.comment.update({
     where: { id: commentId },
     data: { body: input.body, editedAt: new Date() },
     include: postInclude,
   });
+  // Only those newly mentioned: the rest already know.
+  await notifyMentions(commentId, comment.body);
+  return edited;
 }

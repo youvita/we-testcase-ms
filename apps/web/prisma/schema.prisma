@@ -551,6 +551,8 @@ enum NotificationKind {
   /// A new comment on a case: to the project's product owner, or, from an
   /// admin, to the people working on the case.
   COMMENT_POSTED
+  /// Someone @mentioned this person in a post on a case.
+  COMMENT_MENTIONED
 }
 
 /// In the app only: the bell in the top bar.

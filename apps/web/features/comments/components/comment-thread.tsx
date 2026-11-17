@@ -34,6 +34,7 @@ import { OpenQuestionsPanel } from "./open-questions-panel";
 import { RequirementQuestionItem, type RequirementQuestionGroup } from "./requirement-questions";
 import { AttachmentGallery } from "@/features/executions/components/attachment-gallery";
 import { AttachButton, PendingFiles, addFiles, commentPayload, pastedFiles } from "./comment-files";
+import { MentionText, useMentions, type MentionablePerson } from "./mentions";
 
 /**
  * QA ↔ developer discussion on a test case.
@@ -55,6 +56,7 @@ export function CommentThread({
   po,
   openQuestions,
   askOn,
+  people = [],
 }: {
   testCaseId: string;
   comments: CommentWithAuthor[];
@@ -82,12 +84,17 @@ export function CommentThread({
    * open questions are kept — or, verifying none, on the case itself.
    */
   askOn?: { projectId: string; requirements: { id: string; code: string; openQuestions: string | null }[] };
+  /** Who can read the discussion: "@" offers them, and their mentions stand out. */
+  people?: MentionablePerson[];
 }) {
   const router = useRouter();
   const [body, setBody] = useState("");
   const [improving, setImproving] = useState(false);
   const [files, setFiles] = useState<File[]>([]);
   const composer = useRef<HTMLTextAreaElement>(null);
+  // Nobody needs to mention themselves.
+  const others = people.filter((person) => person.id !== currentUserId);
+  const composerMentions = useMentions({ people: others, value: body, onChange: setBody, textareaRef: composer });
 
   // Asking the PO, not commenting: on this requirement, or (null) on the case.
   const [asking, setAsking] = useState<{ requirementId: string | null } | null>(null);
@@ -123,6 +130,13 @@ export function CommentThread({
   // Your own post being changed, and its new text.
   const [editing, setEditing] = useState<{ id: string; body: string } | null>(null);
   const [savingEdit, setSavingEdit] = useState(false);
+  const editBox = useRef<HTMLTextAreaElement>(null);
+  const editMentions = useMentions({
+    people: others,
+    value: editing?.body ?? "",
+    onChange: (next) => setEditing((current) => (current ? { ...current, body: next } : current)),
+    textareaRef: editBox,
+  });
   // The comment being replied to, and the reply.
   const [answering, setAnswering] = useState<string | null>(null);
   const [answer, setAnswer] = useState("");
@@ -345,27 +359,38 @@ export function CommentThread({
                       </p>
                     ) : isEditing ? (
                       <div className="space-y-2 pt-0.5">
-                        <Textarea
-                          autoFocus
-                          rows={3}
-                          value={editing.body}
-                          disabled={savingEdit}
-                          onChange={(event) => setEditing({ id: comment.id, body: event.target.value })}
-                          onFocus={(event) => {
-                            const end = event.currentTarget.value.length;
-                            event.currentTarget.setSelectionRange(end, end);
-                          }}
-                          onKeyDown={(event) => {
-                            if (event.key === "Escape") {
-                              event.preventDefault();
-                              setEditing(null);
-                            } else if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
-                              event.preventDefault();
-                              void handleEdit(comment);
-                            }
-                          }}
-                          aria-label="Edit your comment"
-                        />
+                        <div className="relative">
+                          <Textarea
+                            ref={editBox}
+                            autoFocus
+                            rows={3}
+                            value={editing.body}
+                            disabled={savingEdit}
+                            onChange={(event) => {
+                              setEditing({ id: comment.id, body: event.target.value });
+                              editMentions.track(event.target);
+                            }}
+                            onClick={(event) => editMentions.track(event.currentTarget)}
+                            onKeyUp={editMentions.onKeyUp}
+                            onBlur={editMentions.close}
+                            onFocus={(event) => {
+                              const end = event.currentTarget.value.length;
+                              event.currentTarget.setSelectionRange(end, end);
+                            }}
+                            onKeyDown={(event) => {
+                              if (editMentions.onKeyDown(event)) return;
+                              if (event.key === "Escape") {
+                                event.preventDefault();
+                                setEditing(null);
+                              } else if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+                                event.preventDefault();
+                                void handleEdit(comment);
+                              }
+                            }}
+                            aria-label="Edit your comment"
+                          />
+                          {editMentions.menu}
+                        </div>
                         <div className="flex items-center justify-end gap-2">
                           <Button variant="ghost" size="sm" disabled={savingEdit} onClick={() => setEditing(null)}>
                             Cancel
@@ -386,7 +411,7 @@ export function CommentThread({
                       </div>
                     ) : (
                       <>
-                        {comment.body && <p className="preserve-lines text-sm">{comment.body}</p>}
+                        {comment.body && <MentionText body={comment.body} people={people} className="preserve-lines text-sm" />}
                         {comment.attachments && comment.attachments.length > 0 && (
                           <div className="pt-0.5">
                             <AttachmentGallery attachments={comment.attachments} />
@@ -483,6 +508,7 @@ export function CommentThread({
                       files={answerFiles}
                       onFilesChange={setAnswerFiles}
                       replyTo={comment.author.name}
+                      people={others}
                       ariaLabel={question && canAnswer ? "Write the answer" : "Write a reply"}
                     />
                   </li>
@@ -559,19 +585,29 @@ export function CommentThread({
                 </button>
               </div>
             )}
-            <Textarea
-              ref={composer}
-              rows={3}
-              value={body}
-              onChange={(event) => setBody(event.target.value)}
-              disabled={improving}
-              onPaste={(event) => {
-                const pasted = pastedFiles(event);
-                if (pasted.length) setFiles(addFiles(files, pasted));
-              }}
-              placeholder={asking ? "Write your question for the PO…" : "Write a comment…"}
-              aria-label={asking ? "Write your question for the PO" : "Write a comment"}
-            />
+            <div className="relative">
+              <Textarea
+                ref={composer}
+                rows={3}
+                value={body}
+                onChange={(event) => {
+                  setBody(event.target.value);
+                  composerMentions.track(event.target);
+                }}
+                onClick={(event) => composerMentions.track(event.currentTarget)}
+                onKeyUp={composerMentions.onKeyUp}
+                onKeyDown={(event) => void composerMentions.onKeyDown(event)}
+                onBlur={composerMentions.close}
+                disabled={improving}
+                onPaste={(event) => {
+                  const pasted = pastedFiles(event);
+                  if (pasted.length) setFiles(addFiles(files, pasted));
+                }}
+                placeholder={asking ? "Write your question for the PO…" : "Write a comment… Type @ to mention someone"}
+                aria-label={asking ? "Write your question for the PO" : "Write a comment"}
+              />
+              {composerMentions.menu}
+            </div>
             <PendingFiles files={files} onChange={setFiles} disabled={posting} />
             <div className="flex items-center justify-between gap-2">
               <div className="flex items-center gap-1">

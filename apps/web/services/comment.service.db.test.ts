@@ -5,7 +5,7 @@ import { toRole } from "@/lib/constants";
 import { commentSchema } from "@/lib/validations";
 import { createProject, createTestCase, createUser, resetDatabase } from "@/test/db";
 
-import { listComments, postComment } from "./comment.service";
+import { editComment, listComments, postComment } from "./comment.service";
 
 beforeEach(resetDatabase);
 
@@ -114,5 +114,36 @@ describe("asking the PO on a case", () => {
     const { testCase, po } = await setUp();
     const comment = await post(testCase.id, po, { body: "Note", question: true });
     expect(comment.kind).toBe("COMMENT");
+  });
+});
+
+describe("@mentions", () => {
+  const named = (user: { id: string }, username: string) =>
+    prisma.user.update({ where: { id: user.id }, data: { username } });
+  const mentioned = async () =>
+    (await prisma.notification.findMany({ where: { kind: "COMMENT_MENTIONED" }, select: { recipientId: true } }))
+      .map((n) => n.recipientId)
+      .sort();
+
+  it("tells the people mentioned who can open the project, once", async () => {
+    const { testCase, qa, dev, po } = await setUp();
+    const outsider = await createUser("DEVELOPER");
+    await Promise.all([named(qa, "t_quinn"), named(dev, "t_dev"), named(po, "t_monika"), named(outsider, "t_outsider")]);
+
+    await post(testCase.id, qa, { body: "@T_Monika @t_dev please check (cc @t_outsider, @t_quinn, mail me@test.com)" });
+    // The developer is not on the project and cannot read it; QA wrote it.
+    expect(await mentioned()).toEqual([po.id]);
+    // "Mentioned you" replaces the PO's plain "commented on".
+    expect(await notified("COMMENT_POSTED")).toEqual([]);
+  });
+
+  it("tells only the people newly mentioned when a post is edited", async () => {
+    const { testCase, qa, dev, po } = await setUp();
+    await prisma.project.update({ where: { id: testCase.projectId }, data: { members: { create: [{ userId: dev.id }] } } });
+    await Promise.all([named(dev, "t_dev"), named(po, "t_monika")]);
+
+    const comment = await post(testCase.id, qa, { body: "@t_monika please check" });
+    await editComment(comment.id, qa, { body: "@t_monika @t_dev please check" });
+    expect(await mentioned()).toEqual([dev.id, po.id].sort());
   });
 });

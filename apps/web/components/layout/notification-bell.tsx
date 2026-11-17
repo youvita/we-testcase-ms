@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Bell, CornerDownRight, MessageCircleQuestion, MessageSquare } from "lucide-react";
+import { AtSign, Bell, CornerDownRight, MessageCircleQuestion, MessageSquare } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -17,6 +17,7 @@ const VERB: Record<NotificationDto["kind"], string> = {
   QUESTION_REPLIED: "followed up on",
   COMMENT_REPLIED: "replied on",
   COMMENT_POSTED: "commented on",
+  COMMENT_MENTIONED: "mentioned you on",
 };
 
 /** How often the bell looks for new notifications while the page is open. */
@@ -118,7 +119,9 @@ export function NotificationBell() {
                   )}
                   onClick={() => openCase(notification)}
                 >
-                  {notification.kind === "COMMENT_REPLIED" || notification.kind === "COMMENT_POSTED" ? (
+                  {notification.kind === "COMMENT_MENTIONED" ? (
+                    <AtSign className="mt-0.5 size-4 shrink-0 text-primary" aria-hidden />
+                  ) : notification.kind === "COMMENT_REPLIED" || notification.kind === "COMMENT_POSTED" ? (
                     <MessageSquare className="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-hidden />
                   ) : notification.kind !== "QUESTION_ANSWERED" ? (
                     <MessageCircleQuestion className="mt-0.5 size-4 shrink-0 text-status-blocked" aria-hidden />
