@@ -9,7 +9,9 @@
  *   GUIDE_BASE_URL=http://localhost:3002 node scripts/user-guide/build.mjs
  *
  * Writes apps/web/public/user-guide.pdf (GUIDE_OUT to change it), which the
- * app offers under "Download user guide". Needs Playwright's Chromium
+ * app offers under "Download user guide". CI/CD runs this on every push to
+ * main (the user-guide job) and deploys the result, so a local run is only
+ * needed to preview a change, or to refresh the copy kept in the repo. Needs Playwright's Chromium
  * (`npx playwright install chromium`).
  *
  * Options (environment): GUIDE_LOGIN / GUIDE_PASSWORD (default admin /

@@ -70,10 +70,90 @@ jobs:
       - name: Database tests
         run: npm run test:db
 
+  # The PDF behind "Download user guide", rebuilt from this commit so its
+  # screenshots match what is deployed: the app runs here on the demo data
+  # (never real data), and scripts/user-guide photographs each page. The
+  # deploy puts it into the app; nothing is committed back. Runs beside `ci`.
+  user-guide:
+    name: Build the user guide
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      DATABASE_URL: postgresql://ci:ci@127.0.0.1:5432/guide
+      DIRECT_URL: postgresql://ci:ci@127.0.0.1:5432/guide
+      BETTER_AUTH_SECRET: user-guide-screenshots-only-not-a-real-secret
+      BETTER_AUTH_URL: http://localhost:3000
+      UPLOAD_DIR: ./uploads
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: ci
+          POSTGRES_PASSWORD: ci
+          POSTGRES_DB: guide
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ci -d guide"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Database with the demo data
+        run: |
+          npm run db:generate
+          npm run db:deploy
+          npm run db:seed
+          cd apps/web && npx tsx ../../scripts/user-guide/demo-data.ts
+
+      - name: Build the app
+        run: npm run build -w @wetestcase/web
+
+      - name: Start the app
+        working-directory: apps/web
+        run: |
+          nohup npx next start -p 3000 > "$RUNNER_TEMP/next.log" 2>&1 &
+          for i in $(seq 1 60); do
+            curl -sf -o /dev/null http://localhost:3000/login && exit 0
+            sleep 2
+          done
+          cat "$RUNNER_TEMP/next.log"
+          exit 1
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Screenshot the pages and print the PDF
+        env:
+          GUIDE_BASE_URL: http://localhost:3000
+        run: npm run guide:build
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: user-guide
+          path: apps/web/public/user-guide.pdf
+          if-no-files-found: error
+          retention-days: 30
+
   deploy:
     name: Deploy to Mac mini
-    needs: ci
-    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    needs: [ci, user-guide]
+    # Waits for the guide but does not depend on it: if the guide fails, the
+    # deploy still goes out, with the PDF that is in the repo.
+    if: >-
+      !cancelled() && needs.ci.result == 'success' &&
+      github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     runs-on: [self-hosted, macOS, macmini]
     environment: Production
     timeout-minutes: 45
@@ -88,6 +168,13 @@ jobs:
           echo "/opt/homebrew/bin" >> "$GITHUB_PATH"
           echo "/usr/local/bin" >> "$GITHUB_PATH"
           echo "$HOME/.docker/bin" >> "$GITHUB_PATH"
+
+      - name: Fresh user guide
+        if: needs.user-guide.result == 'success'
+        uses: actions/download-artifact@v4
+        with:
+          name: user-guide
+          path: apps/web/public
 
       - name: Rebuild app (leave Cloudflare tunnel running)
         env:
