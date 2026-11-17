@@ -709,6 +709,58 @@ export async function reportItemResult(
 }
 
 /**
+ * QA vouches that a draft script was right to fail: the product is what is
+ * wrong. A script that catches a real bug never passes, so it would stay a
+ * draft forever and its failures would never reach the case.
+ *
+ * Records this failure on the case as the run would have, with its evidence,
+ * and — if what ran is still the case's script — verifies the script, so its
+ * next failures count without asking.
+ */
+export async function recordDraftFailure(itemId: string, user: { id: string; name: string }) {
+  const item = await prisma.testRunItem.findUnique({
+    where: { id: itemId },
+    select: {
+      status: true,
+      draft: true,
+      code: true,
+      error: true,
+      artifacts: true,
+      testCaseId: true,
+      executionId: true,
+      run: {
+        select: { number: true, purpose: true, recordResults: true, environmentName: true, projectId: true, createdById: true },
+      },
+    },
+  });
+  if (!item) throw notFound("Run item");
+  if (!item.testCaseId) throw badRequest("This result is not for a test case.");
+  if (item.status !== "FAILED") throw badRequest("Only a failed result can be recorded this way.");
+  if (item.executionId) throw conflict("This result is already recorded on the test case.");
+  if (!item.draft) throw badRequest("This script was already verified; its result was recorded as it ran.");
+  if (item.run.purpose !== "RUN" || !item.run.recordResults) {
+    throw badRequest("This run does not record results on its test cases.");
+  }
+
+  await verifyIfRanCurrentScript(item.testCaseId, item.code);
+
+  const failure = item.error ? summariseFailure(item.error, item.code) : null;
+  const execution = await recordExecution(item.testCaseId, item.run.createdById, {
+    status: failure?.beforeSteps ? "BLOCKED" : "FAILED",
+    actualResult: failure?.actualResult ?? "The script failed.",
+    comment: `Automated — Run #${item.run.number} on ${item.run.environmentName} · script confirmed by ${user.name}`,
+    environmentName: item.run.environmentName,
+  });
+  await attachRunEvidence(
+    execution.id,
+    item.run.projectId,
+    readArtifacts(item.artifacts).filter((artifact) => artifact.kind === "screenshot" || artifact.kind === "video"),
+  );
+  await prisma.testRunItem.update({ where: { id: itemId }, data: { executionId: execution.id } });
+  return { executionId: execution.id };
+}
+
+/**
  * Close a run: anything without a result is SKIPPED, counts are totalled and
  * the final status decided. Called by the runner when done, by a cancel, and
  * by the stale sweep.

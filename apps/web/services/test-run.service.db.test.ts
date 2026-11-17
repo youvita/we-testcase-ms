@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { prisma } from "@/lib/prisma";
 import { createProject, createTestCase, resetDatabase } from "@/test/db";
 
-import { getLastFinishedRun, listTestRunsPage, reportItemResult } from "./test-run.service";
+import { getLastFinishedRun, listTestRunsPage, recordDraftFailure, reportItemResult } from "./test-run.service";
 
 beforeEach(resetDatabase);
 
@@ -132,5 +132,40 @@ describe("a failed automated case in its history", () => {
     const execution = await latest(testCase.id);
     expect(execution.status).toBe("FAILED");
     expect(execution.actualResult).toMatch(/^At step 1 \(Save the customer\): the text “Saved” did not appear within 5 s\./);
+  });
+});
+
+describe("a draft script that caught a real bug", () => {
+  const code = 'await page.goto("/");\n\n// Step 1: Check the message\nawait expect(page.getByRole("alert")).toContainText("Not approved");';
+  const error = 'Error: expect(locator).toContainText(expected) failed\n\n> 4 | await expect(page.getByRole("alert")).toContainText("Not approved");\n    at script:4:40';
+
+  async function failedDraft() {
+    const { project, module, owner } = await createProject();
+    const testCase = await createTestCase(project.id, module.id, "TC-1");
+    await prisma.automationScript.create({ data: { testCaseId: testCase.id, code, updatedById: owner.id } });
+    const run = await prisma.testRun.create({
+      data: { projectId: project.id, number: 3, environmentName: "SIT", createdById: owner.id, status: "RUNNING" },
+    });
+    const item = await prisma.testRunItem.create({
+      data: { runId: run.id, testCaseId: testCase.id, position: 0, code, draft: true },
+    });
+    await reportItemResult(item.id, { status: "FAILED", error }, []);
+    return { testCase, item, owner };
+  }
+
+  it("is not recorded on its own, and is once QA says the script is right", async () => {
+    const { testCase, item, owner } = await failedDraft();
+    expect(await prisma.testExecution.count({ where: { testCaseId: testCase.id } })).toBe(0);
+
+    await recordDraftFailure(item.id, { id: owner.id, name: "Quinn" });
+    const execution = await prisma.testExecution.findFirstOrThrow({ where: { testCaseId: testCase.id } });
+    expect(execution.status).toBe("FAILED");
+    expect(execution.comment).toContain("script confirmed by Quinn");
+    expect((await prisma.testRunItem.findUniqueOrThrow({ where: { id: item.id } })).executionId).toBe(execution.id);
+    // The script is trusted from now on.
+    expect((await prisma.automationScript.findUniqueOrThrow({ where: { testCaseId: testCase.id } })).verifiedAt).not.toBeNull();
+
+    // Once only.
+    await expect(recordDraftFailure(item.id, { id: owner.id, name: "Quinn" })).rejects.toThrow(/already recorded/);
   });
 });

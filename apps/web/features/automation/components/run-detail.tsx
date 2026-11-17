@@ -5,7 +5,7 @@ import { useClientPagination } from "@/hooks/use-client-pagination";
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ChevronDown, ChevronRight, Download, Loader2, Sparkles, Square } from "lucide-react";
+import { Bug, ChevronDown, ChevronRight, Download, Loader2, Sparkles, Square } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -238,6 +238,11 @@ export function RunDetail({
               canManage={canManage}
               triaging={Boolean(triaging[item.id])}
               onExplain={() => void explain([item.id])}
+              canRecord={canManage && run.recordResults && run.purpose === "RUN"}
+              onRecorded={async () => {
+                await refetch().catch(() => undefined);
+                router.refresh();
+              }}
               focused={item.id === focusItemId}
             />
           ))}
@@ -278,6 +283,8 @@ function RunItemRow({
   canManage,
   triaging,
   onExplain,
+  canRecord,
+  onRecorded,
   focused = false,
 }: {
   projectId: string;
@@ -286,9 +293,25 @@ function RunItemRow({
   canManage: boolean;
   triaging: boolean;
   onExplain: () => void;
+  /** Whether QA may record a draft's failure on the case: a run that records. */
+  canRecord: boolean;
+  onRecorded: () => Promise<void>;
   /** The case someone came here from: open and marked. */
   focused?: boolean;
 }) {
+  const [recording, setRecording] = useState(false);
+  async function recordFailure() {
+    setRecording(true);
+    try {
+      await api.post(`/api/run-items/${item.id}/record`);
+      toast.success("Recorded as failed on the test case — the script is verified now");
+      await onRecorded();
+    } catch (error) {
+      toast.error(errorMessage(error));
+    } finally {
+      setRecording(false);
+    }
+  }
   // Failures open by default — they are what someone came to look at.
   const [open, setOpen] = useState(focused || item.status === "FAILED" || item.status === "ERROR");
   const artifactUrl = (index: number) => withBasePath(`/api/run-items/${item.id}/artifacts/${index}`);
@@ -347,11 +370,22 @@ function RunItemRow({
               The script itself failed to run, so no result was recorded on the test case. Fix the script and run it again.
             </p>
           )}
-          {item.status === "FAILED" && item.draft && (
-            <p className="text-xs text-muted-foreground">
-              Draft script — this failure was not recorded on the test case, because a script that
-              has never passed may be what is wrong. Fix it until it passes once.
-            </p>
+          {item.status === "FAILED" && item.draft && !item.executionId && (
+            // A script that catches a real bug never passes, so it would stay a
+            // draft for good: QA says which it is.
+            <div className="space-y-2 rounded-md border border-dashed p-3 text-xs text-muted-foreground">
+              <p>
+                Draft script — this failure was not recorded on the test case, because a script that
+                has never passed may be what is wrong. If the script is wrong, fix it. If the script is
+                right and the product is wrong, record the failure so the developers see it.
+              </p>
+              {canRecord && testCase && (
+                <Button size="sm" variant="outline" disabled={recording} onClick={() => void recordFailure()}>
+                  {recording ? <Loader2 className="mr-2 size-4 animate-spin" /> : <Bug className="mr-2 size-4" />}
+                  The script is right — record this failure
+                </Button>
+              )}
+            </div>
           )}
 
           {item.failedRequests.length > 0 && (
