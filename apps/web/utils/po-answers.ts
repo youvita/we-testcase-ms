@@ -14,6 +14,8 @@ type ThreadComment = {
   kind: "COMMENT" | "QUESTION" | "ANSWER";
   answerToId: string | null;
   createdAt: Date | string;
+  /** An edited answer is a new answer: it asks again. */
+  editedAt?: Date | string | null;
   deletedAt: Date | string | null;
   settledAt: Date | string | null;
   author: { role: string };
@@ -47,7 +49,8 @@ export function answersToApply(comments: ThreadComment[]): Map<string, string> {
   for (const [rootId, answers] of poAnswers(comments)) {
     const latest = answers.at(-1)!;
     const root = byId.get(rootId)!;
-    if (root.settledAt && time(root.settledAt) >= time(latest.createdAt)) continue;
+    const answeredAt = Math.max(...answers.map((answer) => time(answer.editedAt ?? answer.createdAt)));
+    if (root.settledAt && time(root.settledAt) >= answeredAt) continue;
     pending.set(rootId, latest.id);
   }
   return pending;

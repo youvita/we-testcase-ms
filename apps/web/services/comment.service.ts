@@ -3,7 +3,7 @@ import { badRequest, forbidden, notFound } from "@/lib/api";
 import { isAdmin } from "@/lib/permissions";
 import type { Role } from "@/lib/constants";
 import type { CommentWithAuthor } from "@/types";
-import type { CommentInput } from "@wetestcase/dto";
+import type { CommentEditInput, CommentInput } from "@wetestcase/dto";
 
 import { deleteCommentAttachments, withFiles, type PreparedFile } from "./attachment.service";
 import { answerQuestion, listAdmins } from "./clarification.service";
@@ -225,4 +225,36 @@ export async function deleteComment(
   });
   // Its files go with it: nobody can open them any more.
   await deleteCommentAttachments(commentId);
+}
+
+/**
+ * Change a post's text. Only its author, and only while it stands: an admin
+ * may withdraw anyone's post, but never put words in someone else's mouth.
+ *
+ * Nobody is notified again, and the post keeps its place in the thread. It is
+ * marked as edited, and an edited PO answer counts as a new one — QA is asked
+ * again to put it into the case (see `answersToApply`).
+ */
+export async function editComment(
+  commentId: string,
+  actor: { id: string },
+  input: CommentEditInput,
+): Promise<CommentWithAuthor> {
+  const comment = await prisma.comment.findUnique({
+    where: { id: commentId },
+    select: { authorId: true, body: true, deletedAt: true, _count: { select: { attachments: true } } },
+  });
+  if (!comment) throw notFound("Comment");
+  if (comment.authorId !== actor.id) throw forbidden("You can only edit your own comments");
+  if (comment.deletedAt) throw badRequest("That comment was deleted");
+  if (!input.body && comment._count.attachments === 0) throw badRequest("Write something before saving");
+
+  if (input.body === comment.body) {
+    return prisma.comment.findUniqueOrThrow({ where: { id: commentId }, include: postInclude });
+  }
+  return prisma.comment.update({
+    where: { id: commentId },
+    data: { body: input.body, editedAt: new Date() },
+    include: postInclude,
+  });
 }

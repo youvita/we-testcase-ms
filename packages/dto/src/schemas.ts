@@ -362,6 +362,10 @@ export const commentSchema = z.object({
 
 export type CommentInput = z.infer<typeof commentSchema>;
 
+/** Its author changing a post's text. Empty only on a post with files. */
+export const commentEditSchema = z.object({ body: trimmed(4000) });
+export type CommentEditInput = z.infer<typeof commentEditSchema>;
+
 /** A post sent with files: then the text may be left empty. */
 export const commentWithFilesSchema = commentSchema.extend({ body: trimmed(4000) });
 

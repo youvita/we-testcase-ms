@@ -490,6 +490,10 @@ model Comment {
   deletedById String?
   deletedBy   User?     @relation("CommentDeletedBy", fields: [deletedById], references: [id])
 
+  /// When its author last changed the text. Kept apart from `updatedAt`, which
+  /// also moves when a question is answered or settled: this one is shown.
+  editedAt DateTime?
+
   testCaseId String
   testCase   TestCase @relation(fields: [testCaseId], references: [id], onDelete: Cascade)
 

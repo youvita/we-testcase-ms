@@ -2,7 +2,7 @@
 
 import { Fragment, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { CornerDownRight, HelpCircle, Loader2, MessageCircleQuestion, MessageSquare, Send, Trash2, X } from "lucide-react";
+import { CornerDownRight, HelpCircle, Loader2, MessageCircleQuestion, MessageSquare, Pencil, Send, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -120,6 +120,9 @@ export function CommentThread({
   }
   const [posting, setPosting] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  // Your own post being changed, and its new text.
+  const [editing, setEditing] = useState<{ id: string; body: string } | null>(null);
+  const [savingEdit, setSavingEdit] = useState(false);
   // The comment being replied to, and the reply.
   const [answering, setAnswering] = useState<string | null>(null);
   const [answer, setAnswer] = useState("");
@@ -233,6 +236,26 @@ export function CommentThread({
     }
   }
 
+  async function handleEdit(comment: CommentWithAuthor) {
+    if (!editing) return;
+    const trimmed = editing.body.trim();
+    if (!trimmed && !comment.attachments?.length) return;
+    if (trimmed === comment.body) {
+      setEditing(null);
+      return;
+    }
+    setSavingEdit(true);
+    try {
+      await api.patch(`/api/comments/${comment.id}`, { body: trimmed });
+      setEditing(null);
+      router.refresh();
+    } catch (error) {
+      toast.error(errorMessage(error));
+    } finally {
+      setSavingEdit(false);
+    }
+  }
+
   async function handleDelete(commentId: string) {
     setDeletingId(commentId);
     try {
@@ -279,6 +302,8 @@ export function CommentThread({
               const withdrawn = Boolean(comment.deletedAt);
               const question = comment.kind === "QUESTION";
               const promptFor = promptAfter.get(comment.id);
+              const mine = comment.author.id === currentUserId;
+              const isEditing = editing?.id === comment.id;
               return (
                 <Fragment key={comment.id}>
                 {renderAsked(askedBefore.get(comment.id) ?? [])}
@@ -305,6 +330,9 @@ export function CommentThread({
                       {comment.kind === "COMMENT" &&
                         comment.answerToId &&
                         (byId.get(comment.answerToId)?.kind === "QUESTION" ? " · Follow-up" : " · Reply")}
+                      {comment.editedAt && !withdrawn && (
+                        <span title={`Edited ${formatDateTime(comment.editedAt)}`}> · Edited</span>
+                      )}
                     </p>
                     {withdrawn ? (
                       // A tombstone, not a gap: replies below this one still need
@@ -315,6 +343,47 @@ export function CommentThread({
                           ? ` · ${formatDateTime(comment.deletedAt)}`
                           : ""}
                       </p>
+                    ) : isEditing ? (
+                      <div className="space-y-2 pt-0.5">
+                        <Textarea
+                          autoFocus
+                          rows={3}
+                          value={editing.body}
+                          disabled={savingEdit}
+                          onChange={(event) => setEditing({ id: comment.id, body: event.target.value })}
+                          onFocus={(event) => {
+                            const end = event.currentTarget.value.length;
+                            event.currentTarget.setSelectionRange(end, end);
+                          }}
+                          onKeyDown={(event) => {
+                            if (event.key === "Escape") {
+                              event.preventDefault();
+                              setEditing(null);
+                            } else if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+                              event.preventDefault();
+                              void handleEdit(comment);
+                            }
+                          }}
+                          aria-label="Edit your comment"
+                        />
+                        <div className="flex items-center justify-end gap-2">
+                          <Button variant="ghost" size="sm" disabled={savingEdit} onClick={() => setEditing(null)}>
+                            Cancel
+                          </Button>
+                          <Button
+                            size="sm"
+                            disabled={savingEdit || (!editing.body.trim() && !comment.attachments?.length)}
+                            onClick={() => void handleEdit(comment)}
+                            title="Save (⌘/Ctrl+Enter) · Esc cancels"
+                          >
+                            {savingEdit && <Loader2 className="mr-2 size-4 animate-spin" />}
+                            Save
+                          </Button>
+                        </div>
+                        {comment.attachments && comment.attachments.length > 0 && (
+                          <AttachmentGallery attachments={comment.attachments} />
+                        )}
+                      </div>
                     ) : (
                       <>
                         {comment.body && <p className="preserve-lines text-sm">{comment.body}</p>}
@@ -352,7 +421,7 @@ export function CommentThread({
                         {comment.settledChangedCase ? "Answer added to the case" : "No change to the case"}
                       </p>
                     )}
-                    {!withdrawn && (canComment || (question && canAnswer)) && answering !== comment.id && (
+                    {!withdrawn && !isEditing && (canComment || (question && canAnswer)) && answering !== comment.id && (
                       <Button
                         variant={question && canAnswer ? "outline" : "ghost"}
                         size="sm"
@@ -369,8 +438,20 @@ export function CommentThread({
                     )}
                   </div>
 
-                  {!withdrawn &&
-                    (canModerate || comment.author.id === currentUserId) && (
+                  {!withdrawn && !isEditing && (canModerate || mine) && (
+                    <div className="flex shrink-0 items-center">
+                      {mine && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="size-7 text-muted-foreground hover:text-foreground"
+                          onClick={() => setEditing({ id: comment.id, body: comment.body })}
+                          aria-label="Edit your comment"
+                          title="Edit"
+                        >
+                          <Pencil className="size-3.5" />
+                        </Button>
+                      )}
                       <Button
                         variant="ghost"
                         size="icon"
@@ -378,6 +459,7 @@ export function CommentThread({
                         disabled={deletingId === comment.id}
                         onClick={() => handleDelete(comment.id)}
                         aria-label={`Delete comment by ${comment.author.name}`}
+                        title="Delete"
                       >
                         {deletingId === comment.id ? (
                           <Loader2 className="size-3.5 animate-spin" />
@@ -385,7 +467,8 @@ export function CommentThread({
                           <Trash2 className="size-3.5" />
                         )}
                       </Button>
-                    )}
+                    </div>
+                  )}
                 </li>
                 {answering === comment.id && (
                   // Its own row under the comment, the thread's full width:
