@@ -32,9 +32,16 @@ export const DEFAULT_SETTINGS: ChatSettings = { model: "sonnet", effort: "medium
 const MAX_CHATS = 20;
 const MAX_TURNS = 40;
 
-const currentKey = (projectId: string) => `wtc:requirements-chat:${projectId}:current`;
-const historyKey = (projectId: string) => `wtc:requirements-chat:${projectId}:history`;
-const SETTINGS_KEY = "wtc:requirements-chat:settings";
+/**
+ * Whose chats: a person's, in one project. The browser is shared by everyone
+ * who signs in on it, so a key without the person would show the next one
+ * the last one's chats.
+ */
+export const chatScope = (userId: string, projectId: string) => `${userId}:${projectId}`;
+
+const currentKey = (scope: string) => `wtc:requirements-chat:${scope}:current`;
+const historyKey = (scope: string) => `wtc:requirements-chat:${scope}:history`;
+const settingsKey = (userId: string) => `wtc:requirements-chat:${userId}:settings`;
 
 function read<T>(key: string, fallback: T): T {
   try {
@@ -54,18 +61,32 @@ function write(key: string, value: unknown) {
   }
 }
 
-export const loadCurrent = (projectId: string) => read<ChatTurn[]>(currentKey(projectId), []);
-export const saveCurrent = (projectId: string, turns: ChatTurn[]) =>
-  write(currentKey(projectId), turns.slice(-MAX_TURNS));
+export const loadCurrent = (scope: string) => read<ChatTurn[]>(currentKey(scope), []);
+export const saveCurrent = (scope: string, turns: ChatTurn[]) =>
+  write(currentKey(scope), turns.slice(-MAX_TURNS));
 
-export const loadHistory = (projectId: string) => read<PastChat[]>(historyKey(projectId), []);
-export const saveHistory = (projectId: string, chats: PastChat[]) =>
-  write(historyKey(projectId), chats.slice(0, MAX_CHATS));
+export const loadHistory = (scope: string) => read<PastChat[]>(historyKey(scope), []);
+export const saveHistory = (scope: string, chats: PastChat[]) =>
+  write(historyKey(scope), chats.slice(0, MAX_CHATS));
 
-export function loadSettings(): ChatSettings {
-  return { ...DEFAULT_SETTINGS, ...read<Partial<ChatSettings>>(SETTINGS_KEY, {}) };
+export function loadSettings(userId: string): ChatSettings {
+  return { ...DEFAULT_SETTINGS, ...read<Partial<ChatSettings>>(settingsKey(userId), {}) };
 }
-export const saveSettings = (settings: ChatSettings) => write(SETTINGS_KEY, settings);
+export const saveSettings = (userId: string, settings: ChatSettings) => write(settingsKey(userId), settings);
+
+/**
+ * Chats saved before they were kept per person (keyed by the project alone):
+ * nobody can tell whose they are, so they go.
+ */
+export function dropUnownedChats(projectId: string) {
+  try {
+    for (const key of [`wtc:requirements-chat:${projectId}:current`, `wtc:requirements-chat:${projectId}:history`, "wtc:requirements-chat:settings"]) {
+      window.localStorage.removeItem(key);
+    }
+  } catch {
+    // Storage blocked: nothing was kept either.
+  }
+}
 
 /** A past chat made from a thread: titled by its first question, stamped now. */
 export function toPastChat(turns: ChatTurn[]): PastChat {

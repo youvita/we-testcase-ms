@@ -299,6 +299,7 @@ export function RequirementsWorkspace({
       {canChat && (
         <RequirementsChat
           projectId={projectId}
+          userId={po.currentUserId}
           projectName={projectName}
           tab={tab === "drafts" ? "drafts" : "requirements"}
           open={chatOpen}

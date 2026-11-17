@@ -9,12 +9,13 @@ import { loadHistory, type PastChat } from "./chat-store";
 
 /** Past conversations of this project's chat, opened from the clock in the header. */
 export function ChatHistoryMenu({
-  projectId,
+  scope,
   disabled,
   onOpenChat,
   onDeleteChat,
 }: {
-  projectId: string;
+  /** Whose chats, from chatScope(). */
+  scope: string;
   /** While a reply is streaming — switching then would lose it. */
   disabled?: boolean;
   onOpenChat: (chat: PastChat) => void;
@@ -28,7 +29,7 @@ export function ChatHistoryMenu({
       open={open}
       onOpenChange={(next) => {
         setOpen(next);
-        if (next) setChats(loadHistory(projectId));
+        if (next) setChats(loadHistory(scope));
       }}
     >
       <PopoverTrigger asChild>

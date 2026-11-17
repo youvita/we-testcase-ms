@@ -37,6 +37,8 @@ import { ChatMarkdown } from "./chat/chat-markdown";
 import { ChatMenu } from "./chat/chat-menu";
 import {
   DEFAULT_SETTINGS,
+  chatScope,
+  dropUnownedChats,
   loadCurrent,
   loadHistory,
   loadSettings,
@@ -120,6 +122,7 @@ async function toAttachment(file: File): Promise<Pending | string> {
  */
 export function RequirementsChat({
   projectId,
+  userId,
   projectName,
   tab,
   open,
@@ -131,6 +134,8 @@ export function RequirementsChat({
   onConnect,
 }: {
   projectId: string;
+  /** The signed-in person: their chats are kept apart from others' on this browser. */
+  userId: string;
   projectName: string;
   tab: Tab;
   open: boolean;
@@ -160,15 +165,18 @@ export function RequirementsChat({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const scope = chatScope(userId, projectId);
+
   // Browser storage only exists after mount.
   useEffect(() => {
-    setTurns(loadCurrent(projectId));
-    setSettings(loadSettings());
+    dropUnownedChats(projectId);
+    setTurns(loadCurrent(scope));
+    setSettings(loadSettings(userId));
     setHydrated(true);
-  }, [projectId]);
+  }, [projectId, scope, userId]);
   useEffect(() => {
-    if (hydrated) saveCurrent(projectId, turns);
-  }, [hydrated, projectId, turns]);
+    if (hydrated) saveCurrent(scope, turns);
+  }, [hydrated, scope, turns]);
 
   const refreshConnection = useCallback(() => {
     api
@@ -232,7 +240,7 @@ export function RequirementsChat({
 
   function changeSettings(next: ChatSettings) {
     setSettings(next);
-    saveSettings(next);
+    saveSettings(userId, next);
   }
 
   async function run(before: ChatTurn[], payload: AiChatInput, shown: ChatTurn) {
@@ -360,7 +368,7 @@ export function RequirementsChat({
 
   function newChat() {
     if (pending) return;
-    saveHistory(projectId, keepInHistory(loadHistory(projectId)));
+    saveHistory(scope, keepInHistory(loadHistory(scope)));
     setTurns([]);
     setUsage({ turns: 0, tokens: 0 });
     setInput("");
@@ -370,14 +378,14 @@ export function RequirementsChat({
 
   function openChat(chat: PastChat) {
     if (pending) return;
-    const rest = loadHistory(projectId).filter((entry) => entry.id !== chat.id);
-    saveHistory(projectId, keepInHistory(rest));
+    const rest = loadHistory(scope).filter((entry) => entry.id !== chat.id);
+    saveHistory(scope, keepInHistory(rest));
     setTurns(chat.turns);
   }
 
   function deleteChat(id: string) {
-    const rest = loadHistory(projectId).filter((entry) => entry.id !== id);
-    saveHistory(projectId, rest);
+    const rest = loadHistory(scope).filter((entry) => entry.id !== id);
+    saveHistory(scope, rest);
     return rest;
   }
 
@@ -428,7 +436,7 @@ export function RequirementsChat({
             <button type="button" onClick={newChat} disabled={pending} title="New chat" aria-label="New chat" className={iconButton}>
               <SquarePen className="size-4" />
             </button>
-            <ChatHistoryMenu projectId={projectId} disabled={pending} onOpenChat={openChat} onDeleteChat={deleteChat} />
+            <ChatHistoryMenu scope={scope} disabled={pending} onOpenChat={openChat} onDeleteChat={deleteChat} />
             <button type="button" onClick={() => onOpenChange(false)} title="Close" aria-label="Close" className={iconButton}>
               <X className="size-4" />
             </button>
