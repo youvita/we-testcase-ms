@@ -82,7 +82,7 @@ export default async function AutomationPage({
           value={lastFinished ? lastFinished.passed : "—"}
           tone="passed"
           icon={CheckCircle2}
-          hint={lastFinished ? `Run #${lastFinished.number}` : undefined}
+          hint={lastFinished ? `Run #${lastFinished.code ?? lastFinished.number}` : undefined}
         />
         <StatCard
           label="Last run failed"

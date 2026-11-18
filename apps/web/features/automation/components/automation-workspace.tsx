@@ -107,7 +107,7 @@ export function AutomationWorkspace({
   const pageDeletable = runs.items.filter(deletable);
   const picked = runs.items.filter((run) => selected.has(run.id));
   const allPicked = pageDeletable.length > 0 && pageDeletable.every((run) => selected.has(run.id));
-  const pickedNumbers = picked.map((run) => `#${run.number}`).join(", ");
+  const pickedNumbers = picked.map((run) => `#${run.code ?? run.number}`).join(", ");
   const recorded = picked.filter((run) => run.recordResults).length;
 
   function toggle(runId: string, on: boolean) {
@@ -266,7 +266,7 @@ export function AutomationWorkspace({
                   {canManage && (
                     <TableCell onClick={(event) => event.stopPropagation()}>
                       <Checkbox
-                        aria-label={`Select run #${run.number}`}
+                        aria-label={`Select run #${run.code ?? run.number}`}
                         disabled={!deletable(run)}
                         title={
                           deletable(run)
@@ -285,7 +285,7 @@ export function AutomationWorkspace({
                       href={`/projects/${projectId}/automation/runs/${run.id}`}
                       onClick={(e) => e.stopPropagation()}
                     >
-                      #{run.number}
+                      <span className="font-mono">#{run.code ?? run.number}</span>
                     </Link>
                   </TableCell>
                   <TableCell>

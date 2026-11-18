@@ -194,6 +194,7 @@ describe("deleting runs", () => {
   it("keeps the results on the case unless asked, and never reuses the number", async () => {
     const { project, testCase, owner, env, run } = await passedRun();
     expect(run.number).toBe(1);
+    expect(run.code).toMatch(/^[2-9A-HJKMNP-Z]{5}$/);
     await deleteTestRuns(project.id, [run.id], asQa(owner), false);
     expect(await prisma.testRun.count()).toBe(0);
     expect(await prisma.testExecution.count({ where: { testCaseId: testCase.id } })).toBe(1);

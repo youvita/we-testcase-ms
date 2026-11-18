@@ -936,6 +936,10 @@ model TestRun {
   /// "Run #12" — counted per project. Null for script checks, which are
   /// not runs anyone started and should not use up numbers.
   number  Int?
+  /// What people call it: "Run #K7Q3P" — a short random code, so deleting
+  /// runs leaves no gaps to notice. Null for script checks. `number` stays
+  /// as the order they were started in.
+  code    String?
   purpose TestRunPurpose @default(RUN)
   status  TestRunStatus  @default(QUEUED)
 
@@ -991,6 +995,7 @@ model TestRun {
   items TestRunItem[]
 
   @@unique([projectId, number])
+  @@unique([projectId, code])
   @@index([status, createdAt])
 }
 

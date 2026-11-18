@@ -354,6 +354,8 @@ export type TestRunDto = {
   environmentId: string | null;
   /** Null for script checks. */
   number: number | null;
+  /** "K7Q3P", shown as "Run #K7Q3P". Null for script checks. */
+  code: string | null;
   purpose: TestRunPurpose;
   status: TestRunStatus;
   environmentName: string;

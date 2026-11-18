@@ -206,7 +206,7 @@ export async function getTestCase(
           tester: testerSelect,
           attachments: true,
           runItem: {
-            select: { id: true, run: { select: { id: true, number: true } } },
+            select: { id: true, run: { select: { id: true, number: true, code: true } } },
           },
         },
       },

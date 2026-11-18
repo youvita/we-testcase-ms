@@ -44,6 +44,16 @@ import { resolveEnvironmentForRunner } from "./run-environment.service";
  * ERROR the next time anyone looks (see `sweepStaleRuns`).
  */
 
+/** Letters and digits that cannot be mistaken for each other (no 0/O, 1/I/L). */
+const CODE_ALPHABET = "23456789ABCDEFGHJKMNPQRSTUVWXYZ";
+const CODE_LENGTH = 5;
+
+/** A run's code: "K7Q3P". Unique per project; a clash retries (see `queueRun`). */
+export function newRunCode(): string {
+  const bytes = randomBytes(CODE_LENGTH);
+  return Array.from(bytes, (byte) => CODE_ALPHABET[byte % CODE_ALPHABET.length]).join("");
+}
+
 /** No heartbeat for this long means the runner is gone. It beats every 10 s. */
 const STALE_AFTER_MS = 90_000;
 
@@ -60,6 +70,7 @@ function toRunDto(run: RunRow): TestRunDto {
     id: run.id,
     environmentId: run.environmentId,
     number: run.number,
+    code: run.code,
     purpose: run.purpose,
     status: run.status,
     environmentName: run.environmentName,
@@ -240,6 +251,7 @@ export async function queueRun(options: {
           data: {
             projectId: options.projectId,
             number,
+            code: options.purpose === "RUN" ? newRunCode() : null,
             purpose: options.purpose,
             environmentId: options.environment.id,
             environmentName: options.environment.name,
@@ -291,7 +303,7 @@ export async function deleteTestRuns(
     where: { id: { in: runIds }, projectId, purpose: "RUN" },
     select: {
       id: true,
-      number: true,
+      code: true,
       status: true,
       createdById: true,
       items: { select: { artifacts: true, executionId: true } },
@@ -300,10 +312,10 @@ export async function deleteTestRuns(
   if (runs.length !== new Set(runIds).size) throw notFound("Run");
   for (const run of runs) {
     if (run.status === "QUEUED" || run.status === "RUNNING") {
-      throw conflict(`Run #${run.number} is still going — cancel it first.`);
+      throw conflict(`Run #${run.code} is still going — cancel it first.`);
     }
     if (run.createdById !== actor.id && !isAdmin(actor.role)) {
-      throw forbidden(`Run #${run.number} was started by someone else — only they or an admin can delete it.`);
+      throw forbidden(`Run #${run.code} was started by someone else — only they or an admin can delete it.`);
     }
   }
 
@@ -580,7 +592,7 @@ async function buildRunnerJob(runId: string): Promise<RunnerJob | null> {
   return {
     run: {
       id: run.id,
-      label: run.number ? `Run #${run.number}` : "Script check",
+      label: run.code ? `Run #${run.code}` : "Script check",
       projectName: run.project.name,
       slowMoMs: run.slowMoMs,
       inOrder: run.inOrder,
@@ -678,7 +690,7 @@ export async function reportItemResult(
       run: {
         select: {
           id: true,
-          number: true,
+          code: true,
           projectId: true,
           status: true,
           recordResults: true,
@@ -745,7 +757,7 @@ export async function reportItemResult(
       // In plain words; the full error, log and script are on the run's page,
       // which the history entry links to.
       actualResult: recordAs === "PASSED" ? null : (failure?.actualResult ?? "The script failed."),
-      comment: `Automated — Run #${item.run.number} on ${item.run.environmentName}`,
+      comment: `Automated — Run #${item.run.code} on ${item.run.environmentName}`,
       environmentName: item.run.environmentName,
     });
     executionId = execution.id;
@@ -793,7 +805,7 @@ export async function recordDraftFailure(itemId: string, user: { id: string; nam
       testCaseId: true,
       executionId: true,
       run: {
-        select: { number: true, purpose: true, recordResults: true, environmentName: true, projectId: true, createdById: true },
+        select: { code: true, purpose: true, recordResults: true, environmentName: true, projectId: true, createdById: true },
       },
     },
   });
@@ -812,7 +824,7 @@ export async function recordDraftFailure(itemId: string, user: { id: string; nam
   const execution = await recordExecution(item.testCaseId, item.run.createdById, {
     status: failure?.beforeSteps ? "BLOCKED" : "FAILED",
     actualResult: failure?.actualResult ?? "The script failed.",
-    comment: `Automated — Run #${item.run.number} on ${item.run.environmentName} · script confirmed by ${user.name}`,
+    comment: `Automated — Run #${item.run.code} on ${item.run.environmentName} · script confirmed by ${user.name}`,
     environmentName: item.run.environmentName,
   });
   await attachRunEvidence(

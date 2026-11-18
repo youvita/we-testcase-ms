@@ -113,7 +113,7 @@ export default async function TestCaseDetailPage({
         run: { purpose: "RUN" },
       },
       orderBy: { finishedAt: "desc" },
-      select: { status: true, finishedAt: true, run: { select: { id: true, number: true } } },
+      select: { status: true, finishedAt: true, run: { select: { id: true, code: true } } },
     }),
     getLatestScriptJob(testCaseId),
     getLastFinishedScriptJob(testCaseId),
@@ -413,7 +413,7 @@ export default async function TestCaseDetailPage({
                 lastRunItem && {
                   status: lastRunItem.status,
                   runId: lastRunItem.run.id,
-                  runNumber: lastRunItem.run.number,
+                  runCode: lastRunItem.run.code,
                   finishedAt: lastRunItem.finishedAt?.toISOString() ?? null,
                 }
               }

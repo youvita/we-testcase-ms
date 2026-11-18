@@ -100,7 +100,7 @@ export function NewRunDialog({
         liveView: live.liveView,
         speed: live.liveView ? live.speed : "normal",
       });
-      toast.success(`Run #${run.number} queued — ${run.total} case${run.total === 1 ? "" : "s"}`);
+      toast.success(`Run #${run.code} queued — ${run.total} case${run.total === 1 ? "" : "s"}`);
       onOpenChange(false);
       router.push(`/projects/${projectId}/automation/runs/${run.id}`);
     } catch (error) {

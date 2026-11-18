@@ -82,7 +82,7 @@ export type ScriptState = {
 export type LastAutomatedResult = {
   status: RunItemStatus;
   runId: string;
-  runNumber: number | null;
+  runCode: string | null;
   finishedAt: string | null;
 } | null;
 
@@ -313,7 +313,7 @@ export function AutomationScriptCard({
               >
                 Last run
                 <RunStatusBadge status={lastResult.status} />
-                #{lastResult.runNumber}
+                #{lastResult.runCode}
                 {lastResult.finishedAt && ` · ${formatRelative(lastResult.finishedAt)}`}
               </Link>
             ) : (
@@ -574,7 +574,7 @@ export function AutomationScriptCard({
                 <p className="font-medium text-foreground">
                   {script.verifiedAt ? "This script is verified" : "This script works"}
                   {lastResult?.status === "PASSED"
-                    ? ` and passed its last run${lastResult.runNumber ? ` (#${lastResult.runNumber})` : ""}.`
+                    ? ` and passed its last run${lastResult.runCode ? ` (#${lastResult.runCode})` : ""}.`
                     : "."}
                 </p>
               )}

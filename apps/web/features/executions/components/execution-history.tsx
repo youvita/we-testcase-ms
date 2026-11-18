@@ -225,12 +225,12 @@ function ExecutionEntry({
                       onClick={(event) => event.stopPropagation()}
                     >
                       <Bot className="size-3" />
-                      Automated · Run #{execution.runItem.run.number}
+                      Automated · Run #{execution.runItem.run.code ?? execution.runItem.run.number}
                     </Link>
                   ) : (
                     <span className="inline-flex items-center gap-1">
                       <Bot className="size-3" />
-                      Automated · Run #{execution.runItem.run.number}
+                      Automated · Run #{execution.runItem.run.code ?? execution.runItem.run.number}
                     </span>
                   )}
                 </>

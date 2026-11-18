@@ -95,7 +95,7 @@ export type ExecutionWithDetails = TestExecution & {
   tester: Pick<User, "id" | "name" | "email" | "image">;
   attachments: Attachment[];
   /** Present when an automated run recorded this result. */
-  runItem?: { id: string; run: { id: string; number: number | null } } | null;
+  runItem?: { id: string; run: { id: string; number: number | null; code: string | null } } | null;
 };
 
 /** A module's sub-module, as its cases name it. */

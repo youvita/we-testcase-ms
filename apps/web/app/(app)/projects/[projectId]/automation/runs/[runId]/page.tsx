@@ -37,7 +37,7 @@ export default async function RunPage({
   const belongs = await prisma.testRun.count({ where: { id: runId, projectId } });
   if (!belongs) notFound();
 
-  const title = run.number ? `Run #${run.number}` : "Script check";
+  const title = run.purpose === "RUN" ? `Run #${run.code ?? run.number}` : "Script check";
   // A script check tries one case's script while it is being written: it
   // belongs under that case, which is where the way back should lead.
   const checkedCase =
