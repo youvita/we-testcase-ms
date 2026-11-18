@@ -47,8 +47,18 @@ for i in $(seq 1 40); do
   sleep 2
 done
 
+# The automation runner, on a Mac that runs one: rebuilt from this same
+# checkout, so it never lags the app. --no-deps is essential: the runner
+# depends on the app, and without it Compose would rebuild the app a second
+# time. A Mac that never started the runner is left without one.
+if docker ps -a --format '{{.Names}}' | grep -qx wetestcase-runner; then
+  echo "==> Rebuilding the automation runner (the app is not touched)"
+  "${COMPOSE[@]}" --profile automation up -d --build --no-deps runner
+fi
+
 echo
 "${COMPOSE[@]}" ps app postgres
+"${COMPOSE[@]}" --profile automation ps runner 2>/dev/null || true
 echo
 cat <<EOF
 ================================================================
