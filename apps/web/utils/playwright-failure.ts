@@ -58,6 +58,13 @@ function readablePattern(pattern: string): string {
     .replace(/\\d\+|\\d/g, "N")
     .replace(/\\(.)/g, "$1")
     .trim();
+  // Plain alternatives: /email|username/ → “email” or “username”.
+  if (/^[\w .,'-]+(\|[\w .,'-]+)+$/.test(plainText)) {
+    return plainText
+      .split("|")
+      .map((word) => quoted(word.trim()))
+      .join(" or ");
+  }
   return /[[\](){}|?*+]/.test(plainText) ? `/${pattern}/` : quoted(plainText);
 }
 
@@ -75,6 +82,8 @@ export function describeLocator(source: string): string | null {
   }
   const label = text(`getByLabel\\(\\s*${str}`);
   if (label) return `the ${quoted(label)} field`;
+  const labelPattern = source.match(/getByLabel\(\s*\/((?:\\.|[^/])+)\/[a-z]*/)?.[1];
+  if (labelPattern) return `the ${readablePattern(labelPattern)} field`;
   const placeholder = text(`getByPlaceholder\\(\\s*${str}`);
   if (placeholder) return `the field ${quoted(placeholder)}`;
   const shown = text(`getByText\\(\\s*${str}`);
@@ -91,7 +100,11 @@ export function describeLocator(source: string): string | null {
 }
 
 const capitalise = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
-const unquote = (text: string) => text.trim().replace(/^"(.*)"$/s, "$1");
+/** A value as Playwright printed it, without its quotes, and not too long to read. */
+const unquote = (text: string) => {
+  const plain = text.trim().replace(/^"(.*)"$/s, "$1").replace(/\\n/g, " ");
+  return plain.length > 160 ? `${plain.slice(0, 157)}…` : plain;
+};
 const seconds = (ms: string) => {
   const value = Number(ms) / 1000;
   return `${Number.isInteger(value) ? value : value.toFixed(1)} s`;
@@ -186,8 +199,28 @@ function sentence(error: string, lines: string[], line: number | null): string {
   const wait = timeout ? seconds(timeout.replace(/ms$/, "")) : null;
   const within = wait ? ` within ${wait}` : "";
   const what = locatorOf(error, code);
-  const received = field(error, "Received string", "Received value", "Received");
-  const expected = field(error, "Expected pattern", "Expected string", "Expected value", "Expected");
+  const received = field(error, "Received string", "Received value", "Received array", "Received length", "Received");
+  const expected = field(
+    error,
+    "Expected pattern",
+    "Expected substring",
+    "Expected string",
+    "Expected value",
+    "Expected length",
+    "Expected",
+  );
+  // A `vars.NAME` the script used on the failing line: unset, it is undefined.
+  const variable = code?.match(/\bvars\.([A-Z0-9_]+)/)?.[1] ?? null;
+
+  // A value the script needed was not there — most often a variable not set
+  // for the environment.
+  if (/expected string, got undefined|value: expected string/.test(header) || (variable && /got undefined/.test(error))) {
+    const action = header.match(/(?:locator|page)\.(fill|type|press|selectOption)\b/)?.[1];
+    const target = what ?? "the field";
+    return variable
+      ? `could not ${action === "selectOption" ? "choose in" : "fill in"} ${target}: the variable ${variable} is not set for this environment (add it on the Environments page)`
+      : `could not fill in ${target}: the value to type was empty`;
+  }
 
   // The page's address.
   if (/toHaveURL/.test(header) && received) {
@@ -215,7 +248,12 @@ function sentence(error: string, lines: string[], line: number | null): string {
   if (/toHaveText|toContainText|toHaveValue/.test(header)) {
     if (received && /not found/.test(received)) return `${what ?? "the element"} could not be found${within}`;
     if (received && expected) {
-      return `${what ?? "the element"} showed ${quoted(unquote(received))}, expected ${quoted(unquote(expected.replace(/^not /, "")))}`;
+      const shown = unquote(received);
+      const wanted = quoted(unquote(expected.replace(/^not /, "")));
+      if (!shown) return `${what ?? "the element"} was empty, expected ${wanted}`;
+      return /toContainText/.test(header)
+        ? `${what ?? "the element"} showed ${quoted(shown)}, which does not include ${wanted}`
+        : `${what ?? "the element"} showed ${quoted(shown)}, expected ${wanted}`;
     }
   }
   if (/toHaveCount/.test(header) && received && expected) {
@@ -228,6 +266,20 @@ function sentence(error: string, lines: string[], line: number | null): string {
       return `the API answered ${unquote(received)} instead of ${unquote(expected)}`;
     }
     if (code && /\.ok\(\)/.test(code)) return "the API request did not succeed";
+    // A text the script read off the page, checked with toContain / toMatch.
+    if (/toContain\(|toMatch\(/.test(header) && received && expected) {
+      const shown = unquote(received);
+      const wanted = /toMatch/.test(header) ? readablePattern(unquote(expected).replace(/^\/|\/[a-z]*$/g, "")) : quoted(unquote(expected));
+      const source = code ? describeLocator(code) : null;
+      return shown
+        ? `${source ?? "the text"} read ${quoted(shown)}, which does not include ${wanted}`
+        : `${source ?? "the text"} was empty, expected it to include ${wanted}`;
+    }
+    if (/toHaveLength/.test(header) && received && expected) {
+      return `found ${unquote(received)} item${unquote(received) === "1" ? "" : "s"}, expected ${unquote(expected)}`;
+    }
+    if (/toBeTruthy|toBe\(true\)/.test(header)) return `a check that should hold did not${code ? `: ${code.replace(/;$/, "")}` : ""}`;
+    if (/toBeFalsy|toBe\(false\)/.test(header)) return `a check that should not hold did${code ? `: ${code.replace(/;$/, "")}` : ""}`;
     if (received && expected) return `expected ${unquote(expected)}, got ${unquote(received)}`;
   }
 
@@ -245,7 +297,14 @@ function sentence(error: string, lines: string[], line: number | null): string {
   const testTimeout = header.match(/Test timeout of (\d+)ms exceeded/);
   if (testTimeout) return `the test did not finish within ${seconds(testTimeout[1]!)}`;
 
-  return header.replace(/^\s*(Error|TimeoutError):\s*/, "").trim() || "the script failed";
+  // Not recognised: say which check failed rather than Playwright's matcher.
+  const matcher = header.match(/expect\((?:received|locator|page)\)\.(?:not\.)?(\w+)\(/)?.[1];
+  if (matcher) {
+    return code
+      ? `the check on ${what ?? "the page"} did not pass (${matcher}): ${code.replace(/^await\s+/, "").replace(/;$/, "")}`
+      : `the check ${matcher} did not pass`;
+  }
+  return header.replace(/^\s*(Error|TimeoutError):\s*/, "").replace(/\s*\/\/.*$/, "").trim() || "the script failed";
 }
 
 /**

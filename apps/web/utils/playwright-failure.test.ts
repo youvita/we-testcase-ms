@@ -172,7 +172,8 @@ describe("summariseFailure", () => {
 
   it("reads a text pattern the way a tester would", () => {
     expect(describeLocator("getByText(/^\\s*\\d+\\s+Customers\\s*$/)")).toBe("the text “N Customers”");
-    expect(describeLocator("getByText(/Saved|Done/i)")).toBe("the text /Saved|Done/");
+    expect(describeLocator("getByText(/Saved|Done/i)")).toBe("the text “Saved” or “Done”");
+    expect(describeLocator("getByText(/^(Saved|Done)$/)")).toBe("the text /^(Saved|Done)$/");
   });
 
   it("keeps the first line of anything it does not recognise, without the code", () => {
@@ -188,5 +189,55 @@ describe("summariseFailure", () => {
       actualResult: "Expected 1, got 2.",
       beforeSteps: false,
     });
+  });
+});
+
+describe("summariseFailure — failures people could not read", () => {
+  const steps = (lines: string[]) => ["await page.goto('/');", "", "// Step 4: Switch the language to Khmer", ...lines].join("\n");
+
+  it("says what a text read off the page held, and what it should have included", () => {
+    const line = "expect((await kmMsg.innerText()).trim()).toContain(suspendedKmText);";
+    const code = steps(["const kmMsg = page.getByRole('alert');", line]);
+    const error = at(
+      [
+        "Error: expect(received).toContain(expected) // indexOf",
+        "",
+        'Expected substring: "គណនីរបស់អ្នកត្រូវបានផ្អាក"',
+        'Received string:    "Your account has been suspended."',
+      ].join("\n"),
+      5,
+      line,
+    );
+    expect(summariseFailure(error, code).actualResult).toBe(
+      "At step 4 (Switch the language to Khmer): the text read “Your account has been suspended.”, which does not include “គណនីរបស់អ្នកត្រូវបានផ្អាក”.",
+    );
+  });
+
+  it("reads toContainText's substring", () => {
+    const line = 'await expect(page.getByRole("alert")).toContainText("Not approved");';
+    const error = at(
+      ["Error: expect(locator).toContainText(expected) failed", "", 'Expected substring: "Not approved"', 'Received string: ""'].join("\n"),
+      4,
+      line,
+    );
+    expect(summariseFailure(error, steps([line])).actualResult).toBe(
+      "At step 4 (Switch the language to Khmer): the message was empty, expected “Not approved”.",
+    );
+  });
+
+  it("names a variable that is not set", () => {
+    const line = "await op.getByLabel(/email|username/i).first().fill(vars.OPERATOR_EMAIL);";
+    const error = at("Error: locator.fill: value: expected string, got undefined", 4, line);
+    expect(summariseFailure(error, steps([line])).actualResult).toBe(
+      "At step 4 (Switch the language to Khmer): could not fill in the “email” or “username” field: the variable OPERATOR_EMAIL is not set for this environment (add it on the Environments page).",
+    );
+  });
+
+  it("says which check failed rather than Playwright's matcher name", () => {
+    const line = "expect(items).toEqual(['a', 'b']);";
+    const error = at("Error: expect(received).toEqual(expected) // deep equality\n\n- Expected\n+ Received", 4, line);
+    expect(summariseFailure(error, steps([line])).actualResult).toBe(
+      "At step 4 (Switch the language to Khmer): the check on the page did not pass (toEqual): expect(items).toEqual(['a', 'b']).",
+    );
   });
 });
