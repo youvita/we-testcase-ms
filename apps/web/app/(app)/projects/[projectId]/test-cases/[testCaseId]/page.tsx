@@ -427,6 +427,7 @@ export default async function TestCaseDetailPage({
               executions={testCase.executions}
               currentUserId={user.id}
               canModerate={isAdmin(user.role)}
+              developerResponded={["INVESTIGATING", "FIXED", "WONT_FIX", "NOT_A_BUG"].includes(testCase.fixStatus)}
               bugReportCase={{
                 tcId: testCase.tcId,
                 title: testCase.title,

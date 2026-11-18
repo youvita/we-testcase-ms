@@ -1,9 +1,13 @@
+import { unlink } from "node:fs/promises";
+
 import { prisma, type Tx } from "@/lib/prisma";
-import { badRequest, forbidden, notFound } from "@/lib/api";
+import { badRequest, conflict, forbidden, notFound } from "@/lib/api";
 import { isAdmin } from "@/lib/permissions";
 import type { Role } from "@/lib/constants";
 import type { ExecutionInput } from "@/lib/validations";
 import type { ExecutionWithDetails } from "@/types";
+
+import { resolveStoredPath } from "./attachment.service";
 
 const testerSelect = {
   select: { id: true, name: true, email: true, image: true },
@@ -130,6 +134,48 @@ export async function updateExecution(
 
     return updated;
   });
+}
+
+/** What a developer says once they have taken a result up. */
+const DEVELOPER_RESPONSES = ["INVESTIGATING", "FIXED", "WONT_FIX", "NOT_A_BUG"] as const;
+
+/**
+ * Remove a recorded result — one recorded by mistake, or a run of failures
+ * from a script still being fixed.
+ *
+ * Its recorder or an admin. Not the latest result once a developer has
+ * answered it (investigating, fixed, …): they are working from it, and a new
+ * result is what moves the case on. Its files go with it, and the case reads
+ * its status from the result now newest.
+ */
+export async function deleteExecution(executionId: string, actor: { id: string; role: Role }) {
+  const execution = await prisma.testExecution.findUnique({
+    where: { id: executionId },
+    select: {
+      id: true,
+      testerId: true,
+      testCaseId: true,
+      attachments: { select: { filePath: true } },
+      testCase: { select: { fixStatus: true, executions: { orderBy: { executedAt: "desc" }, take: 1, select: { id: true } } } },
+    },
+  });
+  if (!execution) throw notFound("Execution");
+  if (execution.testerId !== actor.id && !isAdmin(actor.role)) {
+    throw forbidden("You can only delete results you recorded");
+  }
+  const latest = execution.testCase.executions[0]?.id === executionId;
+  if (latest && (DEVELOPER_RESPONSES as readonly string[]).includes(execution.testCase.fixStatus)) {
+    throw conflict("A developer is already working from this result — record a new result instead of deleting it.");
+  }
+
+  await prisma.$transaction(async (tx) => {
+    await tx.testExecution.delete({ where: { id: executionId } });
+    await refreshTestCaseStatus(tx, execution.testCaseId);
+  });
+  // Best effort: the rows are gone with the result; a leftover file is harmless.
+  await Promise.all(
+    execution.attachments.map((file) => unlink(resolveStoredPath(file.filePath)).catch(() => {})),
+  );
 }
 
 /**

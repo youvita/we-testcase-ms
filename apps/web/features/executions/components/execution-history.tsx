@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Bot, ClipboardCopy, History, Pencil } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { Bot, ClipboardCopy, History, Loader2, Pencil, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -10,6 +11,8 @@ import { Card, CardContent } from "@/components/ui/card";
 import { CollapsibleCardHeader } from "@/components/shared/collapsible-card-header";
 import { EmptyState } from "@/components/shared/empty-state";
 import { StatusBadge } from "@/components/shared/status-badge";
+import { ConfirmDialog } from "@/components/shared/confirm-dialog";
+import { api, errorMessage } from "@/utils/api-client";
 import { formatDateTime, initials } from "@/utils/format";
 import { bugReportText, type BugReportInput } from "@/utils/bug-report";
 import type { ExecutionWithDetails } from "@/types";
@@ -35,6 +38,7 @@ export function ExecutionHistory({
   currentUserId,
   canModerate = false,
   bugReportCase,
+  developerResponded = false,
 }: {
   /** Needed to link automated results to their run. */
   projectId?: string;
@@ -43,6 +47,11 @@ export function ExecutionHistory({
   executions: ExecutionWithDetails[];
   currentUserId?: string;
   canModerate?: boolean;
+  /**
+   * A developer has answered the latest result (investigating, fixed, …):
+   * it stays, since they are working from it.
+   */
+  developerResponded?: boolean;
 }) {
   // Null on pages with no Record result card (the developer's read-only view),
   // which is exactly when entries should not be clickable.
@@ -90,6 +99,7 @@ export function ExecutionHistory({
                     (canModerate || execution.tester.id === currentUserId)
                   }
                   onEdit={() => editor?.startEditing(execution)}
+                  locked={index === 0 && developerResponded}
                 />
               ))}
             </ol>
@@ -107,6 +117,7 @@ function ExecutionEntry({
   isLatest,
   editable,
   onEdit,
+  locked,
 }: {
   projectId?: string;
   execution: ExecutionWithDetails;
@@ -114,7 +125,30 @@ function ExecutionEntry({
   isLatest: boolean;
   editable: boolean;
   onEdit: () => void;
+  /** Not deletable: a developer is working from it. */
+  locked: boolean;
 }) {
+  const router = useRouter();
+  const editor = useExecutionEditor();
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  async function handleDelete() {
+    setDeleting(true);
+    try {
+      await api.delete(`/api/executions/${execution.id}`);
+      // It may be open in the Record result card.
+      if (editor?.editing?.id === execution.id) editor.close();
+      toast.success("Result deleted");
+      setConfirmOpen(false);
+      router.refresh();
+    } catch (error) {
+      toast.error(errorMessage(error));
+    } finally {
+      setDeleting(false);
+    }
+  }
+
   function startEditing() {
     // A click that ends a text selection is someone copying the result, not
     // asking to change it.
@@ -217,6 +251,25 @@ function ExecutionEntry({
               aria-hidden
             />
           )}
+          {editable && (
+            <button
+              type="button"
+              disabled={locked || deleting}
+              onClick={(event) => {
+                event.stopPropagation();
+                setConfirmOpen(true);
+              }}
+              title={
+                locked
+                  ? "A developer is working from this result — record a new result instead"
+                  : "Delete this result"
+              }
+              aria-label="Delete this result"
+              className="rounded p-1 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-muted-foreground"
+            >
+              {deleting ? <Loader2 className="size-3.5 animate-spin" /> : <Trash2 className="size-3.5" />}
+            </button>
+          )}
           {isLatest && (
             <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
               Latest
@@ -258,6 +311,30 @@ function ExecutionEntry({
           <AttachmentGallery attachments={execution.attachments} />
         </div>
       )}
+
+      {/* Clicks in the dialog are not clicks on the entry. */}
+      <div onClick={(event) => event.stopPropagation()}>
+        <ConfirmDialog
+          open={confirmOpen}
+          onOpenChange={setConfirmOpen}
+          title="Delete this result?"
+          description={
+            <>
+              The {execution.status.toLowerCase().replace("_", " ")} result from{" "}
+              {formatDateTime(execution.executedAt)}
+              {execution.attachments.length > 0 &&
+                `, with its ${execution.attachments.length} attachment${execution.attachments.length === 1 ? "" : "s"}`}
+              , is removed for good.{" "}
+              {isLatest
+                ? "The case will then show its previous result."
+                : "It is not the latest result, so the case's status does not change."}
+            </>
+          }
+          confirmLabel="Delete result"
+          destructive
+          onConfirm={handleDelete}
+        />
+      </div>
     </li>
   );
 }

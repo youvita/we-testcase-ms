@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { prisma } from "@/lib/prisma";
 import { createProject, createTestCase, createUser, resetDatabase } from "@/test/db";
 
-import { recordExecution, updateExecution } from "./execution.service";
+import { deleteExecution, recordExecution, updateExecution } from "./execution.service";
 
 beforeEach(resetDatabase);
 
@@ -84,5 +84,43 @@ describe("updateExecution", () => {
     await updateExecution(execution.id, { id: admin.id, role: "ADMIN" }, { status: "PASSED" });
     const after = await prisma.testCase.findUniqueOrThrow({ where: { id: tc.id } });
     expect(after.status).toBe("PASSED");
+  });
+});
+
+describe("deleteExecution", () => {
+  const qa = (user: { id: string }) => ({ id: user.id, role: "QA" as const });
+
+  it("removes a result and the case reads from the one before it", async () => {
+    const { tc, tester } = await setup();
+    await recordExecution(tc.id, tester.id, { status: "PASSED" });
+    const failed = await recordExecution(tc.id, tester.id, { status: "FAILED" });
+
+    await deleteExecution(failed.id, qa(tester));
+    const after = await prisma.testCase.findUniqueOrThrow({ where: { id: tc.id }, include: { executions: true } });
+    expect(after.executions.map((e) => e.status)).toEqual(["PASSED"]);
+    expect(after.status).toBe("PASSED");
+
+    // The last one gone: not run.
+    await deleteExecution(after.executions[0]!.id, qa(tester));
+    expect((await prisma.testCase.findUniqueOrThrow({ where: { id: tc.id } })).status).toBe("NOT_RUN");
+  });
+
+  it("is only for its recorder or an admin", async () => {
+    const { tc, tester } = await setup();
+    const other = await createUser("QA");
+    const result = await recordExecution(tc.id, tester.id, { status: "FAILED" });
+    await expect(deleteExecution(result.id, qa(other))).rejects.toThrow(/results you recorded/);
+    await deleteExecution(result.id, { id: other.id, role: "ADMIN" });
+  });
+
+  it("keeps the latest result once a developer is working from it", async () => {
+    const { tc, tester } = await setup();
+    const older = await recordExecution(tc.id, tester.id, { status: "FAILED" });
+    const latest = await recordExecution(tc.id, tester.id, { status: "FAILED" });
+    await prisma.testCase.update({ where: { id: tc.id }, data: { fixStatus: "INVESTIGATING" } });
+
+    await expect(deleteExecution(latest.id, qa(tester))).rejects.toThrow(/developer is already working/);
+    // An older one is not what they are working from.
+    await deleteExecution(older.id, qa(tester));
   });
 });

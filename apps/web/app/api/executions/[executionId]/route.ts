@@ -2,7 +2,7 @@ import { ROLES } from "@/lib/constants";
 import { ok, readJson, route } from "@/lib/api";
 import { assertExecutionAccess } from "@/lib/project-access";
 import { executionEditSchema } from "@/lib/validations";
-import { updateExecution } from "@/services/execution.service";
+import { deleteExecution, updateExecution } from "@/services/execution.service";
 
 type Ctx = { params: Promise<{ executionId: string }> };
 
@@ -25,5 +25,19 @@ export const PATCH = route<Ctx>(
       body,
     );
     return ok(execution);
+  },
+);
+
+/**
+ * Remove a recorded result. The recorder or an admin — and not the latest one
+ * once a developer has answered it; the service enforces both.
+ */
+export const DELETE = route<Ctx>(
+  { roles: [ROLES.ADMIN, ROLES.QA] },
+  async (_request, { params, user }) => {
+    const { executionId } = await params;
+    await assertExecutionAccess(executionId, user);
+    await deleteExecution(executionId, { id: user.id, role: user.role });
+    return ok({ id: executionId });
   },
 );
