@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Bot, ClipboardCopy, History, Loader2, Pencil, Trash2 } from "lucide-react";
+import { Bot, ClipboardCopy, History, Loader2, MoreHorizontal, Pencil, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -12,6 +12,13 @@ import { CollapsibleCardHeader } from "@/components/shared/collapsible-card-head
 import { EmptyState } from "@/components/shared/empty-state";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { api, errorMessage } from "@/utils/api-client";
 import { formatDateTime, initials } from "@/utils/format";
 import { bugReportText, type BugReportInput } from "@/utils/bug-report";
@@ -159,8 +166,7 @@ function ExecutionEntry({
   const reportable =
     bugReportCase && (execution.status === "FAILED" || execution.status === "BLOCKED");
 
-  async function copyBugReport(event: React.MouseEvent) {
-    event.stopPropagation();
+  async function copyBugReport() {
     if (!bugReportCase) return;
     const text = bugReportText({
       testCase: bugReportCase,
@@ -234,48 +240,64 @@ function ExecutionEntry({
         </div>
 
         <div className="flex items-center gap-2">
-          {reportable && (
-            <button
-              type="button"
-              onClick={(event) => void copyBugReport(event)}
-              className="inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-              title="Copy as a bug report: environment, steps, expected and actual result"
-            >
-              <ClipboardCopy className="size-3.5" aria-hidden />
-              Copy bug report
-            </button>
-          )}
-          {editable && (
-            <Pencil
-              className="size-3.5 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100"
-              aria-hidden
-            />
-          )}
-          {editable && (
-            <button
-              type="button"
-              disabled={locked || deleting}
-              onClick={(event) => {
-                event.stopPropagation();
-                setConfirmOpen(true);
-              }}
-              title={
-                locked
-                  ? "A developer is working from this result — record a new result instead"
-                  : "Delete this result"
-              }
-              aria-label="Delete this result"
-              className="rounded p-1 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-muted-foreground"
-            >
-              {deleting ? <Loader2 className="size-3.5 animate-spin" /> : <Trash2 className="size-3.5" />}
-            </button>
-          )}
           {isLatest && (
             <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
               Latest
             </span>
           )}
           <StatusBadge status={execution.status} />
+          {(reportable || editable) && (
+            // One menu for what can be done with a result; the click stays
+            // off the entry, which opens it for editing.
+            <div onClick={(event) => event.stopPropagation()}>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    type="button"
+                    aria-label="Result actions"
+                    title="Edit, copy bug report or delete"
+                    className="rounded p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground data-[state=open]:bg-muted data-[state=open]:text-foreground"
+                  >
+                    {deleting ? <Loader2 className="size-4 animate-spin" /> : <MoreHorizontal className="size-4" />}
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-56">
+                  {editable && (
+                    <DropdownMenuItem onSelect={() => onEdit()}>
+                      <Pencil className="mr-2 size-4" />
+                      Edit result
+                    </DropdownMenuItem>
+                  )}
+                  {reportable && (
+                    <DropdownMenuItem onSelect={() => void copyBugReport()}>
+                      <ClipboardCopy className="mr-2 size-4" />
+                      Copy bug report
+                    </DropdownMenuItem>
+                  )}
+                  {editable && (
+                    <>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem
+                        disabled={locked || deleting}
+                        onSelect={() => setConfirmOpen(true)}
+                        className="text-destructive focus:bg-destructive/10 focus:text-destructive"
+                      >
+                        <Trash2 className="mr-2 size-4" />
+                        <span className="flex flex-col">
+                          Delete result
+                          {locked && (
+                            <span className="text-xs font-normal text-muted-foreground">
+                              A developer is working from it
+                            </span>
+                          )}
+                        </span>
+                      </DropdownMenuItem>
+                    </>
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+          )}
         </div>
       </div>
 
