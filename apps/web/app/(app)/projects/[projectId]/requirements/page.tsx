@@ -36,7 +36,7 @@ export default async function RequirementsPage({
   searchParams,
 }: {
   params: Promise<{ projectId: string }>;
-  searchParams: Promise<{ explore?: string; tab?: string; focus?: string }>;
+  searchParams: Promise<{ explore?: string; tab?: string; focus?: string; coverage?: string }>;
 }) {
   const user = await requireUser();
   const { projectId } = await params;
@@ -45,7 +45,7 @@ export default async function RequirementsPage({
   const project = await getProject(projectId).catch(() => null);
   if (!project) notFound();
 
-  const [docs, requirements, drafts, jobs, environments, signInCases, questions, admins, { explore, tab, focus }] =
+  const [docs, requirements, drafts, jobs, environments, signInCases, questions, admins, { explore, tab, focus, coverage: coverageParam }] =
     await Promise.all([
       listRequirementDocs(projectId),
       listRequirements(projectId),
@@ -134,6 +134,8 @@ export default async function RequirementsPage({
         }}
         // From a notification: open the tab, and the requirement or draft on it.
         focus={(tab === "requirements" || tab === "drafts") && focus ? { tab, id: focus } : undefined}
+        // From a reminder to verify: the requirements still waiting.
+        showUnverified={coverageParam === "unverified"}
       />
 
       <p className="flex items-center gap-1.5 text-xs text-muted-foreground">

@@ -90,6 +90,7 @@ import {
 } from "./requirement-changes";
 import { AskPoDialog } from "@/features/comments/components/ask-po-dialog";
 import { PoQuestionBadge, PoQuestions, type PoContext } from "./po-questions";
+import { VerifyReminderButton } from "./verify-reminder-dialog";
 import type { StartAi } from "./requirements-workspace";
 
 type Coverage = "all" | "verified" | "unverified" | "uncovered" | "covered" | "questions" | "changes" | "removed";
@@ -123,6 +124,7 @@ export function RequirementsPanel({
   questions,
   po,
   focusId,
+  showUnverified = false,
 }: {
   projectId: string;
   docs: RequirementDocDto[];
@@ -139,6 +141,8 @@ export function RequirementsPanel({
   po: PoContext;
   /** A requirement to open, from a notification. */
   focusId?: string;
+  /** From a reminder to verify: show the requirements still waiting. */
+  showUnverified?: boolean;
 }) {
   const router = useRouter();
   const [search, setSearch] = useState("");
@@ -149,7 +153,16 @@ export function RequirementsPanel({
     () => [...new Set(docs.map((doc) => doc.folder).filter((f): f is string => Boolean(f)))].sort((a, b) => a.localeCompare(b)),
     [docs],
   );
-  const [coverage, setCoverage] = useState<Coverage>("all");
+  const [coverage, setCoverage] = useState<Coverage>(showUnverified ? "unverified" : "all");
+  const [seenUnverified, setSeenUnverified] = useState(showUnverified);
+  if (showUnverified !== seenUnverified) {
+    setSeenUnverified(showUnverified);
+    if (showUnverified) {
+      setCoverage("unverified");
+      setSearch("");
+      setDocFilter("all");
+    }
+  }
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [generateOpen, setGenerateOpen] = useState(false);
@@ -491,6 +504,14 @@ export function RequirementsPanel({
                 Verify
                 {selectedUnverified.length > 0 && ` (${selectedUnverified.length})`}
               </Button>
+            )}
+            {!canVerify && (
+              // QA asks; the PO, who verifies, has the Verify button instead.
+              <VerifyReminderButton
+                projectId={projectId}
+                selectedUnverified={selectedUnverified}
+                totalUnverified={requirements.filter((req) => req.status === "ACTIVE" && !req.verifiedAt).length}
+              />
             )}
             <Button variant="outline" onClick={() => setEditing("new")}>
               <Plus className="mr-2 size-4" />

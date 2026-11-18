@@ -691,6 +691,21 @@ export const scriptExplainSchema = z.object({
 });
 export type ScriptExplainInput = z.infer<typeof scriptExplainSchema>;
 
+/**
+ * Remind the PO to verify requirements: these ones, or every one still
+ * waiting when none are given. An optional word from QA goes with it.
+ */
+export const verifyReminderSchema = z.object({
+  requirementIds: z.array(z.string().min(1)).max(1000).optional(),
+  note: z
+    .string()
+    .trim()
+    .max(500, "Keep the message under 500 characters")
+    .optional()
+    .transform((value) => value || undefined),
+});
+export type VerifyReminderInput = z.infer<typeof verifyReminderSchema>;
+
 /** Delete runs, and — when asked — the results they recorded on test cases. */
 export const testRunDeleteSchema = z.object({
   runIds: z.array(z.string().min(1)).min(1, "Select a run").max(100),

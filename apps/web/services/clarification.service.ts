@@ -487,6 +487,7 @@ const notificationInclude = {
   testCase: { select: { id: true, tcId: true, projectId: true } },
   comment: { select: { body: true } },
   reply: { select: { body: true } },
+  project: { select: { id: true, name: true } },
   question: {
     select: {
       body: true,
@@ -501,6 +502,13 @@ type NotificationRow = Prisma.NotificationGetPayload<{ include: typeof notificat
 
 /** What a notification is about and where it opens. */
 function locate(row: NotificationRow): Pick<NotificationDto, "subject" | "href" | "excerpt"> | null {
+  if (row.kind === "REQUIREMENTS_TO_VERIFY" && row.project) {
+    return {
+      subject: row.project.name,
+      href: `/projects/${row.project.id}/requirements?tab=requirements&coverage=unverified`,
+      excerpt: excerpt(row.note ?? ""),
+    };
+  }
   if (row.testCase && row.comment) {
     return {
       subject: row.testCase.tcId,

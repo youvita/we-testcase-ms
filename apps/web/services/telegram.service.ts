@@ -25,6 +25,7 @@ const KIND = {
   answer: "✅ PO answer",
   followUp: "↩️ Follow-up",
   toVerify: "📋 To verify",
+  reminder: "🔔 Reminder to verify",
 } as const;
 
 /**
@@ -217,6 +218,22 @@ export function telegramRequirementsToVerify(docId: string) {
       kind: "toVerify",
       text: `${waiting} requirement${waiting === 1 ? "" : "s"} waiting — PO, please review`,
       path: `/projects/${doc.projectId}/requirements?tab=requirements`,
+    });
+  });
+}
+
+/** QA reminded the PO that requirements are waiting to be verified. */
+export function telegramVerifyReminder(projectId: string, who: string, waiting: number, note: string | null) {
+  void send(async () => {
+    const project = await prisma.project.findUnique({ where: { id: projectId }, select: { name: true } });
+    if (!project) return null;
+    return notice({
+      project: project.name,
+      about: [["Requirements", `${waiting} waiting for the PO to verify`]],
+      kind: "reminder",
+      who,
+      text: note ?? "PO, please review and verify them.",
+      path: `/projects/${projectId}/requirements?tab=requirements&coverage=unverified`,
     });
   });
 }

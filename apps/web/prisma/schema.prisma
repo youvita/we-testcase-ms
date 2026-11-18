@@ -327,6 +327,7 @@ model Project {
   requirementDocs RequirementDoc[]
   requirements    Requirement[]
   aiJobs          AiJob[]
+  notifications   Notification[]
   testCaseDrafts  TestCaseDraft[]
   runEnvironments RunEnvironment[] @relation("ProjectRunEnvironments")
   testRuns        TestRun[]
@@ -556,6 +557,8 @@ enum NotificationKind {
   COMMENT_POSTED
   /// Someone @mentioned this person in a post on a case.
   COMMENT_MENTIONED
+  /// QA reminded the PO that requirements are waiting to be verified.
+  REQUIREMENTS_TO_VERIFY
 }
 
 /// In the app only: the bell in the top bar.
@@ -585,7 +588,14 @@ model Notification {
   replyId    String?
   reply      PoQuestionReply? @relation(fields: [replyId], references: [id], onDelete: Cascade)
 
+  /// Or a project's requirements, for a reminder to verify them — with what
+  /// the reminder said: how many, and QA's own words, if any.
+  projectId String?
+  project   Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  note      String?
+
   @@index([recipientId, readAt, createdAt])
+  @@index([projectId, kind, createdAt])
 }
 
 model TestExecution {

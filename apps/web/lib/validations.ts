@@ -52,6 +52,7 @@ export {
   automationScriptSchema,
   testRunCreateSchema,
   testRunDeleteSchema,
+  verifyReminderSchema,
   scriptWritingSchema,
   frdGenerateSchema,
   exploreAppSchema,

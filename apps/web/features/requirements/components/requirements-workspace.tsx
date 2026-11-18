@@ -59,6 +59,7 @@ export function RequirementsWorkspace({
   questions,
   po,
   focus,
+  showUnverified = false,
 }: {
   projectId: string;
   projectName: string;
@@ -78,11 +79,14 @@ export function RequirementsWorkspace({
   questions: PoQuestionDto[];
   po: PoContext;
   focus?: Focus;
+  /** Opened from a reminder to verify: the requirements tab, filtered to those waiting. */
+  showUnverified?: boolean;
 }) {
   const router = useRouter();
   const [jobs, setJobs] = useState(initialJobs);
   const [tab, setTab] = useState(
     focus?.tab ??
+      (showUnverified ? "requirements" : undefined) ??
       (openExplore || drafts.length > 0 ? "drafts" : docs.length === 0 ? "documents" : "requirements"),
   );
   // A notification opened while already on this page changes only the URL.
@@ -94,6 +98,9 @@ export function RequirementsWorkspace({
     if (focusTab) setTab(focusTab);
     setChatFocus(undefined);
   }, [focusTab, focusId]);
+  useEffect(() => {
+    if (showUnverified) setTab("requirements");
+  }, [showUnverified]);
   const shownFocus = chatFocus ?? focus;
   const [chatOpen, setChatOpen] = useState(false);
   const canChat = canManage || canVerify;
@@ -259,6 +266,7 @@ export function RequirementsWorkspace({
             questions={questions.filter((question) => question.requirementId)}
             po={po}
             focusId={shownFocus?.tab === "requirements" ? shownFocus.id : undefined}
+            showUnverified={showUnverified}
           />
         </TabsContent>
 
