@@ -365,6 +365,8 @@ export type TestRunDto = {
   inOrder: boolean;
   /** The case that signed in before each Web case, if one did. */
   setupTcId: string | null;
+  /** Signed in once and shared, rather than before each case. */
+  signInOnce: boolean;
   total: number;
   passed: number;
   failed: number;
@@ -551,6 +553,12 @@ export type RunnerJob = {
     slowMoMs: number;
     /** One test at a time, in file order. */
     inOrder: boolean;
+    /**
+     * Sign in once for the run: each Web item's code opens with the sign-in
+     * case's script ("// ---- Sign in first: TC-… ----"), which the runner
+     * runs once and shares instead of running it in every case.
+     */
+    signInOnce?: boolean;
     /** Set when someone is watching: a token good only for this run's frames. */
     liveToken: string | null;
   };

@@ -728,6 +728,11 @@ export const testRunCreateSchema = z
     recordResults: z.boolean().default(true),
     /** An automated Web case whose script signs in before each Web case. */
     setupTestCaseId: z.string().nullish().transform((v) => v || undefined),
+    /**
+     * Sign in once for the whole run, and start every Web case signed in —
+     * rather than run the sign-in script before each one.
+     */
+    signInOnce: z.boolean().default(true),
     /** One case at a time, in list order, for cases that depend on each other. */
     inOrder: z.boolean().default(false),
     ...liveViewFields,

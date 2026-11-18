@@ -79,6 +79,7 @@ function toRunDto(run: RunRow): TestRunDto {
     slowMoMs: run.slowMoMs,
     inOrder: run.inOrder,
     setupTcId: run.setupTcId,
+    signInOnce: run.signInOnce,
     total: run.total,
     passed: run.passed,
     failed: run.failed,
@@ -184,6 +185,7 @@ export async function createTestRun(
     slowMoMs: RUN_SPEEDS[input.speed ?? "normal"],
     inOrder: input.inOrder ?? false,
     setup,
+    signInOnce: Boolean(setup) && (input.signInOnce ?? true),
     items: cases.map((c) => ({
       testCaseId: c.id,
       // Stored with the prefix, so the run shows exactly what executed.
@@ -212,6 +214,8 @@ export async function queueRun(options: {
   slowMoMs?: number;
   inOrder?: boolean;
   setup?: { id: string; tcId: string } | null;
+  /** Sign in once for the whole run and share it. */
+  signInOnce?: boolean;
   /** testCaseId is null only for an exploration. */
   items: { testCaseId: string | null; code: string }[];
 }): Promise<TestRunDto> {
@@ -262,6 +266,7 @@ export async function queueRun(options: {
             inOrder: options.inOrder ?? false,
             setupTestCaseId: options.setup?.id ?? null,
             setupTcId: options.setup?.tcId ?? null,
+            signInOnce: Boolean(options.setup) && (options.signInOnce ?? false),
             createdById: options.userId,
             total: options.items.length,
             items: {
@@ -596,6 +601,7 @@ async function buildRunnerJob(runId: string): Promise<RunnerJob | null> {
       projectName: run.project.name,
       slowMoMs: run.slowMoMs,
       inOrder: run.inOrder,
+      signInOnce: run.signInOnce,
       liveToken: run.liveToken,
     },
     environment,

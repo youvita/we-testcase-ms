@@ -173,7 +173,10 @@ export function RunDetail({
               <span className="text-muted-foreground">
                 {run.environmentName} · by {run.createdBy.name} · {formatDateTime(run.createdAt)}
                 {!run.recordResults && " · results not recorded"}
-                {run.setupTcId && ` · signed in with ${run.setupTcId} first`}
+                {run.setupTcId &&
+                  (run.signInOnce
+                    ? ` · signed in once with ${run.setupTcId}, shared by every case`
+                    : ` · signed in with ${run.setupTcId} before each case`)}
                 {run.inOrder && " · one at a time, in order"}
               </span>
             </div>

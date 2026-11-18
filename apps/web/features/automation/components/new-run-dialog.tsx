@@ -74,6 +74,8 @@ export function NewRunDialog({
   const nothingChosen = moduleIds.length === 0 && chosenSubModules.length === 0;
   const [signIn, setSignIn] = useState(NO_SIGN_IN);
   const [inOrder, setInOrder] = useState(false);
+  // Once for the run, shared by every Web case; or before each case.
+  const [signInOnce, setSignInOnce] = useState(true);
   const [recordResults, setRecordResults] = useState(true);
   const [live, setLive] = useState<LiveChoice>({ liveView: false, speed: "slow" });
   const [busy, setBusy] = useState(false);
@@ -96,6 +98,7 @@ export function NewRunDialog({
         testCaseIds,
         recordResults,
         setupTestCaseId: signIn === NO_SIGN_IN ? null : signIn,
+        signInOnce,
         inOrder,
         liveView: live.liveView,
         speed: live.liveView ? live.speed : "normal",
@@ -230,10 +233,46 @@ export function NewRunDialog({
                     ))}
                   </SelectContent>
                 </Select>
-                <p className="text-xs text-muted-foreground">
-                  Its script runs at the start of every Web case, so cases like
-                  &ldquo;create a new customer&rdquo; need no login steps of their own.
-                </p>
+                {signIn === NO_SIGN_IN ? (
+                  <p className="text-xs text-muted-foreground">
+                    Pick a case whose script signs in, and cases like &ldquo;create a new
+                    customer&rdquo; need no login steps of their own.
+                  </p>
+                ) : (
+                  <div className="space-y-1.5 rounded-md border p-2.5 text-sm">
+                    <label className="flex items-start gap-2">
+                      <input
+                        type="radio"
+                        name="sign-in-mode"
+                        className="mt-1"
+                        checked={signInOnce}
+                        onChange={() => setSignInOnce(true)}
+                      />
+                      <span>
+                        Once for the whole run
+                        <span className="block text-xs text-muted-foreground">
+                          It signs in once, and every Web case starts already signed in. Faster,
+                          and the account is not signed in again and again.
+                        </span>
+                      </span>
+                    </label>
+                    <label className="flex items-start gap-2">
+                      <input
+                        type="radio"
+                        name="sign-in-mode"
+                        className="mt-1"
+                        checked={!signInOnce}
+                        onChange={() => setSignInOnce(false)}
+                      />
+                      <span>
+                        Before each case
+                        <span className="block text-xs text-muted-foreground">
+                          For an app whose sign-in does not carry over between cases.
+                        </span>
+                      </span>
+                    </label>
+                  </div>
+                )}
               </div>
             )}
 

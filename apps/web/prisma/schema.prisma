@@ -962,6 +962,9 @@ model TestRun {
   /// The case whose script signs in before each Web case of the run.
   setupTestCaseId String?
   setupTcId       String?
+  /// Sign in once for the whole run and share it: each Web case starts
+  /// already signed in. Off: the sign-in script runs before each case.
+  signInOnce      Boolean @default(false)
 
   /// Stream what the browser shows to the run page while it runs.
   liveView  Boolean @default(false)

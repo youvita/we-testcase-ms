@@ -367,7 +367,27 @@ ${item.code}
 }
 
 
-function configSource(job: RunnerJob): string {
+/**
+ * Signing in once for a run: the sign-in spec runs first and saves the signed-
+ * in browser (cookies and local storage) to `authFile`; the Web cases that
+ * share it start from that file. Everything else runs as usual.
+ */
+type SharedSignIn = { setupFile: string; sharedFiles: string[]; otherFiles: string[]; authFile: string };
+
+function projectsSource(shared: SharedSignIn | null): string {
+  if (!shared) return `[{ name: "chromium", use: { browserName: "chromium" } }]`;
+  const projects = [
+    `{ name: "sign-in", testMatch: ${JSON.stringify([shared.setupFile])}, use: { browserName: "chromium" } }`,
+    // If signing in fails, these do not run; each is reported as blocked by it.
+    `{ name: "signed-in", testMatch: ${JSON.stringify(shared.sharedFiles)}, dependencies: ["sign-in"], use: { browserName: "chromium", storageState: ${JSON.stringify(shared.authFile)} } }`,
+    ...(shared.otherFiles.length
+      ? [`{ name: "chromium", testMatch: ${JSON.stringify(shared.otherFiles)}, use: { browserName: "chromium" } }`]
+      : []),
+  ];
+  return `[\n    ${projects.join(",\n    ")},\n  ]`;
+}
+
+function configSource(job: RunnerJob, shared: SharedSignIn | null = null): string {
   return `import { defineConfig } from "@playwright/test";
 
 export default defineConfig({
@@ -396,7 +416,7 @@ export default defineConfig({
     // Slows every browser action when someone is watching the run.
     launchOptions: { slowMo: ${job.run.slowMoMs} },
   },
-  projects: [{ name: "chromium", use: { browserName: "chromium" } }],
+  projects: ${projectsSource(shared)},
 });
 `;
 }
@@ -642,6 +662,36 @@ async function setAsideBrokenSpecs(
   return { broken, fatal: "Too many scripts failed to load." };
 }
 
+const SIGN_IN_FILE = "0000-sign-in.spec.ts";
+const SIGN_IN_HEADER = /^\/\/ ---- Sign in first: (\S+) ----$/;
+const CASE_HEADER = /^\/\/ ---- (?!Sign in first)[^\n]* ----$/;
+
+/**
+ * A Web case's code opened by the run's sign-in script: the sign-in part, and
+ * the case's own, with the line its own part starts on (0-based).
+ */
+function splitSignIn(item: RunnerJob["items"][number]): { signInCode: string; caseCode: string; codeStartsAt: number } | null {
+  if (item.platform !== "WEB") return null;
+  const lines = item.code.split("\n");
+  if (!SIGN_IN_HEADER.test(lines[0] ?? "")) return null;
+  const header = lines.findIndex((line, index) => index > 0 && CASE_HEADER.test(line));
+  if (header === -1) return null;
+  return {
+    signInCode: lines.slice(1, header).join("\n").trimEnd(),
+    caseCode: lines.slice(header + 1).join("\n"),
+    codeStartsAt: header + 1,
+  };
+}
+
+/** The sign-in a run shares: its case and script, from the first case that opens with it. */
+function sharedSignIn(items: RunnerJob["items"]): { tcId: string; code: string } | null {
+  for (const item of items) {
+    const split = splitSignIn(item);
+    if (split) return { tcId: item.code.split("\n")[0]!.match(SIGN_IN_HEADER)![1]!, code: split.signInCode };
+  }
+  return null;
+}
+
 async function executeRun(job: RunnerJob) {
   currentSecrets = job.environment.secretKeys
     .map((key) => job.environment.vars[key])
@@ -655,25 +705,61 @@ async function executeRun(job: RunnerJob) {
   // The specs are TypeScript modules; say which kind, whatever the package
   // above them declares.
   await writeFile(path.join(dir, "package.json"), '{ "type": "commonjs" }\n');
-  await writeFile(path.join(dir, "playwright.config.ts"), configSource(job));
   const fileToItem = new Map<string, RunnerJob["items"][number]>();
-  // How many lines of wrapper sit above each script in its spec.
+  // How many lines of wrapper sit above each script in its spec — less the
+  // sign-in lines, for a case that shares the run's sign-in, so a line number
+  // still counts from the top of the code the app shows.
   const offsets = new Map<string, number>();
+  const signIn = job.run.signInOnce ? sharedSignIn(job.items) : null;
+  const shared: SharedSignIn | null = signIn
+    ? { setupFile: SIGN_IN_FILE, sharedFiles: [], otherFiles: [], authFile: path.join(dir, "signed-in.json") }
+    : null;
   for (const [index, item] of job.items.entries()) {
     const file = `${String(index + 1).padStart(4, "0")}-${item.id}.spec.ts`;
     fileToItem.set(file, item);
-    const spec = specSource(job, item);
-    offsets.set(item.id, spec.slice(0, spec.indexOf(item.code)).split("\n").length - 1);
+    const split = signIn ? splitSignIn(item) : null;
+    const code = split?.caseCode ?? item.code;
+    const spec = specSource(job, { ...item, code });
+    offsets.set(item.id, spec.slice(0, spec.indexOf(code)).split("\n").length - 1 - (split?.codeStartsAt ?? 0));
     await writeFile(path.join(dir, file), spec);
+    if (shared) (split ? shared.sharedFiles : shared.otherFiles).push(file);
   }
+  // The sign-in, once: its script, then the signed-in browser saved for the rest.
+  let signInOffset = 0;
+  if (signIn && shared) {
+    const code = `${signIn.code}\n\n// ---- Saving the signed-in browser for the run ----\nawait page.context().storageState({ path: ${JSON.stringify(shared.authFile)} });`;
+    const spec = specSource(job, { id: "sign-in", tcId: signIn.tcId, title: "Sign in once for the run", platform: "WEB", code });
+    // Its lines map onto the sign-in block of each shared case's code, which
+    // starts one line down, under "// ---- Sign in first: … ----".
+    signInOffset = spec.slice(0, spec.indexOf(code)).split("\n").length - 1 - 1;
+    await writeFile(path.join(dir, SIGN_IN_FILE), spec);
+  }
+  await writeFile(path.join(dir, "playwright.config.ts"), configSource(job, shared));
 
-  const { broken, fatal } = await setAsideBrokenSpecs(dir, [...fileToItem.keys()]);
+  const { broken, fatal } = await setAsideBrokenSpecs(dir, [...fileToItem.keys(), ...(shared ? [SIGN_IN_FILE] : [])]);
+  // A sign-in script that does not load: every case sharing it is blocked.
+  const signInBroken = broken.get(SIGN_IN_FILE);
+  broken.delete(SIGN_IN_FILE);
   for (const [file, message] of broken) {
     const item = fileToItem.get(file)!;
     fileToItem.delete(file);
     await reportItem(item.id, { status: "ERROR", error: renumber(message, offsets.get(item.id) ?? 0) }).catch((error) =>
       log(`could not report ${item.tcId}: ${(error as Error).message}`),
     );
+  }
+  // The sign-in script does not load: the cases that needed it are blocked
+  // now, and the rest run as usual, without it.
+  if (shared && signInBroken) {
+    for (const file of shared.sharedFiles) {
+      const item = fileToItem.get(file);
+      if (!item) continue;
+      fileToItem.delete(file);
+      await rm(path.join(dir, file), { force: true });
+      await reportItem(item.id, { status: "FAILED", error: renumber(signInBroken, signInOffset) }).catch((error) =>
+        log(`could not report ${item.tcId}: ${(error as Error).message}`),
+      );
+    }
+    await writeFile(path.join(dir, "playwright.config.ts"), configSource(job, null));
   }
   if (fatal || fileToItem.size === 0) {
     await api("POST", `/runs/${job.run.id}/finish`, fatal ? { error: fatal } : {});
@@ -704,7 +790,8 @@ async function executeRun(job: RunnerJob) {
 
   // A hard ceiling so one hung browser cannot hold the runner forever.
   const workers = job.run.inOrder ? 1 : WORKERS;
-  const ceilingMs = (Math.ceil(job.items.length / workers) + 1) * TEST_TIMEOUT_MS + 120_000;
+  // One more test when the run signs in once, first.
+  const ceilingMs = (Math.ceil(job.items.length / workers) + 1 + (shared ? 1 : 0)) * TEST_TIMEOUT_MS + 120_000;
   const ceiling = setTimeout(() => {
     log(`${job.run.label} exceeded ${Math.round(ceilingMs / 1000)} s — stopping`);
     stop(child);
@@ -728,12 +815,27 @@ async function executeRun(job: RunnerJob) {
   const specs = collectSpecs(report.suites);
   const topErrors = report.errors ?? [];
 
+  // How the shared sign-in went: a failed one blocks every case that needed it.
+  const signInSpec = shared ? specs.find((s) => path.basename(s.file) === SIGN_IN_FILE) : undefined;
+  const signInResult = signInSpec?.tests[0]?.results.at(-1);
+  const signInFailure =
+    shared && (signInBroken || (signInResult && signInResult.status !== "passed"))
+      ? {
+          error: renumber(signInBroken ?? itemResult(signInResult!).error ?? "The sign-in script failed.", signInOffset),
+          attachments: signInResult?.attachments ?? [],
+        }
+      : null;
+
   for (const [file, item] of fileToItem) {
     const spec = specs.find((s) => path.basename(s.file) === file);
     const results = spec?.tests[0]?.results ?? [];
     const result = results[results.length - 1];
     try {
-      if (result) {
+      if (signInFailure && shared?.sharedFiles.includes(file) && (!result || result.status === "skipped")) {
+        // Never started: it was waiting for the sign-in. Its line numbers
+        // point into the sign-in block of its own code, as if it had run there.
+        await reportItem(item.id, { status: "FAILED", error: signInFailure.error }, signInFailure.attachments);
+      } else if (result) {
         const outcome = itemResult(result);
         await reportItem(
           item.id,
