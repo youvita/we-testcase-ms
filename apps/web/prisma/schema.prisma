@@ -210,6 +210,18 @@ model User {
 
   isActive Boolean @default(true)
 
+  /// Their own Telegram, connected from Your account: notifications reach
+  /// them there as private messages from the bot. `telegramChatId` is the
+  /// private chat with the bot (the Telegram user id), set when they press
+  /// Start on the one-time link; cleared if they block the bot.
+  telegramChatId     String?   @unique
+  telegramUsername   String?
+  telegramName       String?
+  telegramLinkedAt   DateTime?
+  /// The one-time code in the "Connect Telegram" link, until it is used.
+  telegramLinkCode   String?   @unique
+  telegramLinkExpiry DateTime?
+
   sessions Session[]
   accounts Account[]
 

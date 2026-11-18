@@ -3,6 +3,7 @@ import { ok, readJson, route } from "@/lib/api";
 import { commentSchema } from "@/lib/validations";
 import { answerQuestion } from "@/services/clarification.service";
 import { notifyMentions } from "@/services/mention.service";
+import { telegramCommentPosted } from "@/services/telegram.service";
 
 type Ctx = { params: Promise<{ commentId: string }> };
 
@@ -15,5 +16,6 @@ export const POST = route<Ctx>({ roles: [ROLES.ADMIN] }, async (request, { param
   const { body } = commentSchema.parse(await readJson(request));
   const answer = await answerQuestion(commentId, user, body);
   await notifyMentions(answer.id);
+  telegramCommentPosted(answer.id);
   return ok(answer, 201);
 });

@@ -256,12 +256,18 @@ back. Nothing in the deploy path had mentioned that the checkout was stale.
 
 | Bot | Posts | Reads |
 | --- | --- | --- |
-| App | PO questions, PO answers, comments, requirements waiting on the PO | `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` |
+| App | Private messages to each person who connected their Telegram: PO questions and answers, comments, @mentions, requirements waiting on the PO | `TELEGRAM_BOT_TOKEN` |
 | Deploy | ✅ / ❌ after every CI deploy | `DEPLOY_TELEGRAM_BOT_TOKEN` / `DEPLOY_TELEGRAM_CHAT_ID` |
 
-Separate bots, and usually separate chats: build results stay out of the group
-QA works in, and either can be re-pointed or revoked without touching the
-other. Nothing falls back from one pair to the other — sharing a bot is what
+The app bot posts to no group. Each person connects their own Telegram in
+**Your account → Connect Telegram** (a one-time t.me link; pressing Start
+connects it), and gets the notifications meant for them as private messages.
+The app reads the bot's updates with `getUpdates`, so no webhook and no fixed
+public address are needed — and the bot must not have a webhook set, or
+connecting stops working.
+
+Separate bots: build results stay out of people's private chats, and either
+can be re-pointed or revoked without touching the other. Nothing falls back from one pair to the other — sharing a bot is what
 let the two drift apart unnoticed.
 
 The app reads its pair from `.env.production` only. The deploy script takes
@@ -270,14 +276,13 @@ names) and from `.env.production` otherwise, so either place works:
 
 ```ini
 # .env.production on the Mac mini
-TELEGRAM_BOT_TOKEN="123456:ABC…"          # @BotFather, app bot
-TELEGRAM_CHAT_ID="-1001234567"            # the QA group
+TELEGRAM_BOT_TOKEN="123456:ABC…"          # @BotFather, app bot (no chat id: it messages people)
 
 DEPLOY_TELEGRAM_BOT_TOKEN="987654:XYZ…"   # @BotFather, a second bot
 DEPLOY_TELEGRAM_CHAT_ID="-1009876543"     # a build channel
 ```
 
-Add each bot to its chat first, then read the chat id from
+Add the deploy bot to its chat first, then read the chat id from
 `https://api.telegram.org/bot<token>/getUpdates`.
 
 ### When a notification does not arrive

@@ -91,6 +91,6 @@ export async function remindToVerify(
       note,
     })),
   });
-  telegramVerifyReminder(projectId, actor.name, waiting, input.note ?? null);
+  telegramVerifyReminder(projectId, actor.name, waiting, input.note ?? null, recipients.map((person) => person.id));
   return { waiting, to: recipients.map((person) => person.name) };
 }

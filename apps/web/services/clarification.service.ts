@@ -8,7 +8,7 @@ import type { CommentWithAuthor } from "@/types";
 import { withoutQuestions } from "@/utils/open-questions";
 import { withFiles, type PreparedFile } from "./attachment.service";
 import { saveCaseQuestions } from "./case-questions.service";
-import { telegramCommentPosted, telegramQuestionAsked, telegramQuestionReplied } from "./telegram.service";
+import { telegramQuestionAsked, telegramQuestionReplied } from "./telegram.service";
 import type {
   NotificationDto,
   NotificationList,
@@ -124,7 +124,7 @@ export async function answerQuestion(
     });
     return answer;
   }));
-  telegramCommentPosted(saved.id);
+  // Its Telegram message goes from the callers, once @mentions are notified too.
   return saved;
 }
 

@@ -165,6 +165,7 @@ async function reply(
   if (root.kind === "QUESTION" && isAdmin(author.role)) {
     const answer = await answerQuestion(root.id, author, body, files);
     await notifyMentions(answer.id);
+    telegramCommentPosted(answer.id);
     return prisma.comment.findUniqueOrThrow({ where: { id: answer.id }, include: postInclude });
   }
 
@@ -262,6 +263,8 @@ export async function editComment(
     include: postInclude,
   });
   // Only those newly mentioned: the rest already know.
+  const editedAt = new Date();
   await notifyMentions(commentId, comment.body);
+  telegramCommentPosted(commentId, editedAt);
   return edited;
 }

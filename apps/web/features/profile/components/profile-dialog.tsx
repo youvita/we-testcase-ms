@@ -26,6 +26,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { TelegramConnect } from "./telegram-connect";
 import { updateUser } from "@/lib/auth-client";
 import { MAX_UPLOAD_BYTES } from "@/lib/constants";
 import type { SessionUser } from "@/lib/session";
@@ -347,6 +348,8 @@ export function ProfileDialog({
             <Label htmlFor="profile-email">Email</Label>
             <Input id="profile-email" value={user.email} disabled readOnly />
           </div>
+
+          <TelegramConnect />
 
           <DialogFooter>
             <Button type="submit" disabled={busy || cropping}>
