@@ -352,32 +352,43 @@ export function summariseFailure(error: string, code: string): FailureSummary {
   // follows from it, so it is the result.
   if (failures.length === 1 || first.beforeSteps) return { actualResult: first.actualResult, beforeSteps: first.beforeSteps };
 
-  // The first failure in each step; the rest in a step usually follow from it.
-  const byStep: PlacedFailure[] = [];
+  // Every failed check, grouped by step — a step can check several things,
+  // and each one that failed is its own finding. The same check failing the
+  // same way twice is said once.
+  const groups: { step?: PlacedFailure["step"]; plains: string[] }[] = [];
   for (const failure of failures) {
     const key = failure.step?.number;
-    if (key !== undefined && byStep.some((seen) => seen.step?.number === key)) continue;
-    if (key === undefined && byStep.some((seen) => !seen.step && seen.plain === failure.plain)) continue;
-    byStep.push(failure);
+    let group = groups.find((g) => g.step?.number === key);
+    if (!group) groups.push((group = { step: failure.step, plains: [] }));
+    if (!group.plains.includes(failure.plain)) group.plains.push(failure.plain);
   }
-  if (byStep.length === 1) return { actualResult: byStep[0]!.actualResult, beforeSteps: false };
+  if (groups.length === 1 && groups[0]!.plains.length === 1) return { actualResult: first.actualResult, beforeSteps: false };
 
   const lines = code.split("\n");
   const ownStart = Math.max(0, lines.findIndex((l) => CASE_SEPARATOR.test(l.trim())) + 1);
   const totalSteps = new Set(lines.slice(ownStart).flatMap((l) => l.match(STEP)?.[1] ?? [])).size;
-  const stepped = byStep.filter((failure) => failure.step).length;
+  const stepped = groups.filter((group) => group.step).length;
+  const checks = groups.reduce((sum, group) => sum + group.plains.length, 0);
   const stops = stopsTheScript(splitFailures(error).at(-1)!);
   const stoppedAt = failures.at(-1)!.step;
 
   const heading =
-    stepped === byStep.length && totalSteps > 0
-      ? `${stepped} of ${totalSteps} steps failed:`
-      : `${byStep.length} checks failed:`;
-  const items = byStep.map((failure) =>
-    failure.step
-      ? `- Step ${failure.step.number}${failure.step.title ? ` (${failure.step.title})` : ""}: ${failure.plain}.`
-      : `- ${capitalise(failure.plain)}.`,
-  );
+    stepped === groups.length && totalSteps > 0
+      ? `${stepped} of ${totalSteps} step${totalSteps === 1 ? "" : "s"} failed${checks > stepped ? ` (${checks} checks)` : ""}:`
+      : `${checks} checks failed:`;
+  const items = groups.flatMap((group) => {
+    const label = group.step
+      ? `Step ${group.step.number}${group.step.title ? ` (${group.step.title})` : ""}`
+      : null;
+    if (group.plains.length === 1) {
+      return [label ? `- ${label}: ${group.plains[0]}.` : `- ${capitalise(group.plains[0]!)}.`];
+    }
+    // Several in one step: the step, then each check under it.
+    return [
+      ...(label ? [`- ${label}:`] : []),
+      ...group.plains.map((plain) => (label ? `   • ${capitalise(plain)}.` : `- ${capitalise(plain)}.`)),
+    ];
+  });
   const ending = stops
     ? stoppedAt && stoppedAt.number < totalSteps
       ? `The script stopped at step ${stoppedAt.number}; the steps after it did not run.`

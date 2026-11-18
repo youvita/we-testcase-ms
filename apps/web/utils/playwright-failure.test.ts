@@ -286,9 +286,29 @@ describe("summariseFailure — several failures", () => {
     );
   });
 
-  it("puts the step with its own failure, not the last one's", () => {
-    // One step failing twice reads as that step alone.
+  it("says the same failed check once", () => {
     const error = [check(6, "Not approved", "Rejected"), check(6, "Not approved", "Rejected")].join("\n\n");
     expect(summariseFailure(error, code).actualResult).toMatch(/^At step 2 \(Sign in as the rejected user\)/);
+  });
+
+  it("lists every check that failed in a step, under the step", () => {
+    const twoChecks = code.replace(
+      "// Step 3: Sign in as the suspended user",
+      "await expect(page.getByRole('alert')).toContainText('No PIN');\n// Step 3: Sign in as the suspended user",
+    );
+    const line = (n: number) => twoChecks.split("\n")[n - 1]!;
+    const fail = (n: number, wanted: string) =>
+      at(["Error: expect(locator).toContainText(expected) failed", "", `Expected substring: "${wanted}"`, 'Received string: "Rejected"'].join("\n"), n, line(n));
+    const error = [fail(6, "Not approved"), fail(7, "No PIN"), fail(9, "Suspended")].join("\n\n");
+    expect(summariseFailure(error, twoChecks).actualResult).toBe(
+      [
+        "2 of 4 steps failed (3 checks):",
+        "- Step 2 (Sign in as the rejected user):",
+        "   • The message showed “Rejected”, which does not include “Not approved”.",
+        "   • The message showed “Rejected”, which does not include “No PIN”.",
+        "- Step 3 (Sign in as the suspended user): the message showed “Rejected”, which does not include “Suspended”.",
+        "The other steps passed.",
+      ].join("\n"),
+    );
   });
 });
