@@ -9,6 +9,9 @@
  * and a failure is logged and dropped.
  */
 
+import { withBasePath } from "@/lib/base-path";
+import { publicUrlOrNull, rememberedPublicOrigin } from "@/lib/public-origin";
+
 const SEND_TIMEOUT_MS = 10_000;
 
 export function isTelegramConfigured(): boolean {
@@ -20,10 +23,16 @@ export function escapeHtml(text: string): string {
   return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
-/** A link into the app, from the address it is served at. */
+/**
+ * A link into the app: from its fixed public address when one is set, or —
+ * on a free tunnel, whose address changes — the address people's requests
+ * last came in on, under the app's base path.
+ */
 export function appUrl(path: string): string | null {
-  const base = (process.env.NEXT_PUBLIC_APP_URL ?? process.env.BETTER_AUTH_URL)?.trim().replace(/\/$/, "");
-  return base ? `${base}${path}` : null;
+  const fixed = publicUrlOrNull(process.env.NEXT_PUBLIC_APP_URL) ?? publicUrlOrNull(process.env.BETTER_AUTH_URL);
+  if (fixed) return `${fixed}${path}`;
+  const seen = rememberedPublicOrigin();
+  return seen ? `${seen}${withBasePath(path)}` : null;
 }
 
 /** Send one message (Telegram HTML) to the group. Resolves whatever happens. */

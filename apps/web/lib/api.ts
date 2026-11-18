@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
 import { ZodError } from "zod";
 
+import { rememberPublicOrigin } from "@/lib/public-origin";
 import { getSessionUser, type SessionUser } from "@/lib/session";
 import type { ApiFailure, ApiResult, ApiSuccess, Role } from "@wetestcase/dto";
 
@@ -130,6 +131,8 @@ export function route<C = unknown>(
   handler: Handler<C>,
 ) {
   return async (request: Request, context: C): Promise<Response> => {
+    // Where people reach the app, for links sent out of it (see public-origin).
+    rememberPublicOrigin(request.headers);
     try {
       const user = await getSessionUser();
       if (!user) throw unauthorized();
