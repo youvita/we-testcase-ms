@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { BellRing, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -17,6 +17,8 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { api, errorMessage } from "@/utils/api-client";
 import { formatRelative } from "@/utils/format";
+import type { MentionablePerson } from "@/utils/mentions";
+import { useMentions } from "@/features/comments/components/mentions";
 
 type LastReminder = { by: string; at: string } | null;
 
@@ -29,16 +31,21 @@ export function VerifyReminderButton({
   projectId,
   selectedUnverified,
   totalUnverified,
+  people = [],
 }: {
   projectId: string;
   /** Picked in the list and not verified yet. */
   selectedUnverified: string[];
   totalUnverified: number;
+  /** Who "@" offers; each one mentioned is reminded too. */
+  people?: MentionablePerson[];
 }) {
   const [open, setOpen] = useState(false);
   const [note, setNote] = useState("");
   const [sending, setSending] = useState(false);
   const [last, setLast] = useState<LastReminder>(null);
+  const noteBox = useRef<HTMLTextAreaElement>(null);
+  const mentions = useMentions({ people, value: note, onChange: setNote, textareaRef: noteBox });
   const picked = selectedUnverified.length > 0;
   const count = picked ? selectedUnverified.length : totalUnverified;
 
@@ -102,14 +109,26 @@ export function VerifyReminderButton({
 
           <div className="space-y-1.5">
             <Label htmlFor="reminder-note">Message (optional)</Label>
-            <Textarea
-              id="reminder-note"
-              rows={3}
-              maxLength={500}
-              value={note}
-              onChange={(event) => setNote(event.target.value)}
-              placeholder="e.g. We start drafting test cases for FR-14 on Monday."
-            />
+            <div className="relative">
+              <Textarea
+                ref={noteBox}
+                id="reminder-note"
+                rows={3}
+                maxLength={500}
+                value={note}
+                onChange={(event) => {
+                  setNote(event.target.value);
+                  mentions.track(event.target);
+                }}
+                onClick={(event) => mentions.track(event.currentTarget)}
+                onKeyUp={mentions.onKeyUp}
+                onKeyDown={(event) => void mentions.onKeyDown(event)}
+                onBlur={mentions.close}
+                placeholder="e.g. We start drafting test cases for FR-14 on Monday. Type @ to mention someone."
+              />
+              {mentions.menu}
+            </div>
+            <p className="text-xs text-muted-foreground">Anyone you @mention is reminded too.</p>
           </div>
 
           {last && (

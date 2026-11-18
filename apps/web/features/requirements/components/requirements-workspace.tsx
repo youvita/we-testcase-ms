@@ -1,5 +1,7 @@
 "use client";
 
+import type { MentionablePerson } from "@/utils/mentions";
+
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
@@ -60,6 +62,7 @@ export function RequirementsWorkspace({
   po,
   focus,
   showUnverified = false,
+  people = [],
 }: {
   projectId: string;
   projectName: string;
@@ -81,6 +84,8 @@ export function RequirementsWorkspace({
   focus?: Focus;
   /** Opened from a reminder to verify: the requirements tab, filtered to those waiting. */
   showUnverified?: boolean;
+  /** Who a message can @mention: those who can open the project. */
+  people?: MentionablePerson[];
 }) {
   const router = useRouter();
   const [jobs, setJobs] = useState(initialJobs);
@@ -267,6 +272,7 @@ export function RequirementsWorkspace({
             po={po}
             focusId={shownFocus?.tab === "requirements" ? shownFocus.id : undefined}
             showUnverified={showUnverified}
+            people={people}
           />
         </TabsContent>
 

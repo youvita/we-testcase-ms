@@ -91,6 +91,7 @@ import {
 import { AskPoDialog } from "@/features/comments/components/ask-po-dialog";
 import { PoQuestionBadge, PoQuestions, type PoContext } from "./po-questions";
 import { VerifyReminderButton } from "./verify-reminder-dialog";
+import type { MentionablePerson } from "@/utils/mentions";
 import type { StartAi } from "./requirements-workspace";
 
 type Coverage = "all" | "verified" | "unverified" | "uncovered" | "covered" | "questions" | "changes" | "removed";
@@ -125,6 +126,7 @@ export function RequirementsPanel({
   po,
   focusId,
   showUnverified = false,
+  people = [],
 }: {
   projectId: string;
   docs: RequirementDocDto[];
@@ -143,6 +145,8 @@ export function RequirementsPanel({
   focusId?: string;
   /** From a reminder to verify: show the requirements still waiting. */
   showUnverified?: boolean;
+  /** Who a reminder can @mention. */
+  people?: MentionablePerson[];
 }) {
   const router = useRouter();
   const [search, setSearch] = useState("");
@@ -511,6 +515,7 @@ export function RequirementsPanel({
                 projectId={projectId}
                 selectedUnverified={selectedUnverified}
                 totalUnverified={requirements.filter((req) => req.status === "ACTIVE" && !req.verifiedAt).length}
+                people={people.filter((person) => person.id !== po.currentUserId)}
               />
             )}
             <Button variant="outline" onClick={() => setEditing("new")}>

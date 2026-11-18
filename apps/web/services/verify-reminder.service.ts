@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { formatRelative } from "@/utils/format";
 
 import { listAdmins } from "./clarification.service";
+import { mentionedPeople } from "./mention.service";
 import { telegramVerifyReminder } from "./telegram.service";
 
 /**
@@ -13,7 +14,8 @@ import { telegramVerifyReminder } from "./telegram.service";
  *
  * It goes to the project's product owner, or every active admin while it has
  * none: in their bell, opening the requirements still to verify, and to the
- * team's Telegram chat. At most one an hour per project, so a PO is reminded,
+ * team's Telegram chat. Anyone @mentioned in its message gets it too. At most
+ * one an hour per project, so a PO is reminded,
  * not spammed.
  */
 
@@ -71,7 +73,11 @@ export async function remindToVerify(
     );
   }
 
-  const recipients = (await poOf(projectId)).filter((person) => person.id !== actor.id);
+  // The PO, and anyone @mentioned in the message who can open the project.
+  const people = [...(await poOf(projectId)), ...(input.note ? await mentionedPeople(projectId, input.note, actor.id) : [])];
+  const recipients = people.filter(
+    (person, index) => person.id !== actor.id && people.findIndex((other) => other.id === person.id) === index,
+  );
   if (recipients.length === 0) throw badRequest("There is no product owner or admin to remind.");
 
   const headline = `${waiting} requirement${waiting === 1 ? " is" : "s are"} waiting for you to verify.`;

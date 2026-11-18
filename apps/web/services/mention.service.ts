@@ -31,6 +31,20 @@ export async function listMentionable(projectId: string): Promise<MentionablePer
   }));
 }
 
+/** The people a text @mentions who can open the project — never `exceptId`. */
+export async function mentionedPeople(
+  projectId: string,
+  text: string,
+  exceptId: string,
+): Promise<{ id: string; name: string }[]> {
+  const names = mentionedUsernames(text);
+  if (names.length === 0) return [];
+  return prisma.user.findMany({
+    where: { ...canOpen(projectId), username: { in: names }, NOT: { id: exceptId } },
+    select: { id: true, name: true },
+  });
+}
+
 /**
  * Tell the people a post @mentions — those who can open its project, never
  * its author. "Mentioned you" replaces the plainer "commented on"/"replied

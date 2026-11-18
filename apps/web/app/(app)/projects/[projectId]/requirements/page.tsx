@@ -18,6 +18,7 @@ import { requireProjectAccess } from "@/lib/project-access";
 import { requireUser } from "@/lib/session";
 import { listJobs } from "@/services/ai-job.service";
 import { listAdmins, listPoQuestions } from "@/services/clarification.service";
+import { listMentionable } from "@/services/mention.service";
 import { listSignInCases } from "@/services/automation-script.service";
 import { listRunEnvironments } from "@/services/run-environment.service";
 import { getProject } from "@/services/project.service";
@@ -45,7 +46,7 @@ export default async function RequirementsPage({
   const project = await getProject(projectId).catch(() => null);
   if (!project) notFound();
 
-  const [docs, requirements, drafts, jobs, environments, signInCases, questions, admins, { explore, tab, focus, coverage: coverageParam }] =
+  const [docs, requirements, drafts, jobs, environments, signInCases, questions, admins, people, { explore, tab, focus, coverage: coverageParam }] =
     await Promise.all([
       listRequirementDocs(projectId),
       listRequirements(projectId),
@@ -55,6 +56,7 @@ export default async function RequirementsPage({
       listSignInCases(projectId),
       listPoQuestions(projectId),
       listAdmins(),
+      listMentionable(projectId),
       searchParams,
     ]);
 
@@ -136,6 +138,7 @@ export default async function RequirementsPage({
         focus={(tab === "requirements" || tab === "drafts") && focus ? { tab, id: focus } : undefined}
         // From a reminder to verify: the requirements still waiting.
         showUnverified={coverageParam === "unverified"}
+        people={people}
       />
 
       <p className="flex items-center gap-1.5 text-xs text-muted-foreground">

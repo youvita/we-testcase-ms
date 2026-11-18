@@ -49,6 +49,13 @@ describe("reminding the PO to verify requirements", () => {
     expect(result.to.sort()).toEqual([po.name, otherAdmin.name].sort());
   });
 
+  it("reminds anyone @mentioned in the message too", async () => {
+    const { project, qa, po, otherAdmin } = await setUp();
+    await prisma.user.update({ where: { id: otherAdmin.id }, data: { username: "t_alice" } });
+    const result = await remindToVerify(project.id, qa, { note: "@t_alice can you check too?" });
+    expect(result.to.sort()).toEqual([po.name, otherAdmin.name].sort());
+  });
+
   it("counts only the picked requirements still waiting", async () => {
     const { project, qa, waiting, verified } = await setUp();
     expect((await remindToVerify(project.id, qa, { requirementIds: [waiting.id, verified.id] })).waiting).toBe(1);
