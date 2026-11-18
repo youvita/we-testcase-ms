@@ -10,8 +10,8 @@ import { mentionAt, splitMentions, type MentionablePerson } from "@/utils/mentio
 
 export type { MentionablePerson };
 
-/** At most this many people in the list at once; typing narrows it. */
-const SHOWN = 6;
+/** At most this many people in the list; it scrolls past six, and typing narrows it. */
+const SHOWN = 50;
 
 /** Keys the open list handles itself: typing them must not move the caret. */
 const LIST_KEYS = new Set(["ArrowDown", "ArrowUp", "Enter", "Tab", "Escape"]);
@@ -59,6 +59,13 @@ export function useMentions({
     : [];
   const open = matches.length > 0;
 
+  // The highlighted person stays in view as the arrow keys move through a
+  // list longer than its box.
+  const listRef = useRef<HTMLUListElement>(null);
+  useLayoutEffect(() => {
+    listRef.current?.querySelector('[aria-selected="true"]')?.scrollIntoView({ block: "nearest" });
+  }, [index, open]);
+
   function track(box: HTMLTextAreaElement) {
     const next = mentionAt(box.value, box.selectionStart);
     setActive(next);
@@ -92,9 +99,12 @@ export function useMentions({
 
   const menu = open ? (
     <ul
+      ref={listRef}
       role="listbox"
       aria-label="Mention someone"
-      className="absolute left-0 top-full z-50 mt-1 w-72 max-w-full overflow-hidden rounded-md border bg-popover p-1 text-popover-foreground shadow-md"
+      // About six rows, then it scrolls — inside a dialog too, without moving
+      // the page behind it.
+      className="absolute left-0 top-full z-50 mt-1 max-h-60 w-72 max-w-full overflow-y-auto overscroll-contain rounded-md border bg-popover p-1 text-popover-foreground shadow-md"
     >
       {matches.map((person, i) => (
         <li
