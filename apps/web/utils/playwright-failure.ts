@@ -20,6 +20,9 @@ export type FailureSummary = {
   beforeSteps: boolean;
 };
 
+/** One failure, placed: the step it is in, when the script marks steps. */
+type PlacedFailure = FailureSummary & { step?: { number: number; title: string }; plain: string };
+
 const STEP = /^\s*\/\/\s*Step\s+(\d+)\s*[:.)-]?\s*(.*)$/i;
 const CASE_SEPARATOR = /^\/\/ ---- (?!Sign in first)[^\n]* ----$/;
 
@@ -136,7 +139,9 @@ export function failingLine(error: string): number | null {
  * can point anywhere. With several matches, the neighbouring lines of the
  * code frame pick the right one; with no frame, the number is trusted.
  */
-export function locateFailure(error: string, lines: string[]): number | null {
+export function locateFailure(whole: string, lines: string[]): number | null {
+  // With several failures, the first one's frame: each has its own.
+  const error = splitFailures(whole)[0] ?? whole;
   const frame = new Map<number, string>();
   let failing: number | null = null;
   for (const match of error.matchAll(/^\s*(>)?\s*(\d+)\s*\|\s?(.*)$/gm)) {
@@ -308,10 +313,83 @@ function sentence(error: string, lines: string[], line: number | null): string {
 }
 
 /**
+ * The separate failures in what a run reported. Checks do not stop a script
+ * (they are soft), so one run can fail several; the runner puts their
+ * messages one after another, each starting "Error: …". A note ahead of the
+ * first ("Timed out after 120 s.") stays with it.
+ */
+export function splitFailures(error: string): string[] {
+  // After a blank line, as the runner joins them — "Error: element(s) not
+  // found" inside one message follows a single line break.
+  const parts = error
+    .split(/\n[ \t]*\n+(?=(?:[A-Z]\w*)?Error: (?!element\(s\) not found))/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+  if (parts.length > 1 && !/^(?:[A-Z]\w*)?Error: /.test(parts[0]!)) {
+    const [note, first, ...rest] = parts;
+    return [`${note}\n\n${first}`, ...rest];
+  }
+  return parts.length ? parts : [error];
+}
+
+/** A failure that ends the script — an action, a timeout — not a check. */
+function stopsTheScript(error: string): boolean {
+  const header = error.split("\n").find((line) => line.trim()) ?? "";
+  return !/expect\((?:received|locator|page)\)/.test(header) || /^Timed out after/.test(error);
+}
+
+/**
  * The failure as "Actual result", and whether it came before the steps.
  * `code` is the script that ran — with a sign-in case above it, if any.
+ *
+ * Several failures — checks go on past a failed one — read as a list, one
+ * line per step that failed, in order, with whether the script got to its end.
  */
 export function summariseFailure(error: string, code: string): FailureSummary {
+  const failures = splitFailures(error).map((part) => summariseOne(part, code));
+  const first = failures[0]!;
+  // One failure, or a precondition that failed: everything after it only
+  // follows from it, so it is the result.
+  if (failures.length === 1 || first.beforeSteps) return { actualResult: first.actualResult, beforeSteps: first.beforeSteps };
+
+  // The first failure in each step; the rest in a step usually follow from it.
+  const byStep: PlacedFailure[] = [];
+  for (const failure of failures) {
+    const key = failure.step?.number;
+    if (key !== undefined && byStep.some((seen) => seen.step?.number === key)) continue;
+    if (key === undefined && byStep.some((seen) => !seen.step && seen.plain === failure.plain)) continue;
+    byStep.push(failure);
+  }
+  if (byStep.length === 1) return { actualResult: byStep[0]!.actualResult, beforeSteps: false };
+
+  const lines = code.split("\n");
+  const ownStart = Math.max(0, lines.findIndex((l) => CASE_SEPARATOR.test(l.trim())) + 1);
+  const totalSteps = new Set(lines.slice(ownStart).flatMap((l) => l.match(STEP)?.[1] ?? [])).size;
+  const stepped = byStep.filter((failure) => failure.step).length;
+  const stops = stopsTheScript(splitFailures(error).at(-1)!);
+  const stoppedAt = failures.at(-1)!.step;
+
+  const heading =
+    stepped === byStep.length && totalSteps > 0
+      ? `${stepped} of ${totalSteps} steps failed:`
+      : `${byStep.length} checks failed:`;
+  const items = byStep.map((failure) =>
+    failure.step
+      ? `- Step ${failure.step.number}${failure.step.title ? ` (${failure.step.title})` : ""}: ${failure.plain}.`
+      : `- ${capitalise(failure.plain)}.`,
+  );
+  const ending = stops
+    ? stoppedAt && stoppedAt.number < totalSteps
+      ? `The script stopped at step ${stoppedAt.number}; the steps after it did not run.`
+      : null
+    : stepped < totalSteps
+      ? "The other steps passed."
+      : null;
+  return { actualResult: [heading, ...items, ...(ending ? [ending] : [])].join("\n"), beforeSteps: false };
+}
+
+/** One failure, said and placed. */
+function summariseOne(error: string, code: string): PlacedFailure {
   const lines = code.split("\n");
   const failing = locateFailure(error, lines);
   const plain = sentence(error, lines, failing);
@@ -322,7 +400,7 @@ export function summariseFailure(error: string, code: string): FailureSummary {
 
   // Can't place it, or the script has no steps marked: just the sentence.
   if (!failing || (firstStep === -1 && ownStart === 0)) {
-    return { actualResult: `${capitalise(plain)}.`, beforeSteps: false };
+    return { actualResult: `${capitalise(plain)}.`, beforeSteps: false, plain };
   }
 
   const index = failing - 1;
@@ -335,6 +413,7 @@ export function summariseFailure(error: string, code: string): FailureSummary {
       return {
         actualResult: `The sign-in case${signInCase ? ` ${signInCase}` : ""} failed: ${plain}.`,
         beforeSteps: true,
+        plain,
       };
     }
     // Just what led up to the failure — the comment heading it, and the lines
@@ -356,6 +435,7 @@ export function summariseFailure(error: string, code: string): FailureSummary {
         ? `Could not sign in: ${plain}.`
         : `Before step 1${heading ? ` (${heading})` : ""}: ${plain}.`,
       beforeSteps: true,
+      plain,
     };
   }
 
@@ -364,8 +444,13 @@ export function summariseFailure(error: string, code: string): FailureSummary {
     const step = lines[i]?.match(STEP);
     if (step) {
       const title = step[2]?.trim().replace(/[.:]$/, "");
-      return { actualResult: `At step ${step[1]}${title ? ` (${title})` : ""}: ${plain}.`, beforeSteps: false };
+      return {
+        actualResult: `At step ${step[1]}${title ? ` (${title})` : ""}: ${plain}.`,
+        beforeSteps: false,
+        plain,
+        step: { number: Number(step[1]), title: title ?? "" },
+      };
     }
   }
-  return { actualResult: `${capitalise(plain)}.`, beforeSteps: false };
+  return { actualResult: `${capitalise(plain)}.`, beforeSteps: false, plain };
 }

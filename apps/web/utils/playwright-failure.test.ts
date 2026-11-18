@@ -241,3 +241,54 @@ describe("summariseFailure — failures people could not read", () => {
     );
   });
 });
+
+describe("summariseFailure — several failures", () => {
+  const code = [
+    "await page.goto('/sign-in');",
+    "",
+    "// Step 1: Open the sign-in page",
+    "await expect(page.getByRole('heading')).toBeVisible();",
+    "// Step 2: Sign in as the rejected user",
+    "await expect(page.getByRole('alert')).toContainText('Not approved');",
+    "// Step 3: Sign in as the suspended user",
+    "await expect(page.getByRole('alert')).toContainText('Suspended');",
+    "// Step 4: Switch to Khmer",
+    "await page.getByRole('button', { name: 'Khmer' }).click();",
+  ].join("\n");
+  const check = (line: number, wanted: string, shown: string) =>
+    at(
+      ["Error: expect(locator).toContainText(expected) failed", "", `Expected substring: "${wanted}"`, `Received string: "${shown}"`].join("\n"),
+      line,
+      code.split("\n")[line - 1]!,
+    );
+
+  it("lists each step that failed, each with its own reason", () => {
+    const error = [check(6, "Not approved", "Rejected"), check(8, "Suspended", "Paused")].join("\n\n");
+    expect(summariseFailure(error, code).actualResult).toBe(
+      [
+        "2 of 4 steps failed:",
+        "- Step 2 (Sign in as the rejected user): the message showed “Rejected”, which does not include “Not approved”.",
+        "- Step 3 (Sign in as the suspended user): the message showed “Paused”, which does not include “Suspended”.",
+        "The other steps passed.",
+      ].join("\n"),
+    );
+  });
+
+  it("says where the script stopped when an action could not be done", () => {
+    const click = at("Error: locator.click: Timeout 15000ms exceeded.\nCall log:\n  - waiting for getByRole('button', { name: 'Khmer' })", 10, code.split("\n")[9]!);
+    const error = [check(6, "Not approved", "Rejected"), click].join("\n\n");
+    expect(summariseFailure(error, code).actualResult).toBe(
+      [
+        "2 of 4 steps failed:",
+        "- Step 2 (Sign in as the rejected user): the message showed “Rejected”, which does not include “Not approved”.",
+        "- Step 4 (Switch to Khmer): could not click the “Khmer” button: it was not found within 15 s.",
+      ].join("\n"),
+    );
+  });
+
+  it("puts the step with its own failure, not the last one's", () => {
+    // One step failing twice reads as that step alone.
+    const error = [check(6, "Not approved", "Rejected"), check(6, "Not approved", "Rejected")].join("\n\n");
+    expect(summariseFailure(error, code).actualResult).toMatch(/^At step 2 \(Sign in as the rejected user\)/);
+  });
+});

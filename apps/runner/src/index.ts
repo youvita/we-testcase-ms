@@ -17,7 +17,7 @@
  *   RUNNER_TOKEN   the same value the app has
  *   RUNNER_NAME    shown on runs                      default: hostname
  *   WORKERS        parallel tests per run             default: 2
- *   TEST_TIMEOUT_MS  per test                         default: 60000
+ *   TEST_TIMEOUT_MS  per test                         default: 120000
  *   EXPECT_TIMEOUT_MS  how long a check waits         default: 15000
  *   WORK_DIR       scratch space                      default: <runner>/.work
  *   HEADED=1       show the browser window — only where the runner has a
@@ -52,7 +52,9 @@ const APP_URL = required("APP_URL").replace(/\/+$/, "");
 const RUNNER_TOKEN = required("RUNNER_TOKEN");
 const RUNNER_NAME = process.env.RUNNER_NAME?.trim() || hostname();
 const WORKERS = Math.max(1, Number(process.env.WORKERS) || 2);
-const TEST_TIMEOUT_MS = Math.max(5_000, Number(process.env.TEST_TIMEOUT_MS) || 60_000);
+// Room for every check to run: a failed one no longer ends the test, and each
+// waits up to EXPECT_TIMEOUT_MS before it gives up.
+const TEST_TIMEOUT_MS = Math.max(5_000, Number(process.env.TEST_TIMEOUT_MS) || 120_000);
 // Playwright's own default is 5 s, too short for slow test environments: a
 // login whose redirect took 6 s failed although it worked.
 const EXPECT_TIMEOUT_MS = Math.max(1_000, Number(process.env.EXPECT_TIMEOUT_MS) || 15_000);
@@ -127,7 +129,13 @@ function specSource(job: RunnerJob, item: RunnerJob["items"][number]): string {
   const requestRoot = isApi ? env.apiUrl : (env.apiUrl ?? env.webUrl);
   const fixtures = isApi ? "{ request }" : "{ page, context, browser, request }";
 
-  return `import { test as base, expect } from "@playwright/test";
+  return `import { test as base, expect as stopAtFirst } from "@playwright/test";
+
+// A failed check does not end the test: the script goes on to its last step,
+// and the result lists every step that failed — as a tester running the case
+// by hand would. An action that cannot be done (a button that is not there)
+// still stops it. expect.soft and expect.poll work as before.
+const expect = stopAtFirst.configure({ soft: true });
 
 const env = ${JSON.stringify(env)};
 const vars = ${JSON.stringify(job.environment.vars)};
@@ -381,6 +389,9 @@ export default defineConfig({
     screenshot: "on",
     video: "retain-on-failure",
     ignoreHTTPSErrors: true,
+    // A click or fill on something that is not there gives up as a check
+    // does, rather than using up the whole test's time.
+    actionTimeout: ${EXPECT_TIMEOUT_MS},
     headless: ${!HEADED},
     // Slows every browser action when someone is watching the run.
     launchOptions: { slowMo: ${job.run.slowMoMs} },
