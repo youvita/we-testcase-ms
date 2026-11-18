@@ -4,10 +4,12 @@ import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Bot, Download, Play } from "lucide-react";
+import { Bot, Download, Play, Trash2, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
+import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import {
   Table,
   TableBody,
@@ -47,6 +49,8 @@ export function AutomationWorkspace({
   signInCases,
   canManage,
   runnerConfigured,
+  currentUserId,
+  isAdmin = false,
 }: {
   projectId: string;
   /** The first page of runs, newest first. */
@@ -58,6 +62,9 @@ export function AutomationWorkspace({
   signInCases: { id: string; tcId: string; title: string }[];
   canManage: boolean;
   runnerConfigured: boolean;
+  /** Who may delete a run: whoever started it, or an admin. */
+  currentUserId: string;
+  isAdmin?: boolean;
 }) {
   const router = useRouter();
   // Other pages are fetched here rather than navigated to: the first page
@@ -74,6 +81,7 @@ export function AutomationWorkspace({
 
   async function showPage(page: number, pageSize: number) {
     setView({ page, pageSize });
+    setSelected(new Set());
     if (page === 1 && pageSize === firstPage.pageSize) return;
     setLoading(true);
     try {
@@ -89,6 +97,51 @@ export function AutomationWorkspace({
     }
   }
   const [newRunOpen, setNewRunOpen] = useState(false);
+
+  // Runs picked to delete, on the page shown.
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [withResults, setWithResults] = useState(false);
+  const deletable = (run: TestRunDto) =>
+    canManage && !isRunActive(run.status) && (isAdmin || run.createdBy.id === currentUserId);
+  const pageDeletable = runs.items.filter(deletable);
+  const picked = runs.items.filter((run) => selected.has(run.id));
+  const allPicked = pageDeletable.length > 0 && pageDeletable.every((run) => selected.has(run.id));
+  const pickedNumbers = picked.map((run) => `#${run.number}`).join(", ");
+  const recorded = picked.filter((run) => run.recordResults).length;
+
+  function toggle(runId: string, on: boolean) {
+    setSelected((current) => {
+      const next = new Set(current);
+      if (on) next.add(runId);
+      else next.delete(runId);
+      return next;
+    });
+  }
+
+  async function deleteRuns() {
+    try {
+      const result = await api.post<{ deleted: number; resultsDeleted: number; resultsKept: number }>(
+        `/api/projects/${projectId}/test-runs/delete`,
+        { runIds: picked.map((run) => run.id), withResults },
+      );
+      toast.success(
+        `Deleted ${result.deleted} run${result.deleted === 1 ? "" : "s"}` +
+          (withResults ? ` and ${result.resultsDeleted} result${result.resultsDeleted === 1 ? "" : "s"}` : ""),
+        result.resultsKept
+          ? { description: `${result.resultsKept} result${result.resultsKept === 1 ? " was" : "s were"} kept — a developer is working from ${result.resultsKept === 1 ? "it" : "them"}.` }
+          : undefined,
+      );
+      setSelected(new Set());
+      setDeleteOpen(false);
+      setWithResults(false);
+      setFetched(null);
+      if (!onFirstPage) await showPage(view.page, view.pageSize);
+      router.refresh();
+    } catch (error) {
+      toast.error(errorMessage(error));
+    }
+  }
 
   // While anything is queued or running, refresh the server data so counts
   // and statuses move without a reload.
@@ -154,12 +207,43 @@ export function AutomationWorkspace({
         />
         </div>
       ) : (
+        <>
+        {picked.length > 0 && (
+          <div className="flex flex-wrap items-center gap-2 rounded-md border bg-muted/40 px-3 py-2 text-sm">
+            <span className="font-medium">
+              {picked.length} run{picked.length === 1 ? "" : "s"} selected
+            </span>
+            <span className="text-muted-foreground">{pickedNumbers}</span>
+            <div className="ml-auto flex items-center gap-2">
+              <Button size="sm" variant="ghost" onClick={() => setSelected(new Set())}>
+                <X className="mr-1.5 size-4" />
+                Clear
+              </Button>
+              <Button size="sm" variant="destructive" onClick={() => setDeleteOpen(true)}>
+                <Trash2 className="mr-1.5 size-4" />
+                Delete
+              </Button>
+            </div>
+          </div>
+        )}
         <Card data-tour="auto-runs" className="overflow-hidden">
           {/* The runs scroll inside the card, under a header that stays put,
               so the page — buttons, pages — stays where it is. */}
           <Table containerClassName={SCROLL_BOX}>
             <TableHeader className={cn(STICKY_HEADER, "bg-card")}>
               <TableRow>
+                {canManage && (
+                  <TableHead className="w-10">
+                    <Checkbox
+                      aria-label="Select every run you can delete on this page"
+                      disabled={pageDeletable.length === 0}
+                      checked={allPicked}
+                      onCheckedChange={(on) =>
+                        setSelected(on === true ? new Set(pageDeletable.map((run) => run.id)) : new Set())
+                      }
+                    />
+                  </TableHead>
+                )}
                 <TableHead className="w-20">Run</TableHead>
                 <TableHead className="w-28">Status</TableHead>
                 <TableHead>Results</TableHead>
@@ -179,6 +263,23 @@ export function AutomationWorkspace({
                     )
                   }
                 >
+                  {canManage && (
+                    <TableCell onClick={(event) => event.stopPropagation()}>
+                      <Checkbox
+                        aria-label={`Select run #${run.number}`}
+                        disabled={!deletable(run)}
+                        title={
+                          deletable(run)
+                            ? undefined
+                            : isRunActive(run.status)
+                              ? "Still going — cancel it first"
+                              : "Only whoever started it, or an admin, can delete it"
+                        }
+                        checked={selected.has(run.id)}
+                        onCheckedChange={(on) => toggle(run.id, on === true)}
+                      />
+                    </TableCell>
+                  )}
                   <TableCell className="font-medium">
                     <Link
                       href={`/projects/${projectId}/automation/runs/${run.id}`}
@@ -230,7 +331,45 @@ export function AutomationWorkspace({
             </TableBody>
           </Table>
         </Card>
+        </>
       )}
+
+      <ConfirmDialog
+        open={deleteOpen}
+        onOpenChange={(open) => {
+          setDeleteOpen(open);
+          if (!open) setWithResults(false);
+        }}
+        title={`Delete ${picked.length === 1 ? `run ${pickedNumbers}` : `${picked.length} runs`}?`}
+        description={
+          <span className="block space-y-3">
+            <span className="block">
+              {picked.length === 1 ? "The run" : `Runs ${pickedNumbers}`}, with {picked.length === 1 ? "its" : "their"}{" "}
+              logs, screenshots, videos and traces, {picked.length === 1 ? "is" : "are"} removed for good. Run numbers
+              are not reused.
+            </span>
+            {recorded > 0 && (
+              <label className="flex items-start gap-2.5 rounded-md border p-3 text-sm text-foreground">
+                <Checkbox
+                  className="mt-0.5"
+                  checked={withResults}
+                  onCheckedChange={(on) => setWithResults(on === true)}
+                />
+                <span>
+                  Also delete the results {picked.length === 1 ? "it" : "they"} recorded on test cases
+                  <span className="block text-xs text-muted-foreground">
+                    Otherwise they stay in each case&apos;s execution history, with their screenshots. A result a
+                    developer is working from is kept either way.
+                  </span>
+                </span>
+              </label>
+            )}
+          </span>
+        }
+        confirmLabel="Delete"
+        destructive
+        onConfirm={deleteRuns}
+      />
 
       {runs.total > 0 && (
         <PaginationControls

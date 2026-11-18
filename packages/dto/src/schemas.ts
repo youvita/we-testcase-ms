@@ -691,6 +691,12 @@ export const scriptExplainSchema = z.object({
 });
 export type ScriptExplainInput = z.infer<typeof scriptExplainSchema>;
 
+/** Delete runs, and — when asked — the results they recorded on test cases. */
+export const testRunDeleteSchema = z.object({
+  runIds: z.array(z.string().min(1)).min(1, "Select a run").max(100),
+  withResults: z.boolean().default(false),
+});
+
 export const testRunCreateSchema = z
   .object({
     environmentId: z.string().min(1, "Select an environment"),

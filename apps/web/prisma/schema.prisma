@@ -330,6 +330,9 @@ model Project {
   testCaseDrafts  TestCaseDraft[]
   runEnvironments RunEnvironment[] @relation("ProjectRunEnvironments")
   testRuns        TestRun[]
+  /// The last run number given out. Kept here, not read from the runs, so a
+  /// deleted run's number is never given to another: old links stay right.
+  lastRunNumber   Int              @default(0)
 
   /// Where this project normally runs: preselected wherever an environment
   /// is chosen, and recorded on manual results unless the tester picks

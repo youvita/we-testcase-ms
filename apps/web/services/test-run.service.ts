@@ -1,12 +1,13 @@
 import { randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import { Prisma, type TestRun } from "@prisma/client";
 
 import { prisma } from "@/lib/prisma";
-import { badRequest, conflict, HttpError, notFound } from "@/lib/api";
-import { PLATFORM_LABELS } from "@/lib/constants";
+import { badRequest, conflict, forbidden, HttpError, notFound } from "@/lib/api";
+import { PLATFORM_LABELS, type Role } from "@/lib/constants";
+import { isAdmin } from "@/lib/permissions";
 import { dropFrame } from "@/lib/live-frames";
 import { summariseFailure } from "@/utils/playwright-failure";
 import {
@@ -26,7 +27,7 @@ import {
 
 import { attachRunEvidence, resolveStoredPath } from "./attachment.service";
 import { verifyIfRanCurrentScript } from "./automation-script.service";
-import { recordExecution } from "./execution.service";
+import { deleteExecution, recordExecution } from "./execution.service";
 import { resolveEnvironmentForRunner } from "./run-environment.service";
 
 /**
@@ -219,15 +220,22 @@ export async function queueRun(options: {
   for (let attempt = 0; ; attempt += 1) {
     try {
       const run = await prisma.$transaction(async (tx) => {
-        const number =
-          options.purpose === "RUN"
-            ? ((
-                await tx.testRun.aggregate({
-                  where: { projectId: options.projectId },
-                  _max: { number: true },
-                })
-              )._max.number ?? 0) + 1
-            : null;
+        // Never a number given out before, even to a run since deleted.
+        let number: number | null = null;
+        if (options.purpose === "RUN") {
+          const { lastRunNumber } = await tx.project.update({
+            where: { id: options.projectId },
+            data: { lastRunNumber: { increment: 1 } },
+            select: { lastRunNumber: true },
+          });
+          const highest =
+            (await tx.testRun.aggregate({ where: { projectId: options.projectId }, _max: { number: true } }))._max
+              .number ?? 0;
+          number = Math.max(lastRunNumber, highest + 1);
+          if (number !== lastRunNumber) {
+            await tx.project.update({ where: { id: options.projectId }, data: { lastRunNumber: number } });
+          }
+        }
         return tx.testRun.create({
           data: {
             projectId: options.projectId,
@@ -263,6 +271,62 @@ export async function queueRun(options: {
       if (!collided || attempt >= 3) throw error;
     }
   }
+}
+
+/**
+ * Delete runs — tries from while a script was still being fixed, say.
+ *
+ * Their starter or an admin, and never a run still going. The results they
+ * recorded stay on the test cases unless `withResults`; then they go too,
+ * except one a developer is working from (see `deleteExecution`). Numbers
+ * are not given out again.
+ */
+export async function deleteTestRuns(
+  projectId: string,
+  runIds: string[],
+  actor: { id: string; role: Role },
+  withResults: boolean,
+): Promise<{ deleted: number; resultsDeleted: number; resultsKept: number }> {
+  const runs = await prisma.testRun.findMany({
+    where: { id: { in: runIds }, projectId, purpose: "RUN" },
+    select: {
+      id: true,
+      number: true,
+      status: true,
+      createdById: true,
+      items: { select: { artifacts: true, executionId: true } },
+    },
+  });
+  if (runs.length !== new Set(runIds).size) throw notFound("Run");
+  for (const run of runs) {
+    if (run.status === "QUEUED" || run.status === "RUNNING") {
+      throw conflict(`Run #${run.number} is still going — cancel it first.`);
+    }
+    if (run.createdById !== actor.id && !isAdmin(actor.role)) {
+      throw forbidden(`Run #${run.number} was started by someone else — only they or an admin can delete it.`);
+    }
+  }
+
+  let resultsDeleted = 0;
+  let resultsKept = 0;
+  if (withResults) {
+    for (const executionId of runs.flatMap((run) => run.items.flatMap((item) => (item.executionId ? [item.executionId] : [])))) {
+      try {
+        await deleteExecution(executionId, actor);
+        resultsDeleted += 1;
+      } catch (error) {
+        // Kept: a developer is working from it, or it is someone else's.
+        if (error instanceof HttpError && (error.status === 403 || error.status === 409)) resultsKept += 1;
+        else if (!(error instanceof HttpError && error.status === 404)) throw error;
+      }
+    }
+  }
+
+  const files = runs.flatMap((run) => run.items.flatMap((item) => readArtifacts(item.artifacts)));
+  await prisma.testRun.deleteMany({ where: { id: { in: runs.map((run) => run.id) } } });
+  // Best effort: the rows are what count; a leftover file is harmless.
+  await Promise.all(files.map((file) => unlink(resolveStoredPath(file.path)).catch(() => {})));
+  return { deleted: runs.length, resultsDeleted, resultsKept };
 }
 
 /** Fail runs whose runner went quiet, so nobody waits on them forever. */

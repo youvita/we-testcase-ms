@@ -1,9 +1,9 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { prisma } from "@/lib/prisma";
-import { createProject, createTestCase, resetDatabase } from "@/test/db";
+import { createProject, createTestCase, createUser, resetDatabase } from "@/test/db";
 
-import { getLastFinishedRun, listTestRunsPage, recordDraftFailure, reportItemResult } from "./test-run.service";
+import { deleteTestRuns, getLastFinishedRun, listTestRunsPage, queueRun, recordDraftFailure, reportItemResult } from "./test-run.service";
 
 beforeEach(resetDatabase);
 
@@ -167,5 +167,63 @@ describe("a draft script that caught a real bug", () => {
 
     // Once only.
     await expect(recordDraftFailure(item.id, { id: owner.id, name: "Quinn" })).rejects.toThrow(/already recorded/);
+  });
+});
+
+describe("deleting runs", () => {
+  async function passedRun() {
+    const { project, module, owner } = await createProject();
+    const testCase = await createTestCase(project.id, module.id, "TC-1");
+    const env = await prisma.runEnvironment.create({ data: { projectId: project.id, name: "SIT", webBaseUrl: "https://sit.example.test" } });
+    const run = await queueRun({
+      projectId: project.id,
+      userId: owner.id,
+      environment: { id: env.id, name: "SIT" },
+      purpose: "RUN",
+      recordResults: true,
+      items: [{ testCaseId: testCase.id, code: "await page.goto('/');" }],
+    });
+    await prisma.testRun.update({ where: { id: run.id }, data: { status: "RUNNING" } });
+    const item = await prisma.testRunItem.findFirstOrThrow({ where: { runId: run.id } });
+    await reportItemResult(item.id, { status: "PASSED" }, []);
+    await prisma.testRun.update({ where: { id: run.id }, data: { status: "PASSED" } });
+    return { project, testCase, owner, env, run };
+  }
+  const asQa = (user: { id: string }) => ({ id: user.id, role: "QA" as const });
+
+  it("keeps the results on the case unless asked, and never reuses the number", async () => {
+    const { project, testCase, owner, env, run } = await passedRun();
+    expect(run.number).toBe(1);
+    await deleteTestRuns(project.id, [run.id], asQa(owner), false);
+    expect(await prisma.testRun.count()).toBe(0);
+    expect(await prisma.testExecution.count({ where: { testCaseId: testCase.id } })).toBe(1);
+
+    const next = await queueRun({
+      projectId: project.id,
+      userId: owner.id,
+      environment: { id: env.id, name: "SIT" },
+      purpose: "RUN",
+      recordResults: true,
+      items: [{ testCaseId: testCase.id, code: "x" }],
+    });
+    expect(next.number).toBe(2);
+  });
+
+  it("takes the results with it when asked", async () => {
+    const { project, testCase, owner, run } = await passedRun();
+    const result = await deleteTestRuns(project.id, [run.id], asQa(owner), true);
+    expect(result).toEqual({ deleted: 1, resultsDeleted: 1, resultsKept: 0 });
+    expect(await prisma.testExecution.count({ where: { testCaseId: testCase.id } })).toBe(0);
+    expect((await prisma.testCase.findUniqueOrThrow({ where: { id: testCase.id } })).status).toBe("NOT_RUN");
+  });
+
+  it("is for whoever started it, or an admin, and not while it runs", async () => {
+    const { project, owner, run } = await passedRun();
+    const other = await createUser("QA");
+    await expect(deleteTestRuns(project.id, [run.id], asQa(other), false)).rejects.toThrow(/started by someone else/);
+    await prisma.testRun.update({ where: { id: run.id }, data: { status: "RUNNING" } });
+    await expect(deleteTestRuns(project.id, [run.id], asQa(owner), false)).rejects.toThrow(/still going/);
+    await prisma.testRun.update({ where: { id: run.id }, data: { status: "PASSED" } });
+    await deleteTestRuns(project.id, [run.id], { id: other.id, role: "ADMIN" }, false);
   });
 });

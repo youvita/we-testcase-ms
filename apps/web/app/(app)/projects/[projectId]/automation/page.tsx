@@ -8,7 +8,7 @@ import { Breadcrumbs } from "@/components/layout/breadcrumbs";
 import { PageHeader } from "@/components/shared/page-header";
 import { StatCard } from "@/components/shared/stat-card";
 import { AutomationWorkspace } from "@/features/automation/components/automation-workspace";
-import { canManageTestCases } from "@/lib/permissions";
+import { canManageTestCases, isAdmin } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
 import { requireProjectAccess } from "@/lib/project-access";
 import { isAutomationConfigured } from "@/lib/runner-auth";
@@ -115,6 +115,8 @@ export default async function AutomationPage({
         signInCases={signInCases}
         canManage={canManageTestCases(user.role)}
         runnerConfigured={isAutomationConfigured()}
+        currentUserId={user.id}
+        isAdmin={isAdmin(user.role)}
       />
     </div>
   );

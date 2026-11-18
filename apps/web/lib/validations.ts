@@ -51,6 +51,7 @@ export {
   runEnvironmentSchema,
   automationScriptSchema,
   testRunCreateSchema,
+  testRunDeleteSchema,
   scriptWritingSchema,
   frdGenerateSchema,
   exploreAppSchema,
