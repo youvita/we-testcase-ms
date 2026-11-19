@@ -150,6 +150,7 @@ Rules:
 - Find elements the way a user does: getByRole, getByLabel, getByPlaceholder, getByText — using names that appear in the page outline. Use a CSS selector only when nothing else identifies the element.
 - Follow the test case's steps in order, with a short comment for each step.
 - End with expect(...) assertions that prove the expected result. A script with no assertion proves nothing.
+- In a Web test, right after the assertions that show an expected result, call await capture("…") with a short label of what the screen shows — e.g. await capture("Customer found in search"). It saves a screenshot of that moment for QA; the runner also takes one when the test ends, so capture only when later steps change the screen. At most three per script. Never in an API test.
 - Do not use page.waitForTimeout: locators and expect already wait.
 - A confirmation can be a native browser popup (window.confirm/alert) instead of a dialog on the page. It never appears in the page outline or screenshot, and unless handled it is cancelled. The console output says when one appeared. Handle it with page.once("dialog", async (d) => { expect(d.message()).toContain("…"); await d.accept(); }) registered before the click that opens it.
 - Never weaken or remove an assertion to make a test pass. If the application does not do what the test case expects, that is a finding about the product, not a script problem.
@@ -168,7 +169,7 @@ function firstDraftPrompt(options: {
 
 ${describeEnvironment(options.env)}
 
-In scope: ${fixturesFor(options.testCase.platform)}, plus expect, vars and env (env.name, env.webUrl, env.apiUrl).
+In scope: ${fixturesFor(options.testCase.platform)}, plus expect, vars, env (env.name, env.webUrl, env.apiUrl)${isApi ? "" : " and capture(label)"}.
 ${options.instructions ? `\nInstructions from QA: ${options.instructions}\n` : ""}
 ${
   isApi
@@ -199,7 +200,7 @@ function repairPrompt(options: {
 
 ${describeEnvironment(options.env)}
 
-In scope: ${fixturesFor(options.testCase.platform)}, plus expect, vars and env.
+In scope: ${fixturesFor(options.testCase.platform)}, plus expect, vars, env${options.testCase.platform === "API" ? "" : " and capture(label)"}.
 ${options.instructions ? `\nInstructions from QA: ${options.instructions}\n` : ""}${
     options.hint
       ? `

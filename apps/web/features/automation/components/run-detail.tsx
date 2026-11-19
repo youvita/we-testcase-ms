@@ -441,17 +441,29 @@ function RunItemRow({
           {apiCalls && <ApiCallsList url={artifactUrl(apiCalls.index)} />}
 
           {screenshots.length > 0 && (
-            <div className="flex flex-wrap gap-2">
-              {screenshots.map((shot) => (
-                <a key={shot.index} href={artifactUrl(shot.index)} target="_blank" rel="noreferrer">
-                  {/* eslint-disable-next-line @next/next/no-img-element -- authenticated API file, not a static asset */}
-                  <img
-                    src={artifactUrl(shot.index)}
-                    alt={`Screenshot of ${caseLabel}`}
-                    className="h-40 rounded-md border object-cover object-top"
-                  />
-                </a>
-              ))}
+            <div className="flex flex-wrap gap-3">
+              {screenshots.map((shot) => {
+                const label = screenshotLabel(shot.fileName);
+                return (
+                  <a
+                    key={shot.index}
+                    href={artifactUrl(shot.index)}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="space-y-1"
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element -- authenticated API file, not a static asset */}
+                    <img
+                      src={artifactUrl(shot.index)}
+                      alt={`${label} — ${caseLabel}`}
+                      className="h-40 rounded-md border object-cover object-top"
+                    />
+                    <span className="block max-w-72 truncate text-xs text-muted-foreground" title={label}>
+                      {label}
+                    </span>
+                  </a>
+                );
+              })}
             </div>
           )}
 
@@ -619,4 +631,14 @@ function ApiCallsList({ url }: { url: string }) {
       )}
     </div>
   );
+}
+
+/**
+ * What a screenshot shows: the label a script gave it with capture("…") —
+ * stored as "01 Customer found.png" — or, for the one Playwright takes, the
+ * end of the test.
+ */
+function screenshotLabel(fileName: string): string {
+  const captured = /^\d{2} (.+)\.png$/i.exec(fileName);
+  return captured ? captured[1]! : "End of test";
 }

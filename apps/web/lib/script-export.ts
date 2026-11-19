@@ -66,10 +66,15 @@ export const test = base.extend({
   },
 });
 
+/** capture("Customer found"): a labelled screenshot of that moment, in the report. */
+export const captureWith = (page: Page) => async (label: string) => {
+  await test.info().attach(label, { body: await page.screenshot(), contentType: "image/png" });
+};
+
 export { expect };
 `;
 
-const FIXTURES_FILE = `import { test as base, expect } from "@playwright/test";
+const FIXTURES_FILE = `import { test as base, expect, type Page } from "@playwright/test";
 
 ${FIXTURES_BODY}`;
 
@@ -80,10 +85,26 @@ function testBody(testCase: ExportCase): string {
     .split("\n")
     .map((line) => (line ? `  ${line}` : line))
     .join("\n");
+  // A script that marks moments with capture("…") gets it from the fixtures;
+  // an API test has no page to show, so there it does nothing — as in the runner.
+  const capture = !callsCapture(testCase)
+    ? ""
+    : testCase.platform === "API"
+      ? "  const capture = async (_label: string) => {};\n"
+      : "  const capture = captureWith(page);\n";
   return `test(${JSON.stringify(`${testCase.tcId} ${testCase.title}`)}, async (${fixtures}) => {
-${code}
+${capture}${code}
 });
 `;
+}
+
+function callsCapture(testCase: ExportCase): boolean {
+  return /\bcapture\(/.test(testCase.code);
+}
+
+/** Whether its file imports captureWith: a Web script that calls capture. */
+function usesCapture(testCase: ExportCase): boolean {
+  return testCase.platform !== "API" && callsCapture(testCase);
 }
 
 function caseHeader(testCase: ExportCase): string {
@@ -136,7 +157,7 @@ export function singleSpecFile(testCase: ExportCase, environment: RunEnvironment
 // after setting these, in the shell or in a .env file next to it:
 ${settings}
 
-import { test as base, expect } from "@playwright/test";
+import { test as base, expect, type Page } from "@playwright/test";
 
 ${FIXTURES_BODY}
 ${testBody(testCase)}`;
@@ -181,7 +202,7 @@ export function projectFiles(
       .join("/");
     files[`tests/${folder}/${fileName(testCase)}`] = `${caseHeader(testCase)}
 
-import { test, expect, vars, env } from "${"../".repeat(folder.split("/").length)}fixtures";
+import { test, expect, vars, env${usesCapture(testCase) ? ", captureWith" : ""} } from "${"../".repeat(folder.split("/").length)}fixtures";
 
 ${testBody(testCase)}`;
   }

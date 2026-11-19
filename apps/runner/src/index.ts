@@ -166,6 +166,23 @@ const noteFailure = (method, url, status, statusText) => {
 };
 const worthNoting = (type) => type === "document" || type === "xhr" || type === "fetch";
 
+// \`await capture("Customer found")\` in a script: a screenshot of that
+// moment, labelled, beside the one taken when the test ends — for when the
+// end is not the moment that shows the result. Never fails the test.
+let captured = 0;
+const captureWith = (page) => async (label) => {
+  captured += 1;
+  const name = String(label ?? "").replace(/[\\\\/:*?"<>|\\r\\n]+/g, " ").replace(/\\s+/g, " ").trim().slice(0, 80) || "Step " + captured;
+  try {
+    await test.info().attach("capture " + String(captured).padStart(2, "0") + " " + name, {
+      body: await page.screenshot(),
+      contentType: "image/png",
+    });
+  } catch {
+    // A page that is gone has nothing to show.
+  }
+};
+
 // Every call the script makes through \`request\`, with what it sent and what
 // came back — the run page shows them, so QA sees an API's answer without
 // opening the trace. Secrets masked, bodies cut short.
@@ -359,6 +376,7 @@ test.afterEach(async ({ page }, testInfo) => {
 `
 }
 test(${JSON.stringify(`${item.tcId} ${item.title}`)}, async (${fixtures}) => {
+const capture = ${isApi ? "async () => {}" : "captureWith(page)"};
 // ---- script ----
 ${item.code}
 // ---- end of script ----
@@ -562,7 +580,9 @@ async function reportItem(
     JSON.stringify({ ...result, error: maskSecrets(result.error), log: maskSecrets(result.log) }),
   );
   for (const attachment of attachments) {
-    const field = ARTIFACT_FIELDS[attachment.name];
+    // A script's capture("…"): a screenshot named after its label.
+    const captured = attachment.name.startsWith("capture ") ? attachment.name.slice("capture ".length) : null;
+    const field = captured ? "screenshot" : ARTIFACT_FIELDS[attachment.name];
     if (!field || (!attachment.path && !attachment.body)) continue;
     try {
       const bytes = attachment.path
@@ -571,7 +591,11 @@ async function reportItem(
       form.append(
         field,
         new Blob([new Uint8Array(bytes)], { type: attachment.contentType }),
-        attachment.path ? path.basename(attachment.path) : `${attachment.name}.txt`,
+        attachment.path
+          ? path.basename(attachment.path)
+          : captured
+            ? `${captured}.png`
+            : `${attachment.name}.txt`,
       );
     } catch {
       // Missing evidence should not lose the result itself.
