@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { FilePenLine, Loader2, Sparkles } from "lucide-react";
+import { FilePenLine, Loader2, Sparkles, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -87,7 +87,7 @@ export function CaseUpdatePrompt({
       className={
         quiet
           ? "ml-9 flex flex-wrap items-center gap-1 text-xs text-muted-foreground"
-          : "ml-9 flex flex-wrap items-center gap-2 rounded-md border px-3 py-2"
+          : `relative ml-9 flex flex-wrap items-center gap-2 rounded-md border px-3 py-2${onNoChange ? " pr-10" : ""}`
       }
     >
       {!quiet && <FilePenLine className="size-4 shrink-0 text-muted-foreground" aria-hidden />}
@@ -124,9 +124,16 @@ export function CaseUpdatePrompt({
             Edit myself
           </Button>
           {onNoChange && (
-            <Button size="sm" variant="ghost" className="h-7" disabled={settling} onClick={() => void noChange()}>
-              {settling && <Loader2 className="mr-1.5 size-3.5 animate-spin" />}
-              No change needed
+            <Button
+              size="icon"
+              variant="ghost"
+              className="absolute right-1.5 top-1.5 size-7 text-muted-foreground"
+              aria-label="No change needed"
+              title="No change needed"
+              disabled={settling}
+              onClick={() => void noChange()}
+            >
+              {settling ? <Loader2 className="size-4 animate-spin" /> : <X className="size-4" />}
             </Button>
           )}
         </>
