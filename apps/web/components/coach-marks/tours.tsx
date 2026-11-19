@@ -134,7 +134,6 @@ const PAGE_TOURS = {
   "test-cases": [
     { target: "cases-new", title: "New test case", body: "Write a case: its module, steps and expected result." },
     { target: "cases-excel", title: "Excel", body: "Import cases from an Excel sheet, or export the list — with the filters you have on." },
-    { target: "cases-explore", title: "Explore the app", body: "The AI walks through the web app and suggests cases for what it finds." },
     { target: "cases-copy", title: "Copy to project", body: "Copy cases and their scripts into another project. Results and comments stay here; the copies start as Not run." },
     { target: "cases-filters", title: "Search and filter", body: "Narrow the list by module, status, priority, platform or type." },
     { target: "cases-table", title: "The cases", body: "Open a case to run it. Tick several to change them together, or move them to the Trash." },

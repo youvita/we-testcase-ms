@@ -118,7 +118,6 @@ export const SECTIONS = [
     callouts: [
       { target: "cases-new", label: "New test case", text: "Write a case by hand." },
       { target: "cases-excel", label: "Excel", text: "Import cases from an Excel sheet, download the template, or export the list (with the filters you have on)." },
-      { target: "cases-explore", label: "Explore the app", text: "Web projects: the AI walks through the app and suggests cases for what it finds." },
       { target: "cases-copy", label: "Copy to project", text: "Copy cases and their scripts into another project. Results and comments stay; the copies start as Not run." },
       { target: "cases-filters", label: "Search and filter", text: "Search by TC ID, title or steps; filter by module, status, and more under Filters." },
       { target: "cases-table", label: "The cases", text: "Click a case to open it. Tick several to change their module together or move them to the Trash. Sort by a column heading." },
