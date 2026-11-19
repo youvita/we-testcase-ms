@@ -390,16 +390,9 @@ On a run, *Ask AI why* (or
 environment or unclear, with a corrected script to apply or a bug report to
 copy. Claude is told variable names, never their values.
 
-**Model and FRD.** *Write with AI* (and *Rewrite with AI*) can take an FRD
-— PDF, Word, Markdown or text — whose text goes to the AI for this job only,
-not saved as a document; and the model: Sonnet (default), Opus or Haiku.
-*Keep trying* reuses both. The Test case card's *FRD* button downloads the
-text of the document the case's requirements come from. A case with no FRD —
-written by hand, or suggested by exploring the app — gets one written from it:
-*Written by AI* (an FRD with rules, fields, messages and open questions, as a
-background job) or *Quick* (the case laid out as a requirement, at once). It is
-saved to Requirements → Documents with the case linked, so the button
-downloads it from then on.
+**Model.** *Write with AI* (and *Rewrite with AI*) takes the model: Sonnet
+(default), Opus or Haiku. *Keep trying* reuses it. Rules, field names or
+messages the steps leave out go in *Anything the steps leave out*.
 
 **Taking scripts elsewhere.** Scripts live in the database, one per case. A
 case's *Download .spec.ts* gives a single runnable Playwright file; *Download

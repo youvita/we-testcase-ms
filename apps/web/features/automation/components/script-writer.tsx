@@ -7,11 +7,9 @@ import {
   ChevronDown,
   ChevronRight,
   CircleAlert,
-  FileText,
   Loader2,
   MessageCircleQuestion,
   Sparkles,
-  Upload,
   X,
   XCircle,
 } from "lucide-react";
@@ -85,9 +83,6 @@ export function WriteWithClaudeDialog({
   const [instructions, setInstructions] = useState("");
   const [live, setLive] = useState<LiveChoice>({ liveView: false, speed: "slow" });
   const [model, setModel] = useState<AiModel>("sonnet");
-  // An FRD read for this job only; its text goes with the request.
-  const [frd, setFrd] = useState<{ fileName: string; text: string } | null>(null);
-  const [readingFrd, setReadingFrd] = useState(false);
   const [busy, setBusy] = useState(false);
   const selected = environments.some((e) => e.id === environmentId)
     ? environmentId
@@ -95,21 +90,6 @@ export function WriteWithClaudeDialog({
   const selectedEnvironment = environments.find((e) => e.id === selected);
   const envName = selectedEnvironment?.name ?? "the environment";
   const envStart = selectedEnvironment?.startPath ?? "/";
-
-  async function readFrd(file: File | undefined) {
-    if (!file) return;
-    setReadingFrd(true);
-    try {
-      const form = new FormData();
-      form.append("file", file);
-      const read = await api.post<{ fileName: string; text: string }>("/api/documents/extract", form);
-      setFrd({ fileName: read.fileName, text: read.text });
-    } catch (error) {
-      toast.error(errorMessage(error));
-    } finally {
-      setReadingFrd(false);
-    }
-  }
 
   async function start() {
     setBusy(true);
@@ -119,8 +99,6 @@ export function WriteWithClaudeDialog({
         startPath: startPath.trim() || undefined,
         instructions,
         model,
-        frdText: frd?.text,
-        frdName: frd?.fileName,
         liveView: live.liveView,
         speed: live.liveView ? live.speed : "normal",
       });
@@ -199,45 +177,6 @@ export function WriteWithClaudeDialog({
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="write-frd">FRD (optional)</Label>
-              {frd ? (
-                <div className="flex items-center gap-2 rounded-md border px-3 py-2 text-sm">
-                  <FileText className="size-4 shrink-0 text-muted-foreground" />
-                  <span className="min-w-0 flex-1 truncate">{frd.fileName}</span>
-                  <span className="shrink-0 text-xs text-muted-foreground">
-                    {frd.text.length.toLocaleString()} characters
-                  </span>
-                  <Button type="button" size="sm" variant="ghost" onClick={() => setFrd(null)}>
-                    Remove
-                  </Button>
-                </div>
-              ) : (
-                <label
-                  htmlFor="write-frd"
-                  className="flex cursor-pointer items-center gap-2 rounded-md border border-dashed px-3 py-2 text-sm text-muted-foreground hover:bg-muted/40"
-                >
-                  {readingFrd ? <Loader2 className="size-4 animate-spin" /> : <Upload className="size-4" />}
-                  {readingFrd ? "Reading the document…" : "Upload a PDF, Word, Excel, Markdown, text, OpenAPI or Postman file"}
-                  <input
-                    id="write-frd"
-                    type="file"
-                    className="sr-only"
-                    // The formats Requirements → Documents reads.
-                    accept=".pdf,.docx,.md,.markdown,.txt,.html,.htm,.json,.yaml,.yml,.xlsx,.xls,.csv"
-                    disabled={readingFrd}
-                    onChange={(e) => {
-                      void readFrd(e.target.files?.[0]);
-                      e.target.value = "";
-                    }}
-                  />
-                </label>
-              )}
-              <p className="text-xs text-muted-foreground">
-                Gives the AI the rules, field names and messages the steps leave out. Used for this
-                script only — not saved to the project.
-              </p>
-            </div>
-            <div className="space-y-2">
               <Label>AI model</Label>
               <Select value={model} onValueChange={(value) => setModel(value as AiModel)}>
                 <SelectTrigger>
@@ -260,7 +199,7 @@ export function WriteWithClaudeDialog({
           <Button variant="outline" disabled={busy} onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
-          <Button disabled={busy || readingFrd || !selected} onClick={() => void start()}>
+          <Button disabled={busy || !selected} onClick={() => void start()}>
             {busy ? <Loader2 className="mr-2 size-4 animate-spin" /> : <Sparkles className="mr-2 size-4" />}
             Start
           </Button>

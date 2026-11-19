@@ -4,6 +4,5 @@ import "./ai-case-update.service";
 import "./ai-explore.service";
 import "./ai-requirements.service";
 import "./ai-scripts.service";
-import "./frd-generate.service";
 
 export { resumeJobs } from "./ai-job.service";

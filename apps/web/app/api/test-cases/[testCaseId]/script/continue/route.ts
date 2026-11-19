@@ -28,8 +28,6 @@ export const POST = route<Ctx>(
       startPath?: string;
       instructions?: string;
       model?: AiModel;
-      frdText?: string;
-      frdName?: string;
     };
     if (!earlierInput.environmentId) throw badRequest("That job cannot be continued.");
 
@@ -38,10 +36,8 @@ export const POST = route<Ctx>(
         environmentId: earlierInput.environmentId,
         startPath: earlierInput.startPath,
         instructions: earlierInput.instructions,
-        // The same model and FRD as the job it picks up from.
+        // The same model as the job it picks up from.
         model: earlierInput.model,
-        frdText: earlierInput.frdText,
-        frdName: earlierInput.frdName,
         liveView: body.liveView,
         speed: body.speed,
         continueFrom: { jobId: body.jobId, hint: body.hint },

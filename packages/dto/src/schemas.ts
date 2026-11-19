@@ -762,20 +762,8 @@ export const scriptWritingSchema = z.object({
   instructions: optionalText(2000),
   /** Blank means the server's default model. */
   model: z.enum(AI_MODELS).optional(),
-  /** An FRD's text for context on this one job — not saved as a document. */
-  frdText: optionalText(120_000),
-  frdName: optionalText(200),
   ...liveViewFields,
 });
-
-/** Make an FRD for a test case that has none. */
-export const frdGenerateSchema = z.object({
-  /** "ai": written by the AI, in the background. "quick": laid out from the case, at once. */
-  method: z.enum(["ai", "quick"]).default("ai"),
-  model: z.enum(AI_MODELS).optional(),
-});
-
-export type FrdGenerateInput = z.input<typeof frdGenerateSchema>;
 
 export type ScriptWritingInput = z.input<typeof scriptWritingSchema>;
 

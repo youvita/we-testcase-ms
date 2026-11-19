@@ -54,7 +54,6 @@ export {
   testRunDeleteSchema,
   verifyReminderSchema,
   scriptWritingSchema,
-  frdGenerateSchema,
   exploreAppSchema,
   scriptWritingBatchSchema,
   scriptContinueSchema,

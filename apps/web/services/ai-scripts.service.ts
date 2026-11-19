@@ -239,24 +239,6 @@ const verdictSchema = z
   })
   .catch({ verdict: "draft", notes: "", change: "" });
 
-/** How much of an FRD goes into a prompt; the rest is cut. */
-const FRD_PROMPT_CHARS = 60_000;
-
-/**
- * An FRD given for this job, ahead of the usual prompt: the rules, field
- * names and messages the test case's steps may leave out.
- */
-function withFrd(text: string | undefined, name: string | undefined): string {
-  if (!text) return "";
-  const body = text.length > FRD_PROMPT_CHARS ? `${text.slice(0, FRD_PROMPT_CHARS)}\n… (cut)` : text;
-  return `Functional requirements document${name ? ` (${name})` : ""}, for context — use it for field names, rules and the messages to expect, but the test case's steps decide what to test:
-<frd>
-${body}
-</frd>
-
-`;
-}
-
 /** Most spec sections one prompt carries — a case rarely spans more. */
 const MAX_SPEC_SECTIONS = 5;
 
@@ -385,9 +367,6 @@ type ScriptWritingInput = {
   instructions?: string;
   /** The AI model to use; the server's default when absent. */
   model?: AiModel;
-  /** An FRD's text, for context on the expected behaviour — this job only. */
-  frdText?: string;
-  frdName?: string;
   liveView?: boolean;
   speed?: keyof typeof RUN_SPEEDS;
   /** Save the script on the case if, and only if, it passed. */
@@ -583,7 +562,7 @@ defineJob("WRITE_SCRIPT", async (job) => {
         model: input.model,
         system: WRITE_SYSTEM,
         images: evidence.screenshot ? [evidence.screenshot] : undefined,
-        prompt: withFrd(input.frdText, input.frdName) + withApiSpec(apiSpec) + withReferences(references) + (previous
+        prompt: withApiSpec(apiSpec) + withReferences(references) + (previous
           ? repairPrompt({
               testCase,
               env,
