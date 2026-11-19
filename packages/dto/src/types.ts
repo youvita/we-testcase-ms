@@ -290,6 +290,10 @@ export type TestCaseDraftDto = {
   platform: Platform;
   /** `verified`: the PO confirmed it; a draft becomes a case only once all are. */
   requirements: { id: string; code: string; title: string; verified: boolean }[];
+  /** The TC ID prefix chosen in review; null for the default. */
+  tcIdPrefix: string | null;
+  /** The prefix it gets otherwise: its requirement's code, or its module. */
+  defaultTcIdPrefix: string;
   /**
    * The AI run that wrote it. `runId` is null when that run is gone; `detail`
    * names what it read — the documents, or the pages explored.

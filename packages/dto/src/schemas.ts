@@ -563,9 +563,17 @@ export const testCaseDraftSchema = z.object({
   // Omitted means the project's first platform — not Web, which the
   // project may not have.
   platform: platformSchema.optional(),
+  /** "LOGIN" for TC-LOGIN-01; blank for the default. */
+  tcIdPrefix: z.string().max(60).nullish(),
 });
 
 export type TestCaseDraftInput = z.input<typeof testCaseDraftSchema>;
+
+/** One TC ID prefix for several drafts — a module's, say. Blank: the default. */
+export const draftPrefixSchema = z.object({
+  ids: z.array(z.string().min(1)).min(1).max(500),
+  tcIdPrefix: z.string().max(60).nullish(),
+});
 
 export const draftReviewSchema = z.object({
   action: z.enum(["accept", "reject"]),

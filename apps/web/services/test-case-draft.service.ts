@@ -1,11 +1,13 @@
 import { includingTrash, prisma, type Tx } from "@/lib/prisma";
 import { badRequest, notFound } from "@/lib/api";
 import { splitOpenQuestions } from "@/utils/open-questions";
-import type {
-  DraftReviewInput,
-  DraftReviewResult,
-  TestCaseDraftDto,
-  TestCaseDraftInput,
+import {
+  defaultTcIdPrefix,
+  normalizeTcIdPrefix,
+  type DraftReviewInput,
+  type DraftReviewResult,
+  type TestCaseDraftDto,
+  type TestCaseDraftInput,
 } from "@wetestcase/dto";
 
 import { addRequirementQuestions } from "./case-questions.service";
@@ -74,6 +76,12 @@ export async function listPendingDrafts(
       const req = byId.get(id);
       return req ? [{ id: req.id, code: req.code, title: req.title, verified: req.verifiedAt !== null }] : [];
     }),
+    tcIdPrefix: draft.tcIdPrefix,
+    // As accept works it out: the first requirement still there, or the module.
+    defaultTcIdPrefix: defaultTcIdPrefix(
+      draft.moduleName.trim() || "General",
+      draft.requirementIds.map((id) => byId.get(id)?.code).find(Boolean),
+    ),
     source: sourceOf(draft),
     createdAt: draft.createdAt.toISOString(),
   }));
@@ -104,28 +112,23 @@ export async function updateDraft(draftId: string, input: TestCaseDraftInput) {
       testType: input.testType ?? "FUNCTIONAL",
       priority: input.priority ?? "MEDIUM",
       platform,
+      // Left out: kept as it is.
+      ...(input.tcIdPrefix !== undefined ? { tcIdPrefix: normalizeTcIdPrefix(input.tcIdPrefix) } : {}),
     },
   });
 }
 
-/**
- * "FR-012" → "FR-012", "3.2.1 Login" → "3.2.1-LOGIN". Safe inside a TC ID.
- * An API endpoint keeps its method and its fixed path segments only:
- * "PATCH /customers/{account_no}" → "PATCH-CUSTOMERS".
- */
-export function tcIdStem(code: string): string {
-  const endpoint = /^(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS|TRACE)\s+(\/\S*)/i.exec(code.trim());
-  const source = endpoint
-    ? [endpoint[1], ...endpoint[2]!.split("/").filter((segment) => segment && !segment.includes("{"))].join(" ")
-    : code;
-  return (
-    source
-      .toUpperCase()
-      .replace(/[^A-Z0-9.]+/g, "-")
-      .replace(/^-+|-+$/g, "")
-      .slice(0, 40) || "AI"
-  );
+/** One TC ID prefix for these drafts — blank puts them back on the default. */
+export async function setDraftsPrefix(projectId: string, ids: string[], prefix: string | null | undefined) {
+  const { count } = await prisma.testCaseDraft.updateMany({
+    where: { projectId, id: { in: ids }, status: "PENDING" },
+    data: { tcIdPrefix: normalizeTcIdPrefix(prefix) },
+  });
+  return { updated: count };
 }
+
+// Shared with the review screen, which shows the IDs drafts will get.
+export { tcIdStem } from "@wetestcase/dto";
 
 /**
  * The next free "TC-<stem>-NN" in the project.
@@ -253,7 +256,7 @@ export async function reviewDrafts(
         const tcId = await allocateTcId(
           tx,
           projectId,
-          firstCode ? tcIdStem(firstCode) : "AI",
+          draft.tcIdPrefix ?? defaultTcIdPrefix(moduleName, firstCode),
           reserved,
         );
 

@@ -48,6 +48,7 @@ export {
   generateTestCasesSchema,
   testCaseDraftSchema,
   draftReviewSchema,
+  draftPrefixSchema,
   runEnvironmentSchema,
   automationScriptSchema,
   testRunCreateSchema,

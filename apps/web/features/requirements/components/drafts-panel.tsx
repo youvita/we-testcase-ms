@@ -54,12 +54,13 @@ import {
   TEST_TYPES,
   TEST_TYPE_LABELS,
 } from "@/lib/constants";
-import type {
-  DraftReviewResult,
-  Platform,
-  PoQuestionDto,
-  TestCaseDraftDto,
-  TestCaseDraftInput,
+import {
+  normalizeTcIdPrefix,
+  type DraftReviewResult,
+  type Platform,
+  type PoQuestionDto,
+  type TestCaseDraftDto,
+  type TestCaseDraftInput,
 } from "@wetestcase/dto";
 import { cn } from "@/lib/utils";
 import { api, errorMessage } from "@/utils/api-client";
@@ -421,6 +422,7 @@ export function DraftsPanel({
             )}
             <CardTitle className="text-base">{moduleName}</CardTitle>
             <span className="text-sm text-muted-foreground">{moduleDrafts.length}</span>
+            <ModulePrefixField projectId={projectId} drafts={moduleDrafts} canManage={canManage} />
           </CardHeader>
           <CardContent className="divide-y p-0">
             {moduleDrafts.map((draft) => {
@@ -449,7 +451,15 @@ export function DraftsPanel({
                         <ChevronRight className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
                       )}
                       <span className="space-y-1">
-                        <span className="block font-medium">{draft.title}</span>
+                        <span className="block font-medium">
+                          <span
+                            className="mr-2 font-mono text-xs font-normal text-muted-foreground"
+                            title="The TC ID it gets on accept, numbered after the project's existing ones"
+                          >
+                            TC-{draft.tcIdPrefix ?? draft.defaultTcIdPrefix}-##
+                          </span>
+                          {draft.title}
+                        </span>
                         <span className="flex flex-wrap items-center gap-1.5">
                           {draft.subModule && (
                             <Badge variant="secondary" title="Sub-module">
@@ -670,12 +680,21 @@ function DraftEditDialog({
         testType: draft.testType,
         priority: draft.priority,
         platform: draft.platform,
+        tcIdPrefix: draft.tcIdPrefix ?? "",
       },
     );
   }
 
   const text = (
-    key: "moduleName" | "subModule" | "title" | "preconditions" | "steps" | "expectedResult" | "openQuestions",
+    key:
+      | "moduleName"
+      | "subModule"
+      | "title"
+      | "preconditions"
+      | "steps"
+      | "expectedResult"
+      | "openQuestions"
+      | "tcIdPrefix",
   ) =>
     (event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
       setForm((current) => current && { ...current, [key]: event.target.value });
@@ -722,6 +741,25 @@ function DraftEditDialog({
                 <Label htmlFor="draft-title">Title</Label>
                 <Input id="draft-title" value={form.title} onChange={text("title")} />
               </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="draft-tc-prefix">TC ID prefix</Label>
+              <div className="flex items-center gap-1.5 font-mono text-sm">
+                <span className="text-muted-foreground">TC-</span>
+                <Input
+                  id="draft-tc-prefix"
+                  className="w-48 font-mono uppercase"
+                  placeholder={draft?.defaultTcIdPrefix}
+                  value={form.tcIdPrefix ?? ""}
+                  onChange={text("tcIdPrefix")}
+                />
+                <span className="text-muted-foreground">-##</span>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Blank uses {draft?.defaultTcIdPrefix}
+                {draft?.requirements.length ? ", from its requirement" : ", from its module"}. Numbered after the
+                project&apos;s existing TC-{normalizeTcIdPrefix(form.tcIdPrefix) ?? draft?.defaultTcIdPrefix} cases.
+              </p>
             </div>
             <div className="grid gap-4 sm:grid-cols-3">
               <div className="space-y-2">
@@ -816,5 +854,87 @@ function DraftEditDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+/**
+ * A module's TC ID prefix — "TC-[LOGIN]-##" — for all its drafts at once.
+ * Shows the prefix they share; blank when they differ. Saved on Enter or
+ * when the box loses focus; blank puts them back on their defaults.
+ */
+function ModulePrefixField({
+  projectId,
+  drafts,
+  canManage,
+}: {
+  projectId: string;
+  drafts: TestCaseDraftDto[];
+  canManage: boolean;
+}) {
+  const router = useRouter();
+  const prefixes = new Set(drafts.map((d) => d.tcIdPrefix ?? d.defaultTcIdPrefix));
+  const shared = prefixes.size === 1 ? [...prefixes][0]! : "";
+  const [value, setValue] = useState(shared);
+  const [saving, setSaving] = useState(false);
+  const [shown, setShown] = useState(shared);
+  // A refresh after saving, or drafts changed elsewhere: show what is saved.
+  if (shared !== shown) {
+    setShown(shared);
+    setValue(shared);
+  }
+
+  async function save() {
+    const next = normalizeTcIdPrefix(value);
+    if ((next ?? "") === shared) {
+      setValue(shared);
+      return;
+    }
+    setSaving(true);
+    try {
+      await api.post(`/api/projects/${projectId}/test-case-drafts/prefix`, {
+        ids: drafts.map((d) => d.id),
+        tcIdPrefix: next,
+      });
+      toast.success(
+        next
+          ? `${drafts.length} draft${drafts.length === 1 ? "" : "s"} will be TC-${next}-01, -02…`
+          : "Back to the default prefixes",
+      );
+      router.refresh();
+    } catch (error) {
+      toast.error(errorMessage(error));
+      setValue(shared);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (!canManage) {
+    return shared ? (
+      <span className="ml-auto font-mono text-xs text-muted-foreground">TC-{shared}-##</span>
+    ) : null;
+  }
+
+  return (
+    <label className="ml-auto flex items-center gap-1 font-mono text-xs text-muted-foreground">
+      <span className="sr-only">TC ID prefix for these drafts</span>
+      TC-
+      <Input
+        className="h-7 w-36 px-2 font-mono text-xs uppercase text-foreground"
+        value={value}
+        placeholder={shared ? undefined : "mixed"}
+        disabled={saving}
+        onChange={(e) => setValue(e.target.value)}
+        onBlur={() => void save()}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") e.currentTarget.blur();
+          if (e.key === "Escape") {
+            setValue(shared);
+            e.currentTarget.blur();
+          }
+        }}
+      />
+      -##
+    </label>
   );
 }

@@ -253,3 +253,42 @@ export type RunSpeed = keyof typeof RUN_SPEEDS;
 /** Which cases a new run takes. */
 export const RUN_SCOPES = ["all", "failed", "module", "cases"] as const;
 export type RunScope = (typeof RUN_SCOPES)[number];
+
+/**
+ * "FR-012" → "FR-012", "3.2.1 Login" → "3.2.1-LOGIN". Safe inside a TC ID.
+ * An API endpoint keeps its method and its fixed path segments only:
+ * "PATCH /customers/{account_no}" → "PATCH-CUSTOMERS".
+ */
+export function tcIdStem(code: string): string {
+  const endpoint = /^(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS|TRACE)\s+(\/\S*)/i.exec(code.trim());
+  const source = endpoint
+    ? [endpoint[1], ...endpoint[2]!.split("/").filter((segment) => segment && !segment.includes("{"))].join(" ")
+    : code;
+  return (
+    source
+      .toUpperCase()
+      .replace(/[^A-Z0-9.]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 40) || "AI"
+  );
+}
+
+/**
+ * What someone typed as a TC ID prefix, made safe: "tc-login-" → "LOGIN".
+ * Null when nothing is left, meaning "the default".
+ */
+export function normalizeTcIdPrefix(input: string | null | undefined): string | null {
+  // "TC-" in front and a "-##" placeholder behind are not part of it.
+  const stem = (input ?? "").trim().replace(/^TC[-\s]+/i, "").replace(/[-\s#]+$/, "");
+  if (!stem) return null;
+  const safe = tcIdStem(stem);
+  return safe === "AI" && !/^ai$/i.test(stem) ? null : safe;
+}
+
+/**
+ * The prefix a draft gets unless someone changes it: its first
+ * requirement's code, or else its module — "Login" → TC-LOGIN-01.
+ */
+export function defaultTcIdPrefix(moduleName: string, requirementCode?: string | null): string {
+  return tcIdStem(requirementCode || moduleName);
+}

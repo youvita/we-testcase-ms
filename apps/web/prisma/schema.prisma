@@ -889,6 +889,9 @@ model TestCaseDraft {
   /// short-lived, and a requirement deleted meanwhile is simply skipped on
   /// accept.
   requirementIds String[]
+  /// The TC ID prefix chosen in review — "LOGIN" makes TC-LOGIN-01. Null:
+  /// the first requirement's code, or else the module's name.
+  tcIdPrefix     String?
   createdAt      DateTime    @default(now())
   updatedAt      DateTime    @updatedAt
 
