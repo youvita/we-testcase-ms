@@ -73,6 +73,8 @@ const ACCEPT = ".pdf,.docx,.md,.markdown,.txt,.html,.htm,.json,.yaml,.yml,.xlsx,
 /** Swagger / OpenAPI specs and Postman collections come as JSON or YAML. */
 const isSpecFile = (name: string) => /\.(json|ya?ml)$/i.test(name);
 
+const KIND_LABELS: Record<RequirementDocKind, string> = { PRD: "PRD", FRD: "FRD", OTHER: "Other spec" };
+
 export function DocumentsPanel({
   projectId,
   docs,
@@ -286,7 +288,7 @@ export function DocumentsPanel({
                 <SelectItem value="all">All types</SelectItem>
                 {REQUIREMENT_DOC_KINDS.map((option) => (
                   <SelectItem key={option} value={option}>
-                    {option === "OTHER" ? "Other spec" : option}
+                    {KIND_LABELS[option]}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -483,8 +485,9 @@ function UploadDialog({
   const [file, setFile] = useState<File | null>(null);
   const [title, setTitle] = useState("");
   const [folder, setFolder] = useState("");
-  // FRD first: it is what requirements are read from; a PRD is background.
-  const [kind, setKind] = useState<RequirementDocKind>("FRD");
+  // Detected from the document unless chosen: a PRD is background, an FRD
+  // or other spec is read into requirements.
+  const [kind, setKind] = useState<RequirementDocKind | "AUTO">("AUTO");
   const [content, setContent] = useState("");
   const [saving, setSaving] = useState(false);
 
@@ -493,7 +496,7 @@ function UploadDialog({
     setTitle("");
     setFolder("");
     setContent("");
-    setKind("FRD");
+    setKind("AUTO");
     if (fileRef.current) fileRef.current.value = "";
   }
 
@@ -503,20 +506,21 @@ function UploadDialog({
       const url = newVersionOf
         ? `/api/requirement-docs/${newVersionOf.id}/versions`
         : `/api/projects/${projectId}/requirement-docs`;
-      let created: { id: string };
+      let created: { id: string; kind?: RequirementDocKind };
+      const chosen = kind === "AUTO" ? undefined : kind;
       if (mode === "file") {
         if (!file) throw new Error("Choose a file to upload");
         const form = new FormData();
         form.append("file", file);
         form.append("title", title);
-        form.append("kind", kind);
+        if (chosen) form.append("kind", chosen);
         form.append("folder", folder);
         created = await api.post(url, form);
       } else {
-        created = await api.post(url, newVersionOf ? { content } : { title, kind, folder, content });
+        created = await api.post(url, newVersionOf ? { content } : { title, kind: chosen, folder, content });
       }
-      const savedKind = newVersionOf?.kind ?? kind;
-      toast.success(newVersionOf ? "New version uploaded" : "Document added", {
+      const savedKind = newVersionOf?.kind ?? created.kind ?? chosen ?? "OTHER";
+      toast.success(newVersionOf ? "New version uploaded" : `Added as ${KIND_LABELS[savedKind]}`, {
         description:
           savedKind === "PRD" ? "The AI uses it as product background whenever it drafts test cases." : undefined,
       });
@@ -556,7 +560,9 @@ function UploadDialog({
                 : `Replaces version ${newVersionOf.version}, which is kept. The AI reads the new text on your Claude subscription and marks each requirement new, changed or not found, so you can review the test cases linked to them.`
               : kind === "PRD"
                 ? "A PRD is product background: it is not read into requirements, and the AI reads it whenever it drafts test cases."
-                : "The AI reads it into requirements as soon as it is added, on your Claude subscription."}
+                : kind === "AUTO"
+                  ? "Its type is detected from the document. An FRD or other spec is read into requirements as soon as it is added, on your Claude subscription; a PRD is kept as product background."
+                  : "The AI reads it into requirements as soon as it is added, on your Claude subscription."}
           </DialogDescription>
         </DialogHeader>
 
@@ -566,7 +572,7 @@ function UploadDialog({
             <TabsTrigger value="paste">Paste text</TabsTrigger>
           </TabsList>
 
-          <div className={cn("mt-4 grid gap-4 sm:grid-cols-[1fr_140px]", newVersionOf && "hidden")}>
+          <div className={cn("mt-4 grid gap-4 sm:grid-cols-[1fr_190px]", newVersionOf && "hidden")}>
             <div className="space-y-2">
               <Label htmlFor="doc-title">Title</Label>
               <Input
@@ -578,14 +584,15 @@ function UploadDialog({
             </div>
             <div className="space-y-2">
               <Label htmlFor="doc-kind">Type</Label>
-              <Select value={kind} onValueChange={(value) => setKind(value as RequirementDocKind)}>
+              <Select value={kind} onValueChange={(value) => setKind(value as RequirementDocKind | "AUTO")}>
                 <SelectTrigger id="doc-kind">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
+                  <SelectItem value="AUTO">Detect automatically</SelectItem>
                   {REQUIREMENT_DOC_KINDS.map((option) => (
                     <SelectItem key={option} value={option}>
-                      {option === "OTHER" ? "Other spec" : option}
+                      {KIND_LABELS[option]}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -607,8 +614,6 @@ function UploadDialog({
               onChange={(event) => {
                 const picked = event.target.files?.[0] ?? null;
                 setFile(picked);
-                // An API spec is neither a PRD nor an FRD.
-                if (picked && isSpecFile(picked.name)) setKind("OTHER");
               }}
             />
             <button

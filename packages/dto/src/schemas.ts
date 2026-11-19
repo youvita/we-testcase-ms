@@ -469,7 +469,8 @@ const docFolder = trimmed(80)
 
 export const requirementDocTextSchema = z.object({
   title: trimmed(200).min(2, "Give the document a title"),
-  kind: requirementDocKindSchema.default("PRD"),
+  /** Absent: detected from the title, file name and text. */
+  kind: requirementDocKindSchema.optional(),
   folder: docFolder,
   content: z
     .string()

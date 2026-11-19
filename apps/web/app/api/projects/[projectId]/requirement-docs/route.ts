@@ -11,6 +11,7 @@ import {
   createRequirementDoc,
   listRequirementDocs,
 } from "@/services/requirement.service";
+import { detectDocKind } from "@/utils/document-kind";
 import { pastedDocumentText } from "@/utils/document-text";
 
 type Ctx = { params: Promise<{ projectId: string }> };
@@ -26,7 +27,7 @@ export const GET = route<Ctx>({}, async (_request, { params, user }) => {
 
 /**
  * Add a document: a file as multipart form data (`file`, `title`, `kind`), or
- * pasted text as JSON. Only its text is kept. Reading requirements out of it is
+ * pasted text as JSON. Without a `kind`, it is detected from the document. Only its text is kept. Reading requirements out of it is
  * a separate call — `POST /api/requirement-docs/:id/extract` — because that
  * needs the person's Claude subscription and the upload does not.
  */
@@ -38,21 +39,25 @@ export const POST = route<Ctx>(
 
     if (!isMultipart(request)) {
       const body = requirementDocTextSchema.parse(await readJson(request));
+      const content = pastedDocumentText(body.content);
+      const kind = body.kind ?? detectDocKind({ title: body.title, content });
       const doc = await createRequirementDoc(projectId, user.id, {
         title: body.title,
-        kind: body.kind,
+        kind,
         folder: body.folder,
         fileName: null,
-        content: pastedDocumentText(body.content),
+        content,
       });
-      return ok(doc, 201);
+      return ok({ ...doc, kind }, 201);
     }
 
     const { form, fileName, content } = await readDocumentUpload(request);
     const title =
       String(form.get("title") ?? "").trim() ||
       fileName.replace(/\.[^.]+$/, "");
-    const kind = requirementDocKindSchema.catch("PRD").parse(form.get("kind"));
+    // No kind given (or one not known): detected from the document.
+    const given = requirementDocKindSchema.safeParse(form.get("kind"));
+    const kind = given.success ? given.data : detectDocKind({ title: form.get("title")?.toString(), fileName, content });
     const folder = requirementDocFolderSchema.parse(form.get("folder") ?? undefined);
 
     const doc = await createRequirementDoc(projectId, user.id, {
@@ -62,6 +67,6 @@ export const POST = route<Ctx>(
       fileName,
       content,
     });
-    return ok(doc, 201);
+    return ok({ ...doc, kind }, 201);
   },
 );
