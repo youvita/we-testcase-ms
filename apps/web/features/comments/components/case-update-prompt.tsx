@@ -90,7 +90,6 @@ export function CaseUpdatePrompt({
           : `relative ml-9 flex flex-wrap items-center gap-2 rounded-md border px-3 py-2${onNoChange ? " pr-10" : ""}`
       }
     >
-      {!quiet && <FilePenLine className="size-4 shrink-0 text-muted-foreground" aria-hidden />}
       {drafting ? (
         <>
           <span className={`mr-auto flex items-center gap-2 text-muted-foreground ${quiet ? "text-xs" : "text-sm"}`}>
@@ -115,7 +114,10 @@ export function CaseUpdatePrompt({
         </>
       ) : (
         <>
-          <span className="mr-auto text-sm">The PO answered. Update the test case?</span>
+          <span className="mr-auto flex items-center gap-2 text-sm">
+            <FilePenLine className="size-4 shrink-0 text-muted-foreground" aria-hidden />
+            The PO answered. Update the test case?
+          </span>
           <Button size="sm" className="h-7" onClick={() => void suggest()}>
             <Sparkles className="mr-1.5 size-3.5" />
             Suggest with AI

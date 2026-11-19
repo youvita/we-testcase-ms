@@ -176,15 +176,18 @@ export function CommentThread({
   const total = comments.length + asked.reduce((sum, item) => sum + 1 + item.question.replies.length, 0);
   // Question id → its latest answer, while the answer is not yet in the case.
   const toApply = caseText ? answersToApply(comments) : new Map<string, string>();
-  const promptAfter = new Map([...toApply].map(([questionId, answerId]) => [answerId, questionId]));
-  // Answers already dealt with keep a quiet way to update the case from them,
-  // after each question's latest answer.
+  // The prompts go at the end of their question's thread, so a reply after
+  // the PO's answer ("Well noted") does not bury them mid-thread.
+  const lastInThread = new Map<string, string>();
+  for (const comment of ordered) lastInThread.set(comment.answerToId ?? comment.id, comment.id);
+  const atThreadEnd = (questionId: string): [string, string] => [lastInThread.get(questionId) ?? questionId, questionId];
+  const promptAfter = new Map([...toApply.keys()].map(atThreadEnd));
+  // Answers already dealt with keep a quiet way to update the case from them.
   // The PO's answers in each thread: replies to a question, or the PO's
   // replies to anyone's comment.
   const answered = caseText ? poAnswers(comments) : new Map<string, CommentWithAuthor[]>();
-  const latestAnswer = new Map([...answered].map(([rootId, answers]) => [rootId, answers.at(-1)!.id]));
   const quietAfter = new Map(
-    [...latestAnswer].filter(([questionId]) => !toApply.has(questionId)).map(([questionId, answerId]) => [answerId, questionId]),
+    [...answered.keys()].filter((questionId) => !toApply.has(questionId)).map(atThreadEnd),
   );
   const answersTo = (questionId: string) =>
     (answered.get(questionId) ?? []).map((c) => ({ author: c.author.name, body: c.body }));
