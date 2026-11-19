@@ -360,6 +360,8 @@ export type TestRunDto = {
   status: TestRunStatus;
   environmentName: string;
   recordResults: boolean;
+  /** Started as the project's smoke test. */
+  smoke: boolean;
   liveView: boolean;
   slowMoMs: number;
   inOrder: boolean;
@@ -630,3 +632,20 @@ export type ProjectCopySummary = {
   requirementsCreated: number;
   requirementLinks: number;
 };
+
+/** A project's smoke test: automated cases run one at a time, in order. */
+export interface SmokeTestDto {
+  /** The Web case whose script signs in once for the run. */
+  signInTestCaseId: string | null;
+  cases: SmokeTestCaseDto[];
+}
+
+export interface SmokeTestCaseDto {
+  id: string;
+  tcId: string;
+  title: string;
+  platform: Platform;
+  module: string;
+  /** Without a script, it is skipped when the smoke test runs. */
+  hasScript: boolean;
+}

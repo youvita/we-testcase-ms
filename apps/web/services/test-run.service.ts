@@ -75,6 +75,7 @@ function toRunDto(run: RunRow): TestRunDto {
     status: run.status,
     environmentName: run.environmentName,
     recordResults: run.recordResults,
+    smoke: run.smoke,
     liveView: run.liveView,
     slowMoMs: run.slowMoMs,
     inOrder: run.inOrder,
@@ -116,7 +117,10 @@ export async function createTestRun(
   projectId: string,
   userId: string,
   input: TestRunCreateInput & { scope: NonNullable<TestRunCreateInput["scope"]> },
+  /** The project's smoke test: its cases, in its order — the scope is ignored. */
+  options: { smoke?: boolean } = {},
 ): Promise<TestRunDto> {
+  const smoke = options.smoke ?? false;
   const environment = await prisma.runEnvironment.findFirst({
     where: { id: input.environmentId, projectId },
     select: { id: true, name: true, webBaseUrl: true, apiBaseUrl: true },
@@ -128,9 +132,10 @@ export async function createTestRun(
       projectId,
       script: { isNot: null },
       platform: { in: [...AUTOMATABLE_PLATFORMS] },
+      ...(smoke ? { smokePosition: { not: null } } : {}),
       // Failing: failed, or blocked before its steps — both need running again.
-      ...(input.scope === "failed" ? { status: { in: ["FAILED", "BLOCKED"] } } : {}),
-      ...(input.scope === "module"
+      ...(!smoke && input.scope === "failed" ? { status: { in: ["FAILED", "BLOCKED"] } } : {}),
+      ...(!smoke && input.scope === "module"
         ? {
             OR: [
               { moduleId: { in: [...(input.moduleIds ?? []), ...(input.moduleId ? [input.moduleId] : [])] } },
@@ -138,14 +143,16 @@ export async function createTestRun(
             ],
           }
         : {}),
-      ...(input.scope === "cases" ? { id: { in: input.testCaseIds ?? [] } } : {}),
+      ...(!smoke && input.scope === "cases" ? { id: { in: input.testCaseIds ?? [] } } : {}),
     },
-    orderBy: [{ module: { position: "asc" } }, { tcId: "asc" }],
+    orderBy: smoke ? [{ smokePosition: "asc" as const }] : [{ module: { position: "asc" } }, { tcId: "asc" }],
     select: { id: true, tcId: true, platform: true, script: { select: { code: true } } },
   });
   if (cases.length === 0) {
     throw badRequest(
-      input.scope === "failed"
+      smoke
+        ? "The smoke test has no case with an automation script yet. Add cases on the Automation page."
+        : input.scope === "failed"
         ? "No failing or blocked test case in this project has a script."
         : "None of these test cases has an automation script yet.",
     );
@@ -180,6 +187,7 @@ export async function createTestRun(
     userId,
     environment,
     purpose: "RUN",
+    smoke,
     recordResults: input.recordResults ?? true,
     liveView: input.liveView ?? false,
     slowMoMs: RUN_SPEEDS[input.speed ?? "normal"],
@@ -209,6 +217,7 @@ export async function queueRun(options: {
   userId: string;
   environment: { id: string; name: string };
   purpose: "RUN" | "SCRIPT_CHECK";
+  smoke?: boolean;
   recordResults: boolean;
   liveView?: boolean;
   slowMoMs?: number;
@@ -261,6 +270,7 @@ export async function queueRun(options: {
             environmentName: options.environment.name,
             // A script check never records: it is trying a draft, not testing.
             recordResults: options.purpose === "RUN" && options.recordResults,
+            smoke: options.smoke ?? false,
             liveView: options.liveView ?? false,
             slowMoMs: options.slowMoMs ?? 0,
             inOrder: options.inOrder ?? false,

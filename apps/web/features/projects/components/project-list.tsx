@@ -9,6 +9,7 @@ import {
   FolderKanban,
   LayoutGrid,
   List,
+  Flame,
   MoreHorizontal,
   Pencil,
   Plus,
@@ -57,6 +58,7 @@ import { cn } from "@/lib/utils";
 import { api, errorMessage } from "@/utils/api-client";
 import { formatDate } from "@/utils/format";
 import type { Project, ProjectWithStats } from "@/types";
+import { useSmokeTestRun } from "@/features/automation/components/smoke-test-card";
 
 import {
   ProjectFormDialog,
@@ -90,6 +92,7 @@ export function ProjectList({
   startCreating?: boolean;
 }) {
   const router = useRouter();
+  const smokeRun = useSmokeTestRun();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("ALL");
   const [view, setView] = useState<ProjectView>("card");
@@ -245,6 +248,7 @@ export function ProjectList({
                         setFormOpen(true);
                       }}
                       onDelete={() => setDeleting(project)}
+                      onRunSmoke={() => void smokeRun.run(project.id)}
                     />
                   )}
                 </div>
@@ -376,6 +380,7 @@ export function ProjectList({
                           setFormOpen(true);
                         }}
                         onDelete={() => setDeleting(project)}
+                        onRunSmoke={() => void smokeRun.run(project.id)}
                       />
                     </TableCell>
                   )}
@@ -426,6 +431,7 @@ export function ProjectList({
         confirmLabel="Delete project"
         onConfirm={handleDelete}
       />
+      {smokeRun.dialog}
     </div>
   );
 }
@@ -469,17 +475,19 @@ function ViewToggle({
   );
 }
 
-/** Edit/delete menu, shared by both views. */
+/** Smoke test, edit and delete menu, shared by both views. */
 function ProjectActions({
   project,
   canDelete,
   onEdit,
   onDelete,
+  onRunSmoke,
 }: {
   project: ProjectWithStats;
   canDelete: boolean;
   onEdit: () => void;
   onDelete: () => void;
+  onRunSmoke: () => void;
 }) {
   return (
     <DropdownMenu>
@@ -496,6 +504,21 @@ function ProjectActions({
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
+        {project.smokeCount > 0 ? (
+          <DropdownMenuItem onSelect={onRunSmoke}>
+            <Flame className="mr-2 size-4" />
+            Run smoke test
+            <span className="ml-auto pl-3 text-xs text-muted-foreground">{project.smokeCount}</span>
+          </DropdownMenuItem>
+        ) : (
+          // Says where to set one up, rather than hiding the option.
+          <DropdownMenuItem asChild>
+            <Link href={`/projects/${project.id}/automation`} className="text-muted-foreground">
+              <Flame className="mr-2 size-4" />
+              Set up smoke test
+            </Link>
+          </DropdownMenuItem>
+        )}
         <DropdownMenuItem onSelect={onEdit}>
           <Pencil className="mr-2 size-4" />
           Edit

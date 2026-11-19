@@ -59,7 +59,7 @@ export async function listProjects(options?: {
       : {}),
   };
 
-  const [projects, grouped, moduleCounts] = await Promise.all([
+  const [projects, grouped, moduleCounts, smokeCounts] = await Promise.all([
     prisma.project.findMany({
       where,
       include: { productOwner: productOwnerSelect, members: memberSelect, ...environmentInclude },
@@ -71,6 +71,11 @@ export async function listProjects(options?: {
     }),
     prisma.module.groupBy({
       by: ["projectId"],
+      _count: { _all: true },
+    }),
+    prisma.testCase.groupBy({
+      by: ["projectId"],
+      where: { smokePosition: { not: null }, script: { isNot: null } },
       _count: { _all: true },
     }),
   ]);
@@ -91,6 +96,7 @@ export async function listProjects(options?: {
     // Flattened so the UI never sees the join row.
     members: members.map((member) => member.user),
     moduleCount: modulesByProject.get(project.id) ?? 0,
+    smokeCount: smokeCounts.find((row) => row.projectId === project.id)?._count._all ?? 0,
     stats: buildBreakdown(statsByProject.get(project.id) ?? {}),
   }));
 }

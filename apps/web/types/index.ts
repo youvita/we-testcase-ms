@@ -80,6 +80,8 @@ export type ProjectWithStats = Project & {
   /** The run environments it could default to. */
   runEnvironments: ProjectEnvironmentOption[];
   moduleCount: number;
+  /** Automated cases in its smoke test: what "Run smoke test" would run. */
+  smokeCount: number;
   stats: import("@wetestcase/dto").StatusBreakdown;
 };
 

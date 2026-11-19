@@ -171,6 +171,7 @@ export function RunDetail({
                 {run.skipped > 0 && <span className="text-muted-foreground"> · {run.skipped} skipped</span>}
               </span>
               <span className="text-muted-foreground">
+                {run.smoke && "Smoke test · "}
                 {run.environmentName} · by {run.createdBy.name} · {formatDateTime(run.createdAt)}
                 {!run.recordResults && " · results not recorded"}
                 {run.setupTcId &&

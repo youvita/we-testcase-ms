@@ -754,6 +754,24 @@ export const testRunCreateSchema = z
 
 export type TestRunCreateInput = z.input<typeof testRunCreateSchema>;
 
+/** A project's smoke test: its automated cases in run order, and who signs in. */
+export const smokeTestSchema = z.object({
+  testCaseIds: z
+    .array(z.string().min(1))
+    .max(200, "A smoke test runs up to 200 cases")
+    .refine((ids) => new Set(ids).size === ids.length, "A case is in the list twice"),
+  signInTestCaseId: z.string().nullish().transform((v) => v || null),
+});
+
+export type SmokeTestInput = z.input<typeof smokeTestSchema>;
+
+/** Run the smoke test; without an environment, against the project's default. */
+export const smokeTestRunSchema = z.object({
+  environmentId: z.string().min(1).optional(),
+  /** Run even though no case signs in: QA was warned and chose to. */
+  withoutSignIn: z.boolean().default(false),
+});
+
 export const scriptWritingSchema = z.object({
   environmentId: z.string().min(1, "Select an environment"),
   /** Where a Web script starts, relative to the Web base URL. */

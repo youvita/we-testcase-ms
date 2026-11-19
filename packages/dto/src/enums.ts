@@ -235,6 +235,14 @@ export function isAutomatablePlatform(platform: Platform): boolean {
   return (AUTOMATABLE_PLATFORMS as readonly string[]).includes(platform);
 }
 
+/** Titles that read like a sign-in, in the languages these projects use. */
+const SIGN_IN_TITLE = /log\s?-?in|sign\s?-?in|đăng nhập|ចូល|로그인/i;
+
+/** Whether a case's title says it signs in — "Login succeeds with a valid account". */
+export function looksLikeSignIn(title: string): boolean {
+  return SIGN_IN_TITLE.test(title);
+}
+
 /**
  * How fast to drive the browser when someone is watching: none, then a pause
  * between actions long enough to follow.

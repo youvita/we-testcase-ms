@@ -8,6 +8,7 @@ import { Breadcrumbs } from "@/components/layout/breadcrumbs";
 import { PageHeader } from "@/components/shared/page-header";
 import { StatCard } from "@/components/shared/stat-card";
 import { AutomationWorkspace } from "@/features/automation/components/automation-workspace";
+import { SmokeTestCard } from "@/features/automation/components/smoke-test-card";
 import { canManageTestCases, isAdmin } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
 import { requireProjectAccess } from "@/lib/project-access";
@@ -15,6 +16,7 @@ import { isAutomationConfigured } from "@/lib/runner-auth";
 import { requireUser } from "@/lib/session";
 import { AUTOMATABLE_PLATFORMS } from "@wetestcase/dto";
 import { listSignInCases } from "@/services/automation-script.service";
+import { getSmokeTest } from "@/services/smoke-test.service";
 import { listModules } from "@/services/module.service";
 import { listSubModules } from "@/services/test-case.service";
 import { getProject } from "@/services/project.service";
@@ -36,7 +38,7 @@ export default async function AutomationPage({
   const project = await getProject(projectId).catch(() => null);
   if (!project) notFound();
 
-  const [runs, lastFinished, environments, modules, subModules, automatedCount, automatableCount, signInCases] = await Promise.all([
+  const [runs, lastFinished, environments, modules, subModules, automatedCount, automatableCount, signInCases, smokeTest, automatedCases] = await Promise.all([
     // The first page; the table fetches the others itself.
     listTestRunsPage(projectId, { page: 1, pageSize: DEFAULT_PAGE_SIZE }),
     // From all runs, not this page: page 3 must not change the "last run" cards.
@@ -50,7 +52,15 @@ export default async function AutomationPage({
     prisma.testCase.count({
       where: { projectId, platform: { in: [...AUTOMATABLE_PLATFORMS] } },
     }),
-    listSignInCases(projectId),
+    // Keeps the smoke test's sign-in case on the list whatever its title.
+    listSignInCases(projectId, project.smokeSignInTestCaseId),
+    getSmokeTest(projectId),
+    // What can be added to the smoke test.
+    prisma.testCase.findMany({
+      where: { projectId, script: { isNot: null }, platform: { in: [...AUTOMATABLE_PLATFORMS] } },
+      orderBy: [{ module: { position: "asc" } }, { tcId: "asc" }],
+      select: { id: true, tcId: true, title: true, platform: true, module: { select: { name: true } } },
+    }),
   ]);
 
 
@@ -104,6 +114,18 @@ export default async function AutomationPage({
           />
         </Link>
       </div>
+
+      {/* Viewers see it once QA has set one up. */}
+      {(canManageTestCases(user.role) || smokeTest.cases.length > 0) && (
+        <SmokeTestCard
+          projectId={projectId}
+          smokeTest={smokeTest}
+          automatedCases={automatedCases.map(({ module, ...c }) => ({ ...c, module: module.name, hasScript: true }))}
+          signInCases={signInCases}
+          canManage={canManageTestCases(user.role)}
+          environments={environments}
+        />
+      )}
 
       <AutomationWorkspace
         projectId={projectId}

@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { badRequest, notFound } from "@/lib/api";
 import { PLATFORM_LABELS } from "@/lib/constants";
-import { isAutomatablePlatform } from "@wetestcase/dto";
+import { isAutomatablePlatform, looksLikeSignIn } from "@wetestcase/dto";
 
 /**
  * The Playwright script behind a test case. One per case; the run keeps its
@@ -98,22 +98,20 @@ export async function deleteAutomationScript(testCaseId: string) {
   await prisma.automationScript.deleteMany({ where: { testCaseId } });
 }
 
-/** Titles that look like a sign-in, in the languages these projects use. */
-const SIGN_IN_TITLE = /log\s?-?in|sign\s?-?in|đăng nhập|ចូល|로그인/i;
-
 /**
- * Automated Web cases — any of them can sign in before others run or
- * explore. Ones whose title reads like a login come first: they are what
- * "sign in first" almost always wants.
+ * The automated Web cases offered to sign in before others run or explore:
+ * the ones whose title reads like a login. A project that names its login
+ * case otherwise has none of those, and is offered every automated Web case.
+ *
+ * `keep` stays on the list whatever its title — a sign-in case already
+ * chosen, so the picker still shows it.
  */
-export async function listSignInCases(projectId: string) {
+export async function listSignInCases(projectId: string, keep?: string | null) {
   const cases = await prisma.testCase.findMany({
     where: { projectId, platform: "WEB", script: { isNot: null } },
     orderBy: { tcId: "asc" },
     select: { id: true, tcId: true, title: true },
   });
-  return [
-    ...cases.filter((c) => SIGN_IN_TITLE.test(c.title)),
-    ...cases.filter((c) => !SIGN_IN_TITLE.test(c.title)),
-  ];
+  if (!cases.some((c) => looksLikeSignIn(c.title))) return cases;
+  return cases.filter((c) => looksLikeSignIn(c.title) || c.id === keep);
 }

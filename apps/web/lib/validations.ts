@@ -51,6 +51,8 @@ export {
   runEnvironmentSchema,
   automationScriptSchema,
   testRunCreateSchema,
+  smokeTestSchema,
+  smokeTestRunSchema,
   testRunDeleteSchema,
   verifyReminderSchema,
   scriptWritingSchema,

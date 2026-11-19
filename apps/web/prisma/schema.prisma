@@ -188,19 +188,19 @@ enum RunItemStatus {
 // ---------------------------------------------------------------------------
 
 model User {
-  id            String   @id
+  id            String  @id
   name          String
-  email         String   @unique
-  emailVerified Boolean  @default(false)
+  email         String  @unique
+  emailVerified Boolean @default(false)
   image         String?
 
   /// A second way to sign in, beside the email (Better Auth's username
   /// plugin). Stored lowercase, so it is unique regardless of case;
   /// `displayUsername` keeps it as the person typed it.
-  username        String? @unique
+  username        String?  @unique
   displayUsername String?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
   /// One of ADMIN | QA | DEVELOPER. Kept as a String rather than a Prisma enum
   /// because the Better Auth adapter writes this column through its generic
@@ -353,6 +353,10 @@ model Project {
   defaultEnvironmentId String?
   defaultEnvironment   RunEnvironment? @relation("ProjectDefaultEnvironment", fields: [defaultEnvironmentId], references: [id], onDelete: SetNull)
 
+  /// The Web case whose script signs in once for a smoke test run.
+  smokeSignInTestCaseId String?
+  smokeSignIn           TestCase? @relation("ProjectSmokeSignIn", fields: [smokeSignInTestCaseId], references: [id], onDelete: SetNull)
+
   poQuestions PoQuestion[]
 
   @@index([status])
@@ -455,7 +459,13 @@ model TestCase {
   script          AutomationScript?
   runItems        TestRunItem[]
 
+  /// Its place in the project's smoke test, from 0; null when not in it.
+  /// A smoke test runs these one at a time, in this order.
+  smokePosition Int?
+  smokeSignInOf Project[] @relation("ProjectSmokeSignIn")
+
   @@unique([projectId, tcId])
+  @@index([projectId, smokePosition])
   @@index([moduleId, subModule])
   @@index([projectId, status])
   @@index([projectId, testType])
@@ -967,6 +977,8 @@ model TestRun {
 
   /// Write results to the test cases as executions, as a manual run would.
   recordResults Boolean @default(true)
+  /// Started as the project's smoke test.
+  smoke         Boolean @default(false)
 
   /// One case at a time, in list order — for cases that depend on each
   /// other's data. Otherwise they run side by side.

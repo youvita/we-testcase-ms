@@ -287,6 +287,11 @@ export function AutomationWorkspace({
                     >
                       <span className="font-mono">#{run.code ?? run.number}</span>
                     </Link>
+                    {run.smoke && (
+                      <span className="ml-2 rounded-full border border-status-blocked/30 bg-status-blocked/10 px-1.5 py-0.5 text-xs text-status-blocked">
+                        Smoke
+                      </span>
+                    )}
                   </TableCell>
                   <TableCell>
                     <RunStatusBadge status={run.status} />
