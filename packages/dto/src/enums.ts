@@ -236,7 +236,9 @@ export function isAutomatablePlatform(platform: Platform): boolean {
 }
 
 /** Titles that read like a sign-in, in the languages these projects use. */
-const SIGN_IN_TITLE = /log\s?-?in|sign\s?-?in|đăng nhập|ចូល|로그인/i;
+// "Login", "log in", "logs in", "logging in", "sign-in", "signs in"… as
+// whole words, so "design in" or "blogging" do not count.
+const SIGN_IN_TITLE = /\b(log|sign)(s|ging|ged|ing|ed)?[\s-]?in\b|đăng nhập|ចូល|로그인/i;
 
 /** Whether a case's title says it signs in — "Login succeeds with a valid account". */
 export function looksLikeSignIn(title: string): boolean {

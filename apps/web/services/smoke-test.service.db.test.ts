@@ -91,6 +91,15 @@ describe("runSmokeTest", () => {
     expect(await runSmokeTest(project.id, owner.id)).toMatchObject({ setupTcId: "TC-LOGIN", signInOnce: true });
   });
 
+  it("runs a list that is only a login case without asking", async () => {
+    const { project, module, owner } = await setUp();
+    const login = await createTestCase(project.id, module.id, "TC-LOGIN-01", "User logs in with a valid ID and password");
+    await prisma.automationScript.create({ data: { testCaseId: login.id, code: "// login", updatedById: owner.id } });
+    await saveSmokeTest(project.id, { testCaseIds: [login.id], signInTestCaseId: null });
+
+    expect(await runSmokeTest(project.id, owner.id)).toMatchObject({ total: 1, setupTcId: "TC-LOGIN-01" });
+  });
+
   it("warns, rather than runs, when nothing signs in, until told to run anyway", async () => {
     const { project, owner, a, b } = await setUp();
     await saveSmokeTest(project.id, { testCaseIds: [a.id, b.id], signInTestCaseId: null });
