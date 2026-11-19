@@ -43,15 +43,33 @@ const OUTLINE_CHARS = 20_000;
  * and attach its outline and screenshot under the names the runner uploads.
  * `test` is the spec's own, so `test.info()` reaches this test's attachments.
  */
-function explorationScript(paths: string[], setupCode: string | null) {
+export function explorationScript(paths: string[], setupCode: string | null) {
   const visits = paths.map((p) => `await visit(${JSON.stringify(p)});`).join("\n");
   return `${setupCode ? `// Sign in first, with the chosen case's own script\n${setupCode}\n\n` : ""}// Look at each page: its outline (fields, buttons, text) and a screenshot
 const visit = async (path) => {
   await page.goto(path);
   await page.waitForLoadState("networkidle", { timeout: 10000 }).catch(() => {});
-  const outline = await page.locator("body").ariaSnapshot({ timeout: 10000 });
+  // Let the page settle: loading placeholders give way to its data. Read it
+  // each second until it has not changed for two seconds and no longer says
+  // it is loading — for up to about ten seconds.
+  const read = () => page.locator("body").ariaSnapshot({ timeout: 10000 });
+  const loading = (text) => /\\bloading\\b|please wait/i.test(text);
+  let outline = await read();
+  let unchanged = 0;
+  for (let i = 0; i < 10 && (unchanged < 2 || loading(outline)); i += 1) {
+    await page.waitForTimeout(1000);
+    const again = await read();
+    unchanged = again === outline ? unchanged + 1 : 0;
+    outline = again;
+  }
+  // Sent somewhere else — a sign-in page, most often: say so.
+  // Paths join onto the Web base URL as the runner joins them.
+  const trim = (pathname) => pathname.replace(/\\/+$/, "") || "/";
+  const asked = trim(new URL(join(env.webUrl, path), page.url()).pathname);
+  const landed = trim(new URL(page.url()).pathname);
+  const moved = asked !== landed ? "Asked for " + asked + ", but the browser ended on " + landed + ".\\n" : "";
   await test.info().attach("page-snapshot", {
-    body: "URL: " + page.url() + "\\nTitle: " + (await page.title()) + "\\n\\n" + outline.slice(0, 60000),
+    body: "URL: " + page.url() + "\\nTitle: " + (await page.title()) + "\\n\\n" + moved + outline.slice(0, 60000),
     contentType: "text/plain",
   });
   await test.info().attach("screenshot", { body: await page.screenshot(), contentType: "image/png" });
@@ -70,6 +88,8 @@ Suggest the test cases a careful tester would write for what is on these pages:
 
 Rules:
 - Base every case on something actually visible. Never invent features the pages do not show.
+- The list of existing cases is there only so you do not repeat them. Never take features, fields, API details or ideas from it.
+- If a page shows only loading placeholders, a sign-in form instead of the page asked for, an error, or almost nothing, suggest no cases for it. Say what you saw in observations instead — e.g. "/qr-collections showed only loading placeholders; sign in first or let it load".
 - When an expected result depends on behaviour you cannot see (an exact error message, a rule), describe what to check, and put what the PO has to settle in openQuestions — one per line starting "- ". Never write "(confirm with PO)" in the other fields.
 - Do not repeat cases the project already has.
 - Use test accounts through variable names, never real data.
@@ -193,8 +213,10 @@ defineJob("EXPLORE_APP", async (job) => {
     // 2. Ask Claude what to test.
     const [modules, current, pending] = await Promise.all([
       moduleOutline(projectId),
+      // Web cases only: exploring suggests Web tests, and an API case's
+      // details are not something these pages show.
       prisma.testCase.findMany({
-        where: { projectId },
+        where: { projectId, platform: "WEB" },
         orderBy: { tcId: "asc" },
         take: 300,
         select: { title: true, subModule: true, module: { select: { name: true } } },
@@ -202,7 +224,7 @@ defineJob("EXPLORE_APP", async (job) => {
       // Suggestions still waiting for review count too — exploring the same
       // page twice before reviewing must not suggest everything again.
       prisma.testCaseDraft.findMany({
-        where: { projectId, status: "PENDING" },
+        where: { projectId, status: "PENDING", platform: "WEB" },
         take: 200,
         select: { title: true, moduleName: true, subModule: true },
       }),
