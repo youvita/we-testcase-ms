@@ -110,7 +110,7 @@ export async function listSignInCases(projectId: string, keep?: string | null) {
   const cases = await prisma.testCase.findMany({
     where: { projectId, platform: "WEB", script: { isNot: null } },
     orderBy: { tcId: "asc" },
-    select: { id: true, tcId: true, title: true },
+    select: { id: true, tcId: true, title: true, site: true },
   });
   if (!cases.some((c) => looksLikeSignIn(c.title))) return cases;
   return cases.filter((c) => looksLikeSignIn(c.title) || c.id === keep);

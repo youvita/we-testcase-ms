@@ -1,4 +1,4 @@
-import type { Platform, Priority, ProjectStatus, TestType } from "@prisma/client";
+import type { Platform, Priority, ProjectStatus, TestType, WebSite } from "@prisma/client";
 
 import {
   PLATFORM_LABELS,
@@ -6,6 +6,7 @@ import {
   PROJECT_STATUS_LABELS,
   ROLE_LABELS,
   TEST_TYPE_LABELS,
+  WEB_SITE_LABELS,
   type Role,
 } from "@/lib/constants";
 import { cn } from "@/lib/utils";
@@ -91,9 +92,12 @@ const PLATFORM_STYLES: Record<Platform, string> = {
 
 export function PlatformBadge({
   platform,
+  site,
   className,
 }: {
   platform: Platform;
+  /** A Web case on the Admin site reads "Web · Admin". */
+  site?: WebSite;
   className?: string;
 }) {
   return (
@@ -105,6 +109,7 @@ export function PlatformBadge({
       )}
     >
       {PLATFORM_LABELS[platform]}
+      {platform === "WEB" && site === "ADMIN" && ` · ${WEB_SITE_LABELS.ADMIN}`}
     </span>
   );
 }

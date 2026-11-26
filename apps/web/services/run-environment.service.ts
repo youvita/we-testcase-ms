@@ -40,6 +40,7 @@ function toDto(
     name: string;
     webBaseUrl: string | null;
     apiBaseUrl: string | null;
+    adminBaseUrl: string | null;
     startPath: string | null;
     variablesSealed: string | null;
   },
@@ -51,6 +52,7 @@ function toDto(
     name: row.name,
     webBaseUrl: row.webBaseUrl,
     apiBaseUrl: row.apiBaseUrl,
+    adminBaseUrl: row.adminBaseUrl,
     startPath: row.startPath,
     variables: readVariables(row.variablesSealed).map(
       (v): RunVariableDto => ({
@@ -144,6 +146,7 @@ type ParsedInput = {
   name: string;
   webBaseUrl?: string;
   apiBaseUrl?: string;
+  adminBaseUrl?: string;
   startPath?: string;
   variables: RunEnvironmentInput["variables"];
 };
@@ -166,6 +169,7 @@ export async function addEnvironmentsToNewProject(
         name: input.name,
         webBaseUrl: input.webBaseUrl ?? null,
         apiBaseUrl: input.apiBaseUrl ?? null,
+        adminBaseUrl: input.adminBaseUrl ?? null,
         startPath: input.startPath ?? null,
         variablesSealed: variables.length ? seal(JSON.stringify(variables)) : null,
       },
@@ -187,6 +191,7 @@ export async function createRunEnvironment(projectId: string, input: ParsedInput
         name: input.name,
         webBaseUrl: input.webBaseUrl ?? null,
         apiBaseUrl: input.apiBaseUrl ?? null,
+        adminBaseUrl: input.adminBaseUrl ?? null,
         startPath: input.startPath ?? null,
         variablesSealed: variables.length ? seal(JSON.stringify(variables)) : null,
       },
@@ -217,6 +222,7 @@ export async function updateRunEnvironment(environmentId: string, input: ParsedI
       name: input.name,
       webBaseUrl: input.webBaseUrl ?? null,
       apiBaseUrl: input.apiBaseUrl ?? null,
+      adminBaseUrl: input.adminBaseUrl ?? null,
       startPath: input.startPath ?? null,
       variablesSealed: variables.length ? seal(JSON.stringify(variables)) : null,
     },
@@ -257,6 +263,7 @@ export async function duplicateRunEnvironment(environmentId: string) {
       name,
       webBaseUrl: source.webBaseUrl,
       apiBaseUrl: source.apiBaseUrl,
+      adminBaseUrl: source.adminBaseUrl,
       startPath: source.startPath,
       variablesSealed: source.variablesSealed,
     },
@@ -295,6 +302,7 @@ export async function getEnvironmentOutline(environmentId: string, projectId: st
     name: row.name,
     webBaseUrl: row.webBaseUrl,
     apiBaseUrl: row.apiBaseUrl,
+    adminBaseUrl: row.adminBaseUrl,
     startPath: row.startPath ?? "/",
     variables: readVariables(row.variablesSealed).map((v) => ({
       key: v.key,
@@ -316,6 +324,7 @@ export async function resolveEnvironmentForRunner(environmentId: string | null) 
     name: row.name,
     webBaseUrl: row.webBaseUrl,
     apiBaseUrl: row.apiBaseUrl,
+    adminBaseUrl: row.adminBaseUrl,
     vars: Object.fromEntries(variables.map((v) => [v.key, v.value])),
     secretKeys: variables.filter((v) => v.secret).map((v) => v.key),
   };

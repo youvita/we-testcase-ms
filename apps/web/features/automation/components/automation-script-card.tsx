@@ -28,7 +28,7 @@ import {
   setScriptCardShown,
   useScriptCardShown,
 } from "@/features/automation/script-card-visibility";
-import type { AiJobDto, Platform, RunEnvironmentDto, RunItemStatus } from "@wetestcase/dto";
+import type { AiJobDto, Platform, RunEnvironmentDto, RunItemStatus, WebSite } from "@wetestcase/dto";
 import { ApiError, api, errorMessage } from "@/utils/api-client";
 import { formatRelative } from "@/utils/format";
 
@@ -98,6 +98,7 @@ export function AutomationScriptCard({
   projectId,
   testCaseId,
   platform,
+  site = "WEB",
   script,
   environments,
   lastResult,
@@ -109,6 +110,8 @@ export function AutomationScriptCard({
   projectId: string;
   testCaseId: string;
   platform: Platform;
+  /** Web cases: the site its pages open on. */
+  site?: WebSite;
   script: ScriptState;
   environments: RunEnvironmentDto[];
   lastResult: LastAutomatedResult;
@@ -519,6 +522,7 @@ export function AutomationScriptCard({
         projectId={projectId}
         testCaseId={testCaseId}
         platform={platform}
+        site={site}
         environments={environments}
         open={writeOpen}
         onOpenChange={setWriteOpen}

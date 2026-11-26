@@ -19,6 +19,9 @@ import { apiSpecSection } from "@/utils/openapi-markdown";
 import {
   AUTOMATABLE_PLATFORMS,
   RUN_SPEEDS,
+  baseUrlKind,
+  environmentBaseUrl,
+  type WebSite,
   TRIAGE_CATEGORIES,
   isAutomatablePlatform,
   type AiJobDto,
@@ -69,21 +72,26 @@ type CaseForPrompt = {
   steps: string | null;
   expectedResult: string | null;
   platform: Platform;
+  site: WebSite;
   module: { name: string };
 };
 
 type EnvironmentOutline = Awaited<ReturnType<typeof getEnvironmentOutline>>;
 
-function fixturesFor(platform: Platform) {
-  return platform === "API"
+function fixturesFor(testCase: { platform: Platform; site: WebSite }) {
+  return testCase.platform === "API"
     ? "`request` (HTTP client on the API base URL — no browser is started)"
-    : "`page`, `context`, `browser` (Chromium on the Web base URL) and `request` (HTTP client on the API base URL, for setting up data)";
+    : `\`page\`, \`context\`, \`browser\` (Chromium on the ${baseUrlKind(testCase)} base URL) and \`request\` (HTTP client on the API base URL, for setting up data)`;
 }
 
 function describeCase(testCase: CaseForPrompt) {
   return [
     `Test case ${testCase.tcId}: ${testCase.title}`,
-    `Module: ${testCase.module.name} · Platform: ${PLATFORM_LABELS[testCase.platform]}`,
+    `Module: ${testCase.module.name} · Platform: ${PLATFORM_LABELS[testCase.platform]}${
+      testCase.platform === "WEB" && testCase.site === "ADMIN"
+        ? " · Site: Admin (page.goto paths open on the Admin base URL)"
+        : ""
+    }`,
     testCase.preconditions && `Preconditions:\n${testCase.preconditions}`,
     `Steps:\n${testCase.steps || "(none written — work from the title and expected result)"}`,
     `Expected result:\n${testCase.expectedResult || "(none written — infer the obvious check from the title)"}`,
@@ -107,6 +115,7 @@ function describeEnvironment(env: EnvironmentOutline) {
     : "(none — if the test needs an account, use a vars.NAME you suggest and say so in notes)";
   return `Environment "${env.name}"
 Web base URL: ${env.webBaseUrl ?? "(none)"}
+Admin base URL: ${env.adminBaseUrl ?? "(none)"}
 API base URL: ${env.apiBaseUrl ?? "(none)"}
 Variables available (values are hidden from you):
 ${vars}`;
@@ -169,7 +178,7 @@ function firstDraftPrompt(options: {
 
 ${describeEnvironment(options.env)}
 
-In scope: ${fixturesFor(options.testCase.platform)}, plus expect, vars, env (env.name, env.webUrl, env.apiUrl)${isApi ? "" : " and capture(label)"}.
+In scope: ${fixturesFor(options.testCase)}, plus expect, vars, env (env.name, env.webUrl, env.adminUrl, env.apiUrl)${isApi ? "" : " and capture(label)"}.
 ${options.instructions ? `\nInstructions from QA: ${options.instructions}\n` : ""}
 ${
   isApi
@@ -200,7 +209,7 @@ function repairPrompt(options: {
 
 ${describeEnvironment(options.env)}
 
-In scope: ${fixturesFor(options.testCase.platform)}, plus expect, vars, env${options.testCase.platform === "API" ? "" : " and capture(label)"}.
+In scope: ${fixturesFor(options.testCase)}, plus expect, vars, env${options.testCase.platform === "API" ? "" : " and capture(label)"}.
 ${options.instructions ? `\nInstructions from QA: ${options.instructions}\n` : ""}${
     options.hint
       ? `
@@ -399,6 +408,7 @@ async function loadScriptWriting(testCaseId: string, input: ScriptWritingInput) 
       steps: true,
       expectedResult: true,
       platform: true,
+      site: true,
       moduleId: true,
       module: { select: { name: true } },
     },
@@ -412,10 +422,11 @@ async function loadScriptWriting(testCaseId: string, input: ScriptWritingInput) 
   }
 
   const env = await getEnvironmentOutline(input.environmentId, testCase.projectId);
-  const startPath = input.startPath ?? env.startPath;
-  const base = testCase.platform === "API" ? env.apiBaseUrl : env.webBaseUrl;
-  if (!base) {
-    throw badRequest(`${env.name} has no ${PLATFORM_LABELS[testCase.platform]} base URL. Add it in Environments.`);
+  const kind = baseUrlKind(testCase);
+  // The environment's start page is on its Web site; an Admin case starts at /.
+  const startPath = input.startPath ?? (kind === "Admin" ? "/" : env.startPath);
+  if (!environmentBaseUrl(env, kind)) {
+    throw badRequest(`${env.name} has no ${kind} base URL. Add it in Environments.`);
   }
 
   let earlier: ScriptWritingResult | null = null;
@@ -680,7 +691,7 @@ export async function startScriptWritingBatch(
   const cases = await prisma.testCase.findMany({
     where: { projectId, id: { in: input.testCaseIds } },
     orderBy: { tcId: "asc" },
-    select: { id: true, tcId: true, platform: true, script: { select: { testCaseId: true } } },
+    select: { id: true, tcId: true, platform: true, site: true, script: { select: { testCaseId: true } } },
   });
   const busy = new Set(
     (
@@ -701,10 +712,8 @@ export async function startScriptWritingBatch(
       skip("already has a script");
     } else if (busy.has(testCase.id)) {
       skip("The AI is already writing its script");
-    } else if (testCase.platform === "API" && !env.apiBaseUrl) {
-      skip(`${env.name} has no API base URL`);
-    } else if (testCase.platform === "WEB" && !env.webBaseUrl) {
-      skip(`${env.name} has no Web base URL`);
+    } else if (!environmentBaseUrl(env, baseUrlKind(testCase))) {
+      skip(`${env.name} has no ${baseUrlKind(testCase)} base URL`);
     } else {
       await startScriptWriting(testCase.id, user, {
         environmentId: input.environmentId,
@@ -865,6 +874,7 @@ async function loadTriageItem(itemId: string) {
           steps: true,
           expectedResult: true,
           platform: true,
+          site: true,
           module: { select: { name: true } },
         },
       },

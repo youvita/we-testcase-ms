@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Loader2 } from "lucide-react";
+import { Info, Loader2, Plus, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -21,12 +21,15 @@ import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectSeparator,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   PLATFORMS,
   PLATFORM_LABELS,
@@ -34,17 +37,25 @@ import {
   PRIORITY_LABELS,
   TEST_TYPES,
   TEST_TYPE_LABELS,
+  WEB_SITES,
+  WEB_SITE_LABELS,
 } from "@/lib/constants";
 import { testCaseSchema, type TestCaseInput } from "@/lib/validations";
 import { ApiError, api, errorMessage } from "@/utils/api-client";
 import type { Platform, SubModuleOption, TestCaseWithDetails } from "@/types";
 
-import { SubModuleField } from "./sub-module-field";
 
 export type ModuleOption = { id: string; name: string };
 
+const SITE_HELP =
+  "Which base URL its pages open on, in every environment: the Web base URL or the Admin base URL.";
+
 /** Sentinel select value that switches the Module field to "name a new one". */
 const NEW_MODULE = "__new-module__";
+
+/** One choice in the Module field: a module, or a sub-module inside it. */
+const SEP = "\u001f";
+const placeValue = (moduleId: string, subModule: string) => `${moduleId}${SEP}${subModule}`;
 
 /**
  * Create/edit a single test case.
@@ -67,7 +78,7 @@ export function TestCaseFormDialog({
 }: {
   projectId: string;
   modules: ModuleOption[];
-  /** Offered as suggestions for the Sub-module field. */
+  /** Listed under their modules in the Module field. */
   subModules?: SubModuleOption[];
   /** The project's platforms — the only ones offered. */
   platforms: Platform[];
@@ -85,6 +96,9 @@ export function TestCaseFormDialog({
   const [creatingModule, setCreatingModule] = useState(false);
   const [newModuleName, setNewModuleName] = useState("");
   const [savingModule, setSavingModule] = useState(false);
+  /** Naming a new sub-module; holds the place to go back to on Cancel. */
+  const [namingSub, setNamingSub] = useState<{ moduleId: string; subModule: string } | null>(null);
+  const [moduleListOpen, setModuleListOpen] = useState(false);
 
   const moduleOptions = [
     ...modules,
@@ -119,6 +133,7 @@ export function TestCaseFormDialog({
       testType: "FUNCTIONAL",
       priority: "MEDIUM",
       platform: platforms[0] ?? "WEB",
+      site: "WEB",
     },
   });
 
@@ -126,6 +141,7 @@ export function TestCaseFormDialog({
     if (!open) return;
 
     setNewModuleName("");
+    setNamingSub(null);
 
     if (!testCaseId) {
       const options = moduleOptionsRef.current;
@@ -140,6 +156,7 @@ export function TestCaseFormDialog({
         testType: "FUNCTIONAL",
         priority: "MEDIUM",
         platform: platformsRef.current[0] ?? "WEB",
+        site: "WEB",
       });
       // Nothing to pick from yet — go straight to naming the first module.
       setCreatingModule(options.length === 0);
@@ -169,6 +186,7 @@ export function TestCaseFormDialog({
           testType: testCase.testType,
           priority: testCase.priority,
           platform: testCase.platform,
+          site: testCase.site,
         });
       })
       .catch((error) => {
@@ -207,6 +225,7 @@ export function TestCaseFormDialog({
         shouldDirty: true,
         shouldValidate: true,
       });
+      setValue("subModule", "", { shouldDirty: true });
       setCreatingModule(false);
       setNewModuleName("");
       toast.success(`Module "${created.name}" created`);
@@ -247,9 +266,58 @@ export function TestCaseFormDialog({
   }
 
   const moduleId = watch("moduleId");
+  const subModule = watch("subModule");
+  const currentModule = moduleOptions.find((mod) => mod.id === moduleId);
+  /** Name a new sub-module in that module, from the "+" beside it. */
+  function startSubModule(id: string) {
+    setModuleListOpen(false);
+    setNamingSub({ moduleId: moduleId ?? "", subModule: subModule ?? "" });
+    setValue("moduleId", id, { shouldDirty: true, shouldValidate: true });
+    setValue("subModule", "", { shouldDirty: true });
+  }
+
+  /** Done naming it; left blank, the earlier choice comes back. */
+  function finishSubModule() {
+    if (namingSub && !subModule?.trim()) {
+      setValue("moduleId", namingSub.moduleId);
+      setValue("subModule", namingSub.subModule);
+    }
+    setNamingSub(null);
+  }
+
+  /** Back to what was chosen before the sub-module box opened. */
+  function cancelSubModule() {
+    if (namingSub) {
+      setValue("moduleId", namingSub.moduleId, { shouldDirty: true });
+      setValue("subModule", namingSub.subModule, { shouldDirty: true });
+    }
+    setNamingSub(null);
+  }
+
+  /** Back to the module list, without adding one. */
+  function cancelNewModule() {
+    setCreatingModule(false);
+    setNewModuleName("");
+  }
+
+  const moduleHelp = creatingModule
+    ? moduleOptions.length === 0
+      ? "This project has no modules yet. Type the first one's name, e.g. Login or Payment, and press Enter to add it."
+      : "Type the new module's name and press Enter to add it. × or Esc cancels."
+    : namingSub
+      ? `Type the new sub-module's name and press Enter to add it to ${currentModule?.name ?? "the module"}. × or Esc cancels.`
+      : "The module this case belongs to, or a sub-module inside it. Use + beside a module to add a sub-module.";
+
+  /** A module's sub-modules, with the one being typed for this case. */
+  const subModuleNames = (id: string) => {
+    const names = subModules.filter((sub) => sub.moduleId === id).map((sub) => sub.name);
+    const typed = subModule?.trim();
+    return id === moduleId && typed && !names.includes(typed) ? [...names, typed] : names;
+  };
   const testType = watch("testType");
   const priority = watch("priority");
   const platform = watch("platform");
+  const site = watch("site");
   // A case being edited keeps its own platform as an option even if the
   // project no longer lists it, so opening the form cannot silently change it.
   const platformOptions = PLATFORMS.filter(
@@ -258,7 +326,19 @@ export function TestCaseFormDialog({
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
+      <DialogContent
+        className="max-h-[90vh] overflow-y-auto sm:max-w-2xl"
+        onEscapeKeyDown={(event) => {
+          // Esc while naming a module or sub-module cancels that, not the whole form.
+          if (namingSub) {
+            event.preventDefault();
+            cancelSubModule();
+          } else if (creatingModule && moduleOptions.length > 0) {
+            event.preventDefault();
+            if (!savingModule) cancelNewModule();
+          }
+        }}
+      >
         <DialogHeader>
           <DialogTitle>
             {isEdit ? "Edit test case" : "New test case"}
@@ -286,7 +366,7 @@ export function TestCaseFormDialog({
           >
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
-                <Label htmlFor="tcId">
+                <Label className="block h-5 leading-5" htmlFor="tcId">
                   TC ID <span className="text-destructive">*</span>
                 </Label>
                 <Input
@@ -304,69 +384,112 @@ export function TestCaseFormDialog({
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor={creatingModule ? "newModuleName" : "moduleId"}>
-                  Module <span className="text-destructive">*</span>
-                </Label>
+                <div className="flex h-5 items-center gap-1.5">
+                  <Label
+                    htmlFor={creatingModule ? "newModuleName" : namingSub ? "newSubModule" : "moduleId"}
+                  >
+                    Module <span className="text-destructive">*</span>
+                  </Label>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        type="button"
+                        className="text-muted-foreground hover:text-foreground"
+                        aria-label={moduleHelp}
+                      >
+                        <Info className="size-3.5" />
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent className="max-w-64">{moduleHelp}</TooltipContent>
+                  </Tooltip>
+                </div>
 
                 {creatingModule ? (
-                  <>
-                    <div className="flex items-center gap-2">
-                      <Input
-                        id="newModuleName"
-                        placeholder="Login"
-                        value={newModuleName}
-                        onChange={(event) => setNewModuleName(event.target.value)}
-                        onKeyDown={(event) => {
-                          // Enter would otherwise submit the test case form.
-                          if (event.key === "Enter") {
-                            event.preventDefault();
-                            void handleCreateModule();
-                          }
-                        }}
-                        disabled={savingModule}
-                      />
-                      <Button
-                        type="button"
-                        variant="secondary"
-                        onClick={() => void handleCreateModule()}
-                        disabled={savingModule}
-                      >
-                        {savingModule ? (
-                          <Loader2 className="size-4 animate-spin" />
-                        ) : (
-                          "Add"
-                        )}
-                      </Button>
-                      {moduleOptions.length > 0 && (
-                        <Button
+                  <div className="relative">
+                    <Input
+                      id="newModuleName"
+                      placeholder={
+                        moduleOptions.length === 0 ? "Name the first module, e.g. Login" : "New module, e.g. Login"
+                      }
+                      maxLength={120}
+                      autoComplete="off"
+                      // Opened from the list: straight to typing. A project with no
+                      // modules starts here, and the TC ID keeps the focus.
+                      autoFocus={moduleOptions.length > 0}
+                      className="pr-9"
+                      value={newModuleName}
+                      // Read-only rather than disabled while saving, so it keeps the focus.
+                      readOnly={savingModule}
+                      onChange={(event) => setNewModuleName(event.target.value)}
+                      onKeyDown={(event) => {
+                        // Enter adds it, rather than submitting the form.
+                        if (event.key === "Enter") {
+                          event.preventDefault();
+                          if (!savingModule) void handleCreateModule();
+                        }
+                      }}
+                    />
+                    {savingModule ? (
+                      <Loader2 className="absolute right-3 top-1/2 size-4 -translate-y-1/2 animate-spin text-muted-foreground" />
+                    ) : (
+                      moduleOptions.length > 0 && (
+                        <button
                           type="button"
-                          variant="ghost"
-                          onClick={() => {
-                            setCreatingModule(false);
-                            setNewModuleName("");
-                          }}
-                          disabled={savingModule}
+                          aria-label="Cancel the new module"
+                          title="Cancel"
+                          className="absolute right-2 top-1/2 grid size-6 -translate-y-1/2 place-items-center rounded-sm text-muted-foreground hover:bg-accent hover:text-foreground"
+                          onClick={cancelNewModule}
                         >
-                          Cancel
-                        </Button>
-                      )}
-                    </div>
-                    {moduleOptions.length === 0 && (
-                      <p className="text-xs text-muted-foreground">
-                        This project has no modules yet — name the first one, e.g.
-                        Login or Payment.
-                      </p>
+                          <X className="size-4" />
+                        </button>
+                      )
                     )}
-                  </>
+                  </div>
+                ) : namingSub !== null ? (
+                  <div className="relative">
+                    <Input
+                      id="newSubModule"
+                      placeholder={`New sub-module in ${currentModule?.name ?? "this module"}`}
+                      maxLength={120}
+                      autoComplete="off"
+                      autoFocus
+                      className="pr-9"
+                      value={subModule ?? ""}
+                      aria-invalid={Boolean(errors.subModule)}
+                      onChange={(event) =>
+                        setValue("subModule", event.target.value, { shouldDirty: true })
+                      }
+                      onKeyDown={(event) => {
+                        // Enter adds it, rather than submitting the form.
+                        if (event.key === "Enter") {
+                          event.preventDefault();
+                          finishSubModule();
+                        }
+                      }}
+                    />
+                    <button
+                      type="button"
+                      aria-label="Cancel the new sub-module"
+                      title="Cancel"
+                      className="absolute right-2 top-1/2 grid size-6 -translate-y-1/2 place-items-center rounded-sm text-muted-foreground hover:bg-accent hover:text-foreground"
+                      onClick={cancelSubModule}
+                    >
+                      <X className="size-4" />
+                    </button>
+                  </div>
                 ) : (
                   <Select
-                    value={moduleId ?? ""}
+                    open={moduleListOpen}
+                    onOpenChange={setModuleListOpen}
+                    value={moduleId ? placeValue(moduleId, subModule?.trim() ?? "") : ""}
                     onValueChange={(value) => {
                       if (value === NEW_MODULE) {
                         setCreatingModule(true);
                         return;
                       }
-                      setValue("moduleId", value, { shouldDirty: true });
+                      const [nextModule = "", nextSub = ""] = value.split(SEP);
+                      setValue("moduleId", nextModule, { shouldDirty: true, shouldValidate: true });
+                      setValue("subModule", nextSub, { shouldDirty: true });
                     }}
                   >
                     <SelectTrigger id="moduleId">
@@ -374,10 +497,31 @@ export function TestCaseFormDialog({
                     </SelectTrigger>
                     <SelectContent>
                       {moduleOptions.map((mod) => (
-                        <SelectItem key={mod.id} value={mod.id}>
-                          {mod.name}
-                        </SelectItem>
+                        <SelectGroup key={mod.id}>
+                          <div className="flex items-center gap-1">
+                            <SelectItem value={placeValue(mod.id, "")} className="flex-1 font-medium">
+                              {mod.name}
+                            </SelectItem>
+                            {/* Beside the item, not in it: an item's text is copied into the field. */}
+                            <button
+                              type="button"
+                              aria-label={`Add a sub-module to ${mod.name}`}
+                              title={`Add a sub-module to ${mod.name}`}
+                              className="mr-1 grid size-7 shrink-0 place-items-center rounded-sm text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                              onClick={() => startSubModule(mod.id)}
+                            >
+                              <Plus className="size-4" />
+                            </button>
+                          </div>
+                          {subModuleNames(mod.id).map((name) => (
+                            <SelectItem key={name} value={placeValue(mod.id, name)} className="pl-6">
+                              <span className="text-muted-foreground">{mod.name} › </span>
+                              {name}
+                            </SelectItem>
+                          ))}
+                        </SelectGroup>
                       ))}
+                      <SelectSeparator />
                       <SelectItem value={NEW_MODULE} className="text-primary">
                         + New module…
                       </SelectItem>
@@ -385,36 +529,15 @@ export function TestCaseFormDialog({
                   </Select>
                 )}
 
-                {errors.moduleId && (
+                {(errors.moduleId || errors.subModule) && (
                   <p className="text-xs text-destructive">
-                    {errors.moduleId.message}
+                    {errors.moduleId?.message ?? errors.subModule?.message}
                   </p>
                 )}
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="subModule">Sub-module</Label>
-                <SubModuleField
-                  // Remounts per module, so a new module starts from its own list.
-                  key={moduleId}
-                  id="subModule"
-                  names={subModules.filter((sub) => sub.moduleId === moduleId).map((sub) => sub.name)}
-                  value={watch("subModule") ?? ""}
-                  onChange={(name) => setValue("subModule", name, { shouldDirty: true })}
-                  allowNone
-                  invalid={Boolean(errors.subModule)}
-                />
-                {errors.subModule ? (
-                  <p className="text-xs text-destructive">{errors.subModule.message}</p>
-                ) : (
-                  <p className="text-xs text-muted-foreground">
-                    Optional — groups cases inside the module.
-                  </p>
-                )}
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="testType">Test type</Label>
+                <Label className="block h-5 leading-5" htmlFor="testType">Test type</Label>
                 <Select
                   value={testType ?? "FUNCTIONAL"}
                   onValueChange={(value) =>
@@ -437,7 +560,7 @@ export function TestCaseFormDialog({
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="priority">Priority</Label>
+                <Label className="block h-5 leading-5" htmlFor="priority">Priority</Label>
                 <Select
                   value={priority ?? "MEDIUM"}
                   onValueChange={(value) =>
@@ -460,7 +583,7 @@ export function TestCaseFormDialog({
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="platform">Platform</Label>
+                <Label className="block h-5 leading-5" htmlFor="platform">Platform</Label>
                 <Select
                   value={platform ?? platforms[0] ?? "WEB"}
                   onValueChange={(value) =>
@@ -481,6 +604,45 @@ export function TestCaseFormDialog({
                   </SelectContent>
                 </Select>
               </div>
+
+              {(platform ?? platforms[0]) === "WEB" && (
+                <div className="space-y-2">
+                  <div className="flex h-5 items-center gap-1.5">
+                    <Label htmlFor="site">Site</Label>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <button
+                          type="button"
+                          className="text-muted-foreground hover:text-foreground"
+                          aria-label={SITE_HELP}
+                        >
+                          <Info className="size-3.5" />
+                        </button>
+                      </TooltipTrigger>
+                      <TooltipContent className="max-w-64">{SITE_HELP}</TooltipContent>
+                    </Tooltip>
+                  </div>
+                  <Select
+                    value={site ?? "WEB"}
+                    onValueChange={(value) =>
+                      setValue("site", value as TestCaseInput["site"], {
+                        shouldDirty: true,
+                      })
+                    }
+                  >
+                    <SelectTrigger id="site">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {WEB_SITES.map((option) => (
+                        <SelectItem key={option} value={option}>
+                          {WEB_SITE_LABELS[option]}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
             </div>
 
             <div className="space-y-2">

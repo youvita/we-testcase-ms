@@ -16,6 +16,7 @@ import type {
   TestRunStatus,
   TestType,
   TriageCategory,
+  WebSite,
 } from "./enums";
 
 /** Counts of test cases by execution status, plus derived totals. */
@@ -345,6 +346,8 @@ export type RunEnvironmentDto = {
   name: string;
   webBaseUrl: string | null;
   apiBaseUrl: string | null;
+  /** Base URL of the Admin site, for Web cases whose site is Admin. */
+  adminBaseUrl: string | null;
   /** Where Web work starts, e.g. "/kh/login"; null means "/". */
   startPath: string | null;
   variables: RunVariableDto[];
@@ -572,6 +575,7 @@ export type RunnerJob = {
     name: string;
     webBaseUrl: string | null;
     apiBaseUrl: string | null;
+    adminBaseUrl: string | null;
     /** Every variable, secrets included, decrypted for this run only. */
     vars: Record<string, string>;
     /**
@@ -585,6 +589,8 @@ export type RunnerJob = {
     tcId: string;
     title: string;
     platform: Platform;
+    /** Web items: the site whose base URL its pages open on. */
+    site: WebSite;
     code: string;
   }[];
 };

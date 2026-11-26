@@ -7,6 +7,7 @@ import {
   FIX_STATUSES,
   GENERATION_DEPTHS,
   PLATFORMS,
+  WEB_SITES,
   PRIORITIES,
   PROJECT_STATUSES,
   REQUIREMENT_DOC_KINDS,
@@ -29,6 +30,7 @@ export const executionStatusSchema = z.enum(EXECUTION_STATUSES);
 export const testTypeSchema = z.enum(TEST_TYPES);
 export const prioritySchema = z.enum(PRIORITIES);
 export const platformSchema = z.enum(PLATFORMS);
+export const webSiteSchema = z.enum(WEB_SITES);
 export const projectStatusSchema = z.enum(PROJECT_STATUSES);
 
 const trimmed = (max: number) => z.string().trim().max(max);
@@ -224,6 +226,8 @@ export const testCaseSchema = z.object({
   // Omitted means the project's first platform — not Web, which the
   // project may not have.
   platform: platformSchema.optional(),
+  /** Web cases: the Web or Admin site. Omitted keeps it (Web when new). */
+  site: webSiteSchema.optional(),
 });
 
 export type TestCaseInput = z.input<typeof testCaseSchema>;
@@ -638,6 +642,7 @@ export const runEnvironmentSchema = z
     name: trimmed(60).min(1, "Name is required"),
     webBaseUrl: baseUrl,
     apiBaseUrl: baseUrl,
+    adminBaseUrl: baseUrl,
     startPath: startPathSchema,
     variables: z.array(runVariableSchema).max(100).default([]),
   })
@@ -836,6 +841,8 @@ export const exploreAppSchema = z.object({
     .max(5, "Explore at most five pages at a time"),
   /** An automated case whose script signs in first, for pages behind login. */
   setupTestCaseId: z.string().nullish().transform((v) => v || undefined),
+  /** The site the pages are on: the environment's Web or Admin base URL. */
+  site: webSiteSchema.default("WEB"),
   depth: z.enum(GENERATION_DEPTHS).default("essential"),
   instructions: optionalText(2000),
   /** Blank means the server's default model. */

@@ -24,6 +24,9 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   AI_MODELS,
   AI_MODEL_LABELS,
+  WEB_SITES,
+  WEB_SITE_LABELS,
+  type WebSite,
   type AiJobDto,
   type AiModel,
   type GenerationDepth,
@@ -34,7 +37,12 @@ import { api } from "@/utils/api-client";
 import type { StartAi } from "./requirements-workspace";
 import { NoEnvironmentHint } from "@/features/environments/components/no-environment-hint";
 
-export type SignInCase = { id: string; tcId: string; title: string };
+export type SignInCase = { id: string; tcId: string; title: string; site?: WebSite };
+
+/** The environment's base URL for that site. */
+function siteUrl(env: RunEnvironmentDto, site: WebSite) {
+  return site === "ADMIN" ? env.adminBaseUrl : env.webBaseUrl;
+}
 
 const NO_SIGN_IN = "none";
 
@@ -58,7 +66,12 @@ export function ExploreAppDialog({
   onOpenChange: (open: boolean) => void;
   startAi: StartAi;
 }) {
-  const webEnvironments = environments.filter((env) => env.webBaseUrl);
+  // The Site choice shows once an environment has an Admin base URL.
+  const hasAdmin = environments.some((env) => env.adminBaseUrl);
+  const [site, setSite] = useState<WebSite>(
+    !environments.some((env) => env.webBaseUrl) && hasAdmin ? "ADMIN" : "WEB",
+  );
+  const webEnvironments = environments.filter((env) => siteUrl(env, site));
   const [environmentId, setEnvironmentId] = useState(webEnvironments[0]?.id ?? "");
   // Null until edited: until then the box shows the environment's start page.
   const [pathsEdited, setPathsEdited] = useState<string | null>(null);
@@ -67,14 +80,19 @@ export function ExploreAppDialog({
   const [model, setModel] = useState<AiModel>("sonnet");
   const [instructions, setInstructions] = useState("");
   const [busy, setBusy] = useState(false);
-  const signInCase = signInCases.find((c) => c.id === signIn);
+  // Signing in to one site does not sign in to the other.
+  const siteSignInCases = signInCases.filter((c) => (c.site ?? "WEB") === site);
+  const signInCase = siteSignInCases.find((c) => c.id === signIn);
   const signInLabel = signInCase ? `With ${signInCase.tcId} — ${signInCase.title}` : undefined;
 
   const selectedEnv = webEnvironments.some((e) => e.id === environmentId)
     ? environmentId
     : (webEnvironments[0]?.id ?? "");
+  // The environment's start page is on its Web site.
   const paths =
-    pathsEdited ?? webEnvironments.find((e) => e.id === selectedEnv)?.startPath ?? "/";
+    pathsEdited ??
+    (site === "WEB" ? webEnvironments.find((e) => e.id === selectedEnv)?.startPath : null) ??
+    "/";
   const pathList = paths
     .split("\n")
     .map((line) => line.trim())
@@ -87,7 +105,8 @@ export function ExploreAppDialog({
         api.post<AiJobDto>(`/api/projects/${projectId}/explore`, {
           environmentId: selectedEnv,
           paths: pathList,
-          setupTestCaseId: signIn === NO_SIGN_IN ? null : signIn,
+          site,
+          setupTestCaseId: signInCase ? signIn : null,
           depth,
           model,
           instructions,
@@ -111,8 +130,31 @@ export function ExploreAppDialog({
           </DialogDescription>
         </DialogHeader>
 
+        {hasAdmin && (
+          <div className="space-y-2">
+            <Label>Site</Label>
+            <Select value={site} onValueChange={(value) => setSite(value as WebSite)}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {WEB_SITES.map((option) => (
+                  <SelectItem key={option} value={option}>
+                    {WEB_SITE_LABELS[option]}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">
+              The cases it suggests are for this site.
+            </p>
+          </div>
+        )}
+
         {webEnvironments.length === 0 ? (
-          <NoEnvironmentHint projectId={projectId}> with a Web base URL</NoEnvironmentHint>
+          <NoEnvironmentHint projectId={projectId}>
+            {` with ${site === "ADMIN" ? "an Admin" : "a Web"} base URL`}
+          </NoEnvironmentHint>
         ) : (
           <div className="space-y-4">
             <div className="space-y-2">
@@ -124,7 +166,7 @@ export function ExploreAppDialog({
                 <SelectContent>
                   {webEnvironments.map((env) => (
                     <SelectItem key={env.id} value={env.id}>
-                      {env.name} — {env.webBaseUrl}
+                      {env.name} — {siteUrl(env, site)}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -148,13 +190,13 @@ export function ExploreAppDialog({
 
             <div className="space-y-2">
               <Label>Sign in first</Label>
-              <Select value={signIn} onValueChange={setSignIn}>
+              <Select value={signInCase ? signIn : NO_SIGN_IN} onValueChange={setSignIn}>
                 <SelectTrigger title={signInLabel}>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value={NO_SIGN_IN}>No — the pages are public</SelectItem>
-                  {signInCases.map((c) => (
+                  {siteSignInCases.map((c) => (
                     <SelectItem key={c.id} value={c.id}>
                       Run {c.tcId} first — {c.title}
                     </SelectItem>

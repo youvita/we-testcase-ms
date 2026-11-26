@@ -503,7 +503,7 @@ export function TestCaseTable({
                 </TableCell>
 
                 <TableCell>
-                  <PlatformBadge platform={testCase.platform} />
+                  <PlatformBadge platform={testCase.platform} site={testCase.site} />
                 </TableCell>
 
                 <TableCell>

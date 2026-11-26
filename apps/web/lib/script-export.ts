@@ -15,6 +15,8 @@ export type ExportCase = {
   tcId: string;
   title: string;
   platform: "WEB" | "API";
+  /** Web cases: the site its pages open on. Web when absent. */
+  site?: "WEB" | "ADMIN";
   moduleName: string;
   subModule: string | null;
   code: string;
@@ -38,6 +40,7 @@ export const vars: Record<string, string> = new Proxy({} as Record<string, strin
 export const env = {
   name: process.env.ENV_NAME || "local",
   webUrl: process.env.WEB_BASE_URL || null,
+  adminUrl: process.env.ADMIN_BASE_URL || null,
   apiUrl: process.env.API_BASE_URL || null,
 };
 
@@ -48,15 +51,18 @@ const join = (root: string | null, url: string) =>
     ? url
     : root.replace(/[/]+$/, "") + "/" + url.replace(/^[/]+/, "");
 
-export const test = base.extend({
-  page: async ({ page }, use) => {
+export const test = base.extend<{ site: "web" | "admin" }>({
+  // Which site a Web case opens: test.use({ site: "admin" }) for the Admin site.
+  site: ["web", { option: true }],
+  page: async ({ page, site }, use) => {
     const goto = page.goto.bind(page);
-    page.goto = (url, options) => goto(join(env.webUrl, url), options);
+    const root = site === "admin" ? env.adminUrl : env.webUrl;
+    page.goto = (url, options) => goto(join(root, url), options);
     await use(page);
   },
-  request: async ({ request }, use) => {
+  request: async ({ request, site }, use) => {
     // In a Web case, request is for setting up data through the API.
-    const root = env.apiUrl ?? env.webUrl;
+    const root = env.apiUrl ?? (site === "admin" ? env.adminUrl : env.webUrl);
     for (const method of ["get", "post", "put", "patch", "delete", "head", "fetch"] as const) {
       const send = (request[method] as (...args: unknown[]) => unknown).bind(request);
       (request as unknown as Record<string, unknown>)[method] = (url: string, options?: unknown) =>
@@ -92,7 +98,10 @@ function testBody(testCase: ExportCase): string {
     : testCase.platform === "API"
       ? "  const capture = async (_label: string) => {};\n"
       : "  const capture = captureWith(page);\n";
-  return `test(${JSON.stringify(`${testCase.tcId} ${testCase.title}`)}, async (${fixtures}) => {
+  // An Admin case opens its pages on ADMIN_BASE_URL.
+  const site =
+    testCase.platform === "WEB" && testCase.site === "ADMIN" ? 'test.use({ site: "admin" });\n\n' : "";
+  return `${site}test(${JSON.stringify(`${testCase.tcId} ${testCase.title}`)}, async (${fixtures}) => {
 ${capture}${code}
 });
 `;
@@ -112,7 +121,7 @@ function caseHeader(testCase: ExportCase): string {
     ? `${testCase.moduleName} › ${testCase.subModule}`
     : testCase.moduleName;
   return `// ${testCase.tcId} — ${testCase.title}
-// ${group} · ${testCase.platform === "API" ? "API" : "Web"} · exported from WeTestCase`;
+// ${group} · ${testCase.platform === "API" ? "API" : testCase.site === "ADMIN" ? "Web (Admin site)" : "Web"} · exported from WeTestCase`;
 }
 
 /** Variables the scripts use: vars.NAME. */
@@ -132,6 +141,7 @@ function envLines(cases: ExportCase[], environment: RunEnvironmentDto | null): s
   const lines = [
     `ENV_NAME=${environment?.name ?? "local"}`,
     `WEB_BASE_URL=${environment?.webBaseUrl ?? ""}`,
+    `ADMIN_BASE_URL=${environment?.adminBaseUrl ?? ""}`,
     `API_BASE_URL=${environment?.apiBaseUrl ?? ""}`,
   ];
   const names = new Set([...known.keys(), ...usedVariables(cases)]);
@@ -253,7 +263,7 @@ npm test
 
 ## Settings
 
-\`.env\` holds where the tests run (\`WEB_BASE_URL\`, \`API_BASE_URL\`) and the
+\`.env\` holds where the tests run (\`WEB_BASE_URL\`, \`ADMIN_BASE_URL\`, \`API_BASE_URL\`) and the
 variables the scripts read as \`vars.NAME\`.${environment ? ` The example is filled from the **${environment.name}** environment; secret values are left blank.` : ""}
 In CI, set the same names as environment variables instead of a file.
 

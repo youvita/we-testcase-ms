@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Copy, Globe, KeyRound, Loader2, LogIn, Pencil, Plus, Server, Star, Trash2, X } from "lucide-react";
+import { Copy, Globe, KeyRound, Loader2, LogIn, Pencil, Plus, Server, ShieldCheck, Star, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
@@ -153,6 +153,11 @@ export function EnvironmentsPanel({
                     <span className="truncate font-mono text-xs">{env.webBaseUrl ?? "—"}</span>
                   </p>
                   <p className="flex items-center gap-2">
+                    <ShieldCheck className="size-4 text-muted-foreground" />
+                    <span className="text-muted-foreground">Admin</span>
+                    <span className="truncate font-mono text-xs">{env.adminBaseUrl ?? "—"}</span>
+                  </p>
+                  <p className="flex items-center gap-2">
                     <Server className="size-4 text-muted-foreground" />
                     <span className="text-muted-foreground">API</span>
                     <span className="truncate font-mono text-xs">{env.apiBaseUrl ?? "—"}</span>
@@ -235,6 +240,7 @@ export function EnvironmentDialog({
   const [name, setName] = useState("");
   const [webBaseUrl, setWebBaseUrl] = useState("");
   const [apiBaseUrl, setApiBaseUrl] = useState("");
+  const [adminBaseUrl, setAdminBaseUrl] = useState("");
   const [startPath, setStartPath] = useState("");
   const [variables, setVariables] = useState<VariableRow[]>([]);
   const [saving, setSaving] = useState(false);
@@ -246,6 +252,7 @@ export function EnvironmentDialog({
     setName(existing?.name ?? (environment === "new" ? suggestedName : ""));
     setWebBaseUrl(existing?.webBaseUrl ?? "");
     setApiBaseUrl(existing?.apiBaseUrl ?? "");
+    setAdminBaseUrl(existing?.adminBaseUrl ?? "");
     setStartPath(existing?.startPath ?? "");
     setVariables(
       existing?.variables.map((v) => ({
@@ -275,6 +282,7 @@ export function EnvironmentDialog({
         name,
         webBaseUrl: webBaseUrl || null,
         apiBaseUrl: apiBaseUrl || null,
+        adminBaseUrl: adminBaseUrl || null,
         startPath: startPath || null,
         variables: variables
           .filter((v) => v.key.trim())
@@ -343,6 +351,15 @@ export function EnvironmentDialog({
               />
             </div>
             <div className="space-y-2">
+              <Label htmlFor="env-admin">Admin base URL</Label>
+              <Input
+                id="env-admin"
+                value={adminBaseUrl}
+                onChange={(e) => setAdminBaseUrl(e.target.value)}
+                placeholder="https://sit-admin.example.com"
+              />
+            </div>
+            <div className="space-y-2">
               <Label htmlFor="env-api">API base URL</Label>
               <Input
                 id="env-api"
@@ -351,6 +368,9 @@ export function EnvironmentDialog({
                 placeholder="https://sit-api.example.com/v1"
               />
             </div>
+            <p className="text-xs text-muted-foreground sm:col-span-2">
+              Web cases open the Web base URL, or the Admin base URL when their Site is Admin.
+            </p>
           </div>
 
           <div className="space-y-2">

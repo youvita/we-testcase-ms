@@ -44,3 +44,18 @@ describe("exported scripts that call capture", () => {
     expect(spec).not.toContain("const capture");
   });
 });
+
+describe("exported Admin-site scripts", () => {
+  it("open their pages on ADMIN_BASE_URL", () => {
+    const files = projectFiles("WeBill365", [{ ...webCase, site: "ADMIN" }], null);
+    const spec = files["tests/Customers/TC-CUSTOMER-02.spec.ts"]!;
+
+    expect(spec).toMatch(/^test\.use\(\{ site: "admin" \}\);$/m);
+    expect(files["tests/fixtures.ts"]).toContain("process.env.ADMIN_BASE_URL");
+    expect(files[".env.example"]).toContain("ADMIN_BASE_URL=");
+  });
+
+  it("leave Web-site scripts on WEB_BASE_URL", () => {
+    expect(singleSpecFile(webCase, null)).not.toMatch(/^test\.use\(/m);
+  });
+});

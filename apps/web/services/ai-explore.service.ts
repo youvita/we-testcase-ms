@@ -8,6 +8,10 @@ import type { SessionUser } from "@/lib/session";
 import {
   PRIORITIES,
   TEST_TYPES,
+  WEB_SITE_LABELS,
+  baseUrlKind,
+  environmentBaseUrl,
+  type WebSite,
   type AiJobDto,
   type AiModel,
   type ExploreAppResult,
@@ -63,9 +67,9 @@ const visit = async (path) => {
     outline = again;
   }
   // Sent somewhere else — a sign-in page, most often: say so.
-  // Paths join onto the Web base URL as the runner joins them.
+  // Paths join onto the site's base URL as the runner joins them.
   const trim = (pathname) => pathname.replace(/\\/+$/, "") || "/";
-  const asked = trim(new URL(join(env.webUrl, path), page.url()).pathname);
+  const asked = trim(new URL(join(siteUrl, path), page.url()).pathname);
   const landed = trim(new URL(page.url()).pathname);
   const moved = asked !== landed ? "Asked for " + asked + ", but the browser ended on " + landed + ".\\n" : "";
   await test.info().attach("page-snapshot", {
@@ -118,6 +122,8 @@ type ExplorationInput = {
   environmentId: string;
   paths: string[];
   setupTestCaseId?: string;
+  /** The site the pages are on; Web for jobs queued before there was a choice. */
+  site?: WebSite;
   depth: GenerationDepth;
   instructions?: string;
   /** The AI model to use; the server's default when absent. */
@@ -141,20 +147,28 @@ async function loadExploration(projectId: string, input: ExplorationInput) {
     throw badRequest("Exploring opens web pages; add Web to this project's platforms first.");
   }
 
+  const site: WebSite = input.site ?? "WEB";
+  const kind = baseUrlKind({ platform: "WEB", site });
   const env = await getEnvironmentOutline(input.environmentId, projectId);
-  if (!env.webBaseUrl) throw badRequest(`${env.name} has no Web base URL. Add it in Environments.`);
+  const baseUrl = environmentBaseUrl(env, kind);
+  if (!baseUrl) throw badRequest(`${env.name} has no ${kind} base URL. Add it in Environments.`);
 
   let setup: { tcId: string; code: string } | null = null;
   if (input.setupTestCaseId) {
     const found = await prisma.testCase.findFirst({
       where: { id: input.setupTestCaseId, projectId, platform: "WEB" },
-      select: { id: true, tcId: true, script: { select: { code: true } } },
+      select: { id: true, tcId: true, site: true, script: { select: { code: true } } },
     });
     if (!found?.script) throw badRequest("The sign-in case needs a Web automation script.");
+    // Its script's paths open on its own site; signing in to one site does
+    // not sign in to the other.
+    if (found.site !== site) {
+      throw badRequest(`${found.tcId} signs in to the ${WEB_SITE_LABELS[found.site]} site, not ${WEB_SITE_LABELS[site]}.`);
+    }
     setup = { tcId: found.tcId, code: found.script.code };
   }
 
-  return { project, env, setup, paths: input.paths.slice(0, MAX_PAGES) };
+  return { project, env, site, baseUrl, setup, paths: input.paths.slice(0, MAX_PAGES) };
 }
 
 export async function startExploration(
@@ -174,7 +188,7 @@ export async function startExploration(
 defineJob("EXPLORE_APP", async (job) => {
   const input = job.input as ExplorationInput;
   const projectId = job.projectId;
-  const { project, env, setup, paths } = await loadExploration(projectId, input);
+  const { project, env, site, baseUrl, setup, paths } = await loadExploration(projectId, input);
   return async ({ jobId, token, progress, setResult, throwIfCancelled, signal }) => {
     await progress(0, 2);
     const result: ExploreAppResult = { pages: [], drafted: 0, observations: [], runId: null };
@@ -187,7 +201,7 @@ defineJob("EXPLORE_APP", async (job) => {
       purpose: "SCRIPT_CHECK",
       recordResults: false,
       // No test case: exploring comes before there are any.
-      items: [{ testCaseId: null, code: explorationScript(paths, setup?.code ?? null) }],
+      items: [{ testCaseId: null, site, code: explorationScript(paths, setup?.code ?? null) }],
     });
     result.runId = queued.id;
     await setResult(result);
@@ -216,7 +230,7 @@ defineJob("EXPLORE_APP", async (job) => {
       // Web cases only: exploring suggests Web tests, and an API case's
       // details are not something these pages show.
       prisma.testCase.findMany({
-        where: { projectId, platform: "WEB" },
+        where: { projectId, platform: "WEB", site },
         orderBy: { tcId: "asc" },
         take: 300,
         select: { title: true, subModule: true, module: { select: { name: true } } },
@@ -224,7 +238,7 @@ defineJob("EXPLORE_APP", async (job) => {
       // Suggestions still waiting for review count too — exploring the same
       // page twice before reviewing must not suggest everything again.
       prisma.testCaseDraft.findMany({
-        where: { projectId, status: "PENDING", platform: "WEB" },
+        where: { projectId, status: "PENDING", platform: "WEB", site },
         take: 200,
         select: { title: true, moduleName: true, subModule: true },
       }),
@@ -238,7 +252,7 @@ defineJob("EXPLORE_APP", async (job) => {
 
     const images: ClaudeImage[] = pages.flatMap((p) => (p.screenshot ? [p.screenshot] : []));
     const prompt = `Project: ${project.name}
-Environment: ${env.name} (${env.webBaseUrl})
+Environment: ${env.name}, ${WEB_SITE_LABELS[site]} site (${baseUrl})
 ${setup ? `Signed in first, using the script of ${setup.tcId}.\n` : ""}Variables available for test data: ${env.variables.map((v) => `vars.${v.key}`).join(", ") || "none"}
 Existing modules (reuse a name when one fits): ${modules}
 How many cases: ${DEPTH_GUIDE[input.depth]}
@@ -284,6 +298,7 @@ ${p.outline.replace(/^URL: .*\nTitle: .*\n\n/, "").slice(0, OUTLINE_CHARS)}
         testType: c.testType,
         priority: c.priority,
         platform: "WEB" as const,
+        site,
         requirementIds: [],
       })),
     });

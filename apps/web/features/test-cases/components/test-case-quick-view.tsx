@@ -126,7 +126,7 @@ export function TestCaseQuickView({
                 <StatusBadge status={item.status} />
                 <TestTypeBadge testType={item.testType} />
                 <PriorityBadge priority={item.priority} />
-                <PlatformBadge platform={item.platform} />
+                <PlatformBadge platform={item.platform} site={item.site} />
               </div>
             </SheetHeader>
 
