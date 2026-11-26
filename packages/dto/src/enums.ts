@@ -114,6 +114,19 @@ export const PLATFORMS = ["WEB", "API", "IOS", "ANDROID"] as const;
 
 export type Platform = (typeof PLATFORMS)[number];
 
+/**
+ * Which site a Web case opens: the public Web site or the Admin site. Each
+ * has its own base URL on the run environment.
+ */
+export const WEB_SITES = ["WEB", "ADMIN"] as const;
+
+export type WebSite = (typeof WEB_SITES)[number];
+
+export const WEB_SITE_LABELS: Record<WebSite, string> = {
+  WEB: "Web",
+  ADMIN: "Admin",
+};
+
 export const PROJECT_STATUSES = [
   "PLANNING",
   "ACTIVE",
@@ -233,6 +246,23 @@ export const AUTOMATABLE_PLATFORMS = ["WEB", "API"] as const;
 
 export function isAutomatablePlatform(platform: Platform): boolean {
   return (AUTOMATABLE_PLATFORMS as readonly string[]).includes(platform);
+}
+
+/** One of a run environment's base URLs, by what it is for. */
+export type BaseUrlKind = "Web" | "Admin" | "API";
+
+/** Which base URL a case opens: API, or the Web or Admin site of a Web case. */
+export function baseUrlKind(testCase: { platform: Platform; site?: WebSite | null }): BaseUrlKind {
+  if (testCase.platform === "API") return "API";
+  return testCase.site === "ADMIN" ? "Admin" : "Web";
+}
+
+/** That base URL in an environment; null when it is not set. */
+export function environmentBaseUrl(
+  env: { webBaseUrl: string | null; apiBaseUrl: string | null; adminBaseUrl: string | null },
+  kind: BaseUrlKind,
+): string | null {
+  return kind === "API" ? env.apiBaseUrl : kind === "Admin" ? env.adminBaseUrl : env.webBaseUrl;
 }
 
 /** Titles that read like a sign-in, in the languages these projects use. */

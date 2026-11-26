@@ -277,6 +277,7 @@ export async function reviewDrafts(
             testType: draft.testType,
             priority: draft.priority,
             platform: draft.platform,
+            site: draft.site,
             requirements: {
               create: linkedIds.map((requirementId) => ({ requirementId })),
             },

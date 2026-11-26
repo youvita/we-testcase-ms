@@ -73,6 +73,13 @@ enum Platform {
   ANDROID
 }
 
+/// Which web site a Web case opens: the public Web site or the Admin site.
+/// Each has its own base URL on the run environment.
+enum WebSite {
+  WEB
+  ADMIN
+}
+
 enum ExecutionStatus {
   NOT_RUN
   PASSED
@@ -412,6 +419,9 @@ model TestCase {
   testType       TestType @default(FUNCTIONAL)
   priority       Priority @default(MEDIUM)
   platform       Platform @default(WEB)
+  /// Web cases only: the site its pages are on — the environment's Web or
+  /// Admin base URL. Ignored for other platforms.
+  site           WebSite  @default(WEB)
 
   /// Latest execution outcome, denormalized from TestExecution so the test-case
   /// list can filter/sort by status and the dashboard can aggregate with a
@@ -885,6 +895,8 @@ model TestCaseDraft {
   testType       TestType    @default(FUNCTIONAL)
   priority       Priority    @default(MEDIUM)
   platform       Platform    @default(WEB)
+  /// The site it was written for — exploring the Admin site drafts Admin cases.
+  site           WebSite     @default(WEB)
   /// Requirements this case verifies. Ids rather than a relation: a draft is
   /// short-lived, and a requirement deleted meanwhile is simply skipped on
   /// accept.
@@ -926,6 +938,9 @@ model RunEnvironment {
   webBaseUrl      String?
   /// Base URL for API scripts: `request.get("/users")` resolves against it.
   apiBaseUrl      String?
+  /// Base URL for Web cases on the Admin site (a case's `site`): their
+  /// `page.goto("/login")` resolves against it instead of the Web base URL.
+  adminBaseUrl    String?
   /// Where Web work starts, after the base URL — e.g. "/kh/login". Claude's
   /// script writing and exploring open it first; dialogs prefill it.
   startPath       String?
@@ -1058,6 +1073,8 @@ model TestRunItem {
   code       String
   /// The case's script was still a draft when the run was queued.
   draft      Boolean       @default(false)
+  /// The site its pages were opened on, copied from the case when queued.
+  site       WebSite       @default(WEB)
   finishedAt DateTime?
 
   runId String

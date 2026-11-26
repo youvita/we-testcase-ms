@@ -41,6 +41,7 @@ import type {
   Platform,
   RunEnvironmentDto,
   ScriptWritingResult,
+  WebSite,
 } from "@wetestcase/dto";
 import { AI_MODELS, AI_MODEL_LABELS, type AiModel } from "@wetestcase/dto";
 import { ApiError, api, errorMessage } from "@/utils/api-client";
@@ -61,6 +62,7 @@ export function WriteWithClaudeDialog({
   projectId,
   testCaseId,
   platform,
+  site = "WEB",
   environments,
   open,
   onOpenChange,
@@ -70,6 +72,8 @@ export function WriteWithClaudeDialog({
   projectId: string;
   testCaseId: string;
   platform: Platform;
+  /** Web cases: the site its pages open on. */
+  site?: WebSite;
   environments: RunEnvironmentDto[];
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -89,7 +93,8 @@ export function WriteWithClaudeDialog({
     : (environments[0]?.id ?? "");
   const selectedEnvironment = environments.find((e) => e.id === selected);
   const envName = selectedEnvironment?.name ?? "the environment";
-  const envStart = selectedEnvironment?.startPath ?? "/";
+  // The environment's start page is on its Web site; an Admin case starts at /.
+  const envStart = site === "ADMIN" ? "/" : (selectedEnvironment?.startPath ?? "/");
 
   async function start() {
     setBusy(true);

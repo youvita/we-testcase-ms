@@ -6,12 +6,15 @@ import { Prisma, type TestRun } from "@prisma/client";
 
 import { prisma } from "@/lib/prisma";
 import { badRequest, conflict, forbidden, HttpError, notFound } from "@/lib/api";
-import { PLATFORM_LABELS, type Role } from "@/lib/constants";
+import { type Role } from "@/lib/constants";
 import { isAdmin } from "@/lib/permissions";
 import { dropFrame } from "@/lib/live-frames";
 import { summariseFailure } from "@/utils/playwright-failure";
 import {
   AUTOMATABLE_PLATFORMS,
+  baseUrlKind,
+  environmentBaseUrl,
+  type WebSite,
   RUN_SPEEDS,
   type RunTriageDto,
   type RunArtifactDto,
@@ -123,7 +126,7 @@ export async function createTestRun(
   const smoke = options.smoke ?? false;
   const environment = await prisma.runEnvironment.findFirst({
     where: { id: input.environmentId, projectId },
-    select: { id: true, name: true, webBaseUrl: true, apiBaseUrl: true },
+    select: { id: true, name: true, webBaseUrl: true, apiBaseUrl: true, adminBaseUrl: true },
   });
   if (!environment) throw notFound("Environment");
 
@@ -146,7 +149,7 @@ export async function createTestRun(
       ...(!smoke && input.scope === "cases" ? { id: { in: input.testCaseIds ?? [] } } : {}),
     },
     orderBy: smoke ? [{ smokePosition: "asc" as const }] : [{ module: { position: "asc" } }, { tcId: "asc" }],
-    select: { id: true, tcId: true, platform: true, script: { select: { code: true } } },
+    select: { id: true, tcId: true, platform: true, site: true, script: { select: { code: true } } },
   });
   if (cases.length === 0) {
     throw badRequest(
@@ -160,26 +163,27 @@ export async function createTestRun(
 
   // A relative goto() with no base URL fails every case in a confusing way;
   // say so before the run is queued.
-  for (const platform of AUTOMATABLE_PLATFORMS) {
-    const count = cases.filter((c) => c.platform === platform).length;
-    const base = platform === "WEB" ? environment.webBaseUrl : environment.apiBaseUrl;
-    if (count > 0 && !base) {
+  for (const kind of ["Web", "Admin", "API"] as const) {
+    const count = cases.filter((c) => baseUrlKind(c) === kind).length;
+    if (count > 0 && !environmentBaseUrl(environment, kind)) {
       throw badRequest(
-        `${environment.name} has no ${PLATFORM_LABELS[platform]} base URL, and ${count} ${PLATFORM_LABELS[platform]} case${count === 1 ? " is" : "s are"} selected. Add it in Environments.`,
+        `${environment.name} has no ${kind} base URL, and ${count} ${kind} case${count === 1 ? " is" : "s are"} selected. Add it in Environments.`,
       );
     }
   }
 
   // "Sign in first": the chosen case's script opens each Web case, so a
   // case like "create a customer" need not repeat the login steps.
-  let setup: { id: string; tcId: string; code: string } | null = null;
+  // Only cases on the sign-in case's own site (Web or Admin) are opened
+  // with it: signing in to one site does not sign in to the other.
+  let setup: { id: string; tcId: string; site: WebSite; code: string } | null = null;
   if (input.setupTestCaseId) {
     const found = await prisma.testCase.findFirst({
       where: { id: input.setupTestCaseId, projectId, platform: "WEB" },
-      select: { id: true, tcId: true, script: { select: { code: true } } },
+      select: { id: true, tcId: true, site: true, script: { select: { code: true } } },
     });
     if (!found?.script) throw badRequest("The sign-in case needs a Web automation script.");
-    setup = { id: found.id, tcId: found.tcId, code: found.script.code };
+    setup = { id: found.id, tcId: found.tcId, site: found.site, code: found.script.code };
   }
 
   return queueRun({
@@ -198,7 +202,7 @@ export async function createTestRun(
       testCaseId: c.id,
       // Stored with the prefix, so the run shows exactly what executed.
       code:
-        setup && c.platform === "WEB" && c.id !== setup.id
+        setup && c.platform === "WEB" && c.site === setup.site && c.id !== setup.id
           ? `// ---- Sign in first: ${setup.tcId} ----\n${setup.code}\n\n// ---- ${c.tcId} ----\n${c.script!.code}`
           : c.script!.code,
     })),
@@ -225,9 +229,22 @@ export async function queueRun(options: {
   setup?: { id: string; tcId: string } | null;
   /** Sign in once for the whole run and share it. */
   signInOnce?: boolean;
-  /** testCaseId is null only for an exploration. */
-  items: { testCaseId: string | null; code: string }[];
+  /**
+   * testCaseId is null only for an exploration. `site` defaults to the
+   * case's own (Web for an exploration).
+   */
+  items: { testCaseId: string | null; code: string; site?: WebSite }[];
 }): Promise<TestRunDto> {
+  // Which site each case's pages open on: the Web or Admin base URL.
+  const caseIds = options.items.flatMap((i) => (i.testCaseId ? [i.testCaseId] : []));
+  const siteOf = new Map(
+    (
+      await prisma.testCase.findMany({
+        where: { id: { in: caseIds } },
+        select: { id: true, site: true },
+      })
+    ).map((c) => [c.id, c.site]),
+  );
   // Which cases' scripts are still drafts: their failures will not count.
   const verified = new Set(
     (
@@ -284,6 +301,7 @@ export async function queueRun(options: {
                 testCaseId: item.testCaseId,
                 position,
                 code: item.code,
+                site: item.site ?? (item.testCaseId ? siteOf.get(item.testCaseId) : undefined) ?? "WEB",
                 draft: !item.testCaseId || !verified.has(item.testCaseId),
               })),
             },
@@ -621,6 +639,7 @@ async function buildRunnerJob(runId: string): Promise<RunnerJob | null> {
       tcId: item.testCase?.tcId ?? "EXPLORE",
       title: item.testCase?.title ?? "Exploring pages",
       platform: item.testCase?.platform ?? "WEB",
+      site: item.site,
       code: item.code,
     })),
   };

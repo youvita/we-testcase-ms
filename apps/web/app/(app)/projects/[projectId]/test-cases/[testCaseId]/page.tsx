@@ -262,7 +262,7 @@ export default async function TestCaseDetailPage({
                 <StatusBadge status={testCase.status} />
                 <TestTypeBadge testType={testCase.testType} />
                 <PriorityBadge priority={testCase.priority} />
-                <PlatformBadge platform={testCase.platform} />
+                <PlatformBadge platform={testCase.platform} site={testCase.site} />
                 {testCase.lastExecutedAt && (
                   <span className="text-xs text-muted-foreground">
                     · Last executed {formatDateTime(testCase.lastExecutedAt)}
@@ -393,6 +393,7 @@ export default async function TestCaseDetailPage({
               projectId={projectId}
               testCaseId={testCase.id}
               platform={testCase.platform}
+              site={testCase.site}
               canManage={canManageTestCases(user.role)}
               environments={environments}
               script={
@@ -405,7 +406,8 @@ export default async function TestCaseDetailPage({
               }
               latestWriteJob={latestWriteJob}
               lastFinishedWriteJobId={lastFinishedWrite?.id ?? null}
-              signInCases={signInCases.filter((c) => c.id !== testCase.id)}
+              // Signing in to one site does not sign in to the other.
+              signInCases={signInCases.filter((c) => c.id !== testCase.id && c.site === testCase.site)}
               lastResult={
                 lastRunItem && {
                   status: lastRunItem.status,

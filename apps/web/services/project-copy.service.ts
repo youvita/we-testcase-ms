@@ -69,6 +69,7 @@ async function loadSourceCases(
       testType: true,
       priority: true,
       platform: true,
+      site: true,
       subModule: true,
       module: { select: { name: true } },
       script: { select: { code: true } },
@@ -315,6 +316,7 @@ export async function copyToProject(
         testType: source.testType,
         priority: source.priority,
         platform: source.platform,
+        site: source.site,
       });
 
       // Cases. New ones in one statement; their ids come back by TC ID.
@@ -372,6 +374,7 @@ export async function copyToProject(
             name: env.name,
             webBaseUrl: env.webBaseUrl,
             apiBaseUrl: env.apiBaseUrl,
+            adminBaseUrl: env.adminBaseUrl,
             startPath: env.startPath,
             variablesSealed: variables.sealed,
           },

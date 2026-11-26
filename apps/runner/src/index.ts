@@ -122,11 +122,15 @@ function specSource(job: RunnerJob, item: RunnerJob["items"][number]): string {
     name: job.environment.name,
     webUrl: job.environment.webBaseUrl,
     apiUrl: job.environment.apiBaseUrl,
+    // Older apps send neither; their items are all on the Web site.
+    adminUrl: job.environment.adminBaseUrl ?? null,
   };
   const isApi = item.platform === "API";
-  const baseURL = isApi ? env.apiUrl : env.webUrl;
+  // A Web case on the Admin site opens its pages on the Admin base URL.
+  const siteUrl = item.site === "ADMIN" ? env.adminUrl : env.webUrl;
+  const baseURL = isApi ? env.apiUrl : siteUrl;
   // In a Web case, `request` is for setting up data through the API.
-  const requestRoot = isApi ? env.apiUrl : (env.apiUrl ?? env.webUrl);
+  const requestRoot = isApi ? env.apiUrl : (env.apiUrl ?? siteUrl);
   const fixtures = isApi ? "{ request }" : "{ page, context, browser, request }";
 
   return `import { test as base, expect as stopAtFirst } from "@playwright/test";
@@ -140,6 +144,7 @@ const expect = stopAtFirst.configure({ soft: true });
 const env = ${JSON.stringify(env)};
 const vars = ${JSON.stringify(job.environment.vars)};
 const requestRoot = ${JSON.stringify(requestRoot)};
+const siteUrl = ${JSON.stringify(siteUrl)};
 
 // Secret values never leave the test: the outline records what was typed
 // into fields, a password included.
@@ -235,7 +240,7 @@ const noteCall = (call) => {
 const test = base.extend({
   page: async ({ page }, use) => {
     const goto = page.goto.bind(page);
-    page.goto = (url, options) => goto(join(env.webUrl, url), options);
+    page.goto = (url, options) => goto(join(siteUrl, url), options);
     page.on("response", (response) => {
       const request = response.request();
       if (response.status() >= 400 && worthNoting(request.resourceType())) {
@@ -708,10 +713,11 @@ function splitSignIn(item: RunnerJob["items"][number]): { signInCode: string; ca
 }
 
 /** The sign-in a run shares: its case and script, from the first case that opens with it. */
-function sharedSignIn(items: RunnerJob["items"]): { tcId: string; code: string } | null {
+function sharedSignIn(items: RunnerJob["items"]): { tcId: string; site: RunnerJob["items"][number]["site"]; code: string } | null {
   for (const item of items) {
     const split = splitSignIn(item);
-    if (split) return { tcId: item.code.split("\n")[0]!.match(SIGN_IN_HEADER)![1]!, code: split.signInCode };
+    // The app opens only cases on the sign-in case's own site with it.
+    if (split) return { tcId: item.code.split("\n")[0]!.match(SIGN_IN_HEADER)![1]!, site: item.site, code: split.signInCode };
   }
   return null;
 }
@@ -752,7 +758,7 @@ async function executeRun(job: RunnerJob) {
   let signInOffset = 0;
   if (signIn && shared) {
     const code = `${signIn.code}\n\n// ---- Saving the signed-in browser for the run ----\nawait page.context().storageState({ path: ${JSON.stringify(shared.authFile)} });`;
-    const spec = specSource(job, { id: "sign-in", tcId: signIn.tcId, title: "Sign in once for the run", platform: "WEB", code });
+    const spec = specSource(job, { id: "sign-in", tcId: signIn.tcId, title: "Sign in once for the run", platform: "WEB", site: signIn.site, code });
     // Its lines map onto the sign-in block of each shared case's code, which
     // starts one line down, under "// ---- Sign in first: … ----".
     signInOffset = spec.slice(0, spec.indexOf(code)).split("\n").length - 1 - 1;
