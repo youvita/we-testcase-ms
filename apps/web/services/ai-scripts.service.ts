@@ -36,10 +36,10 @@ import {
   type ScriptWritingResult,
 } from "@wetestcase/dto";
 
-import { defineJob, enqueueJob, stopQueuedJobs, sweepInterrupted } from "./ai-job.service";
+import { defineJob, enqueueJob, getJob, stopQueuedJobs, sweepInterrupted } from "./ai-job.service";
 import { saveAutomationScript } from "./automation-script.service";
 import { getEnvironmentOutline } from "./run-environment.service";
-import { queueRun, readItemEvidence, waitForRun } from "./test-run.service";
+import { queueRun, readItemEvidence, recordScriptCheckPass, waitForRun } from "./test-run.service";
 
 /**
  * Claude and automation: writing a test case's script, and explaining why an
@@ -804,6 +804,36 @@ export async function discardScriptJobs(testCaseId: string) {
   if (active > 0) throw badRequest("The AI is still writing this script. Wait for it to finish first.");
   const { count } = await prisma.aiJob.deleteMany({ where });
   return { discarded: count };
+}
+
+/**
+ * "Save script & report result": put the AI's passing script on the case
+ * and record the pass it already had as the case's result — no second run.
+ */
+export async function saveScriptAndReport(testCaseId: string, jobId: string, user: SessionUser): Promise<AiJobDto> {
+  const job = await prisma.aiJob.findUnique({
+    where: { id: jobId },
+    select: { kind: true, status: true, result: true },
+  });
+  const result = job?.result as ScriptWritingResult | null | undefined;
+  if (!job || job.kind !== "WRITE_SCRIPT" || !result || result.testCaseId !== testCaseId) throw notFound("Job");
+  if (job.status !== "SUCCEEDED" || result.outcome !== "passed") {
+    throw badRequest("Only a script that passed can be saved with its result.");
+  }
+  if (result.recordedExecutionId) throw badRequest("This result is already reported on the test case.");
+  // The try that ran this very script and passed.
+  const passing = [...result.attempts]
+    .reverse()
+    .find((a) => a.status === "PASSED" && a.code.trim() === result.code.trim());
+  if (!passing) throw badRequest("The passing check for this script is gone; run the case instead.");
+
+  const { executionId } = await recordScriptCheckPass(passing.runId, testCaseId, result.code, user);
+  await saveAutomationScript(testCaseId, user.id, result.code, { verified: true });
+  await prisma.aiJob.update({
+    where: { id: jobId },
+    data: { result: { ...result, saved: true, recordedExecutionId: executionId } },
+  });
+  return getJob(jobId);
 }
 
 export async function getLatestScriptJob(testCaseId: string) {

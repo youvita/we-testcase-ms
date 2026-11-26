@@ -250,6 +250,7 @@ export function ScriptWritingPanel({
   job,
   savedCode,
   onUse,
+  onSaveAndReport,
   onContinue,
   onCancel,
 }: {
@@ -258,6 +259,8 @@ export function ScriptWritingPanel({
   /** The script saved on the case, to tell when Claude's is already in use. */
   savedCode: string | null;
   onUse: (code: string) => void;
+  /** Save a passing script and report its pass on the case; absent for viewers. */
+  onSaveAndReport?: () => Promise<void>;
   /** Keep trying from this result with QA's hint; resolves true once started. */
   onContinue?: (hint: string) => Promise<boolean>;
   /** Stop the job while it is queued or running; absent for viewers. */
@@ -266,6 +269,16 @@ export function ScriptWritingPanel({
   const [cancelling, setCancelling] = useState(false);
   const [hint, setHint] = useState("");
   const [continuing, setContinuing] = useState(false);
+  const [reporting, setReporting] = useState(false);
+  async function saveAndReport() {
+    if (!onSaveAndReport) return;
+    setReporting(true);
+    try {
+      await onSaveAndReport();
+    } finally {
+      setReporting(false);
+    }
+  }
   // The last try's failure, located in the final script — by content, so it
   // still lands right when the final script is that try's.
   const lastFailure = (job.result as ScriptWritingResult | null)?.attempts
@@ -421,15 +434,41 @@ export function ScriptWritingPanel({
             />
           </details>
           {onContinue && hintBox}
-          {savedCode?.trim() === result.code.trim() ? (
+          {result.recordedExecutionId ? (
             <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
               <CheckCircle2 className="size-3.5 text-status-passed" />
-              This is the saved script.
+              {savedCode?.trim() === result.code.trim() ? "This is the saved script, and its" : "Its"} pass is
+              reported on the case.
             </p>
           ) : (
-            <Button size="sm" onClick={() => onUse(result.code)}>
-              Use this script
-            </Button>
+            <div className="flex flex-wrap items-center gap-2">
+              {passed && onSaveAndReport && (
+                <Button size="sm" disabled={reporting} onClick={() => void saveAndReport()}>
+                  {reporting && <Loader2 className="mr-2 size-4 animate-spin" />}
+                  {savedCode?.trim() === result.code.trim() ? "Report result" : "Save script & report result"}
+                </Button>
+              )}
+              {savedCode?.trim() === result.code.trim() ? (
+                <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                  <CheckCircle2 className="size-3.5 text-status-passed" />
+                  This is the saved script.
+                </p>
+              ) : (
+                <Button
+                  size="sm"
+                  variant={passed && onSaveAndReport ? "outline" : "default"}
+                  onClick={() => onUse(result.code)}
+                >
+                  Use this script
+                </Button>
+              )}
+            </div>
+          )}
+          {passed && onSaveAndReport && !result.recordedExecutionId && (
+            <p className="text-xs text-muted-foreground">
+              Reporting records this passing check as the case&apos;s result, with its screenshots — no
+              need to run it again.
+            </p>
           )}
         </>
       )}

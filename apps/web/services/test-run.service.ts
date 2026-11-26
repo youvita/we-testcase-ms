@@ -882,6 +882,49 @@ export async function recordDraftFailure(itemId: string, user: { id: string; nam
 }
 
 /**
+ * Record the pass of an AI script check on its test case, as a run would
+ * have — without running it again. Only the check that ran `code` and
+ * passed; its screenshots and video go along as evidence.
+ */
+export async function recordScriptCheckPass(
+  runId: string,
+  testCaseId: string,
+  code: string,
+  user: { id: string; name: string },
+) {
+  const item = await prisma.testRunItem.findFirst({
+    where: { runId, testCaseId },
+    select: {
+      id: true,
+      status: true,
+      code: true,
+      artifacts: true,
+      executionId: true,
+      run: { select: { code: true, purpose: true, environmentName: true, projectId: true } },
+    },
+  });
+  if (!item) throw notFound("Script check");
+  if (item.run.purpose !== "SCRIPT_CHECK") throw badRequest("This is not a script check.");
+  if (item.status !== "PASSED") throw badRequest("Only a passing check can be reported.");
+  if (item.code.trim() !== code.trim()) throw badRequest("This check ran a different script.");
+  if (item.executionId) throw conflict("This result is already reported on the test case.");
+
+  const execution = await recordExecution(testCaseId, user.id, {
+    status: "PASSED",
+    actualResult: null,
+    comment: `Automated — Script check${item.run.code ? ` #${item.run.code}` : ""} on ${item.run.environmentName} · reported by ${user.name}`,
+    environmentName: item.run.environmentName,
+  });
+  await attachRunEvidence(
+    execution.id,
+    item.run.projectId,
+    readArtifacts(item.artifacts).filter((artifact) => artifact.kind === "screenshot" || artifact.kind === "video"),
+  );
+  await prisma.testRunItem.update({ where: { id: item.id }, data: { executionId: execution.id } });
+  return { executionId: execution.id };
+}
+
+/**
  * Close a run: anything without a result is SKIPPED, counts are totalled and
  * the final status decided. Called by the runner when done, by a cancel, and
  * by the stale sweep.
