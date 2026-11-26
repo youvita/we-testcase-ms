@@ -524,6 +524,8 @@ export type ScriptWritingResult = {
   currentRunId?: string | null;
   /** Saved on the case without review — only ever for a script that passed. */
   saved?: boolean;
+  /** Its pass, reported on the case as its result ("Save script & report result"). */
+  recordedExecutionId?: string;
   /** Other cases' passing scripts given to Claude as examples; absent on older jobs. */
   references?: ScriptReference[];
   attempts: {

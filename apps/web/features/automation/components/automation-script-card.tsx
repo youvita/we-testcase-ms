@@ -28,7 +28,7 @@ import {
   setScriptCardShown,
   useScriptCardShown,
 } from "@/features/automation/script-card-visibility";
-import type { AiJobDto, Platform, RunEnvironmentDto, RunItemStatus, WebSite } from "@wetestcase/dto";
+import type { AiJobDto, Platform, RunEnvironmentDto, RunItemStatus, ScriptWritingResult, WebSite } from "@wetestcase/dto";
 import { ApiError, api, errorMessage } from "@/utils/api-client";
 import { formatRelative } from "@/utils/format";
 
@@ -273,6 +273,24 @@ export function AutomationScriptCard({
     }
   }
 
+  /** Save the AI's passing script and report that pass on the case — no second run. */
+  async function saveAndReport() {
+    if (!writeJob) return;
+    try {
+      const job = await api.post<AiJobDto>(`/api/test-cases/${testCaseId}/script/report`, {
+        jobId: writeJob.id,
+      });
+      setWriteJob(job);
+      // The editor follows the saved script, so it is not left "unsaved".
+      const saved = (job.result as ScriptWritingResult | null)?.code;
+      if (saved) setCode(saved);
+      toast.success("Script saved and its pass reported on the case");
+      router.refresh();
+    } catch (error) {
+      toast.error(errorMessage(error));
+    }
+  }
+
   /** Keep the AI going from its last result with QA's hint. */
   async function continueWithHint(hint: string): Promise<boolean> {
     // A job that broke has no result of its own to continue; the last one
@@ -365,6 +383,7 @@ export function AutomationScriptCard({
                 setShowScript(true);
                 toast.message("Script placed in the editor — review it, then save.");
               }}
+              onSaveAndReport={canManage ? saveAndReport : undefined}
               onContinue={
                 canManage && (writeJob.status === "SUCCEEDED" || lastFinishedWriteJobId)
                   ? continueWithHint
