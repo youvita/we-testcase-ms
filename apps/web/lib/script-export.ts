@@ -72,6 +72,16 @@ export const test = base.extend<{ site: "web" | "admin" }>({
   },
 });
 
+/**
+ * ask("Enter the SMS code"): in WeTestCase, a person types it on the run page.
+ * Here, set ASK_ANSWER before running — e.g. ASK_ANSWER=123456 npx playwright test.
+ */
+export const ask = async (question: string, _options?: { timeoutSeconds?: number }): Promise<string> => {
+  const answer = process.env.ASK_ANSWER;
+  if (!answer) throw new Error(\`ask(\${JSON.stringify(question)}): set ASK_ANSWER to the value, then run the test again.\`);
+  return answer;
+};
+
 /** capture("Customer found"): a labelled screenshot of that moment, in the report. */
 export const captureWith = (page: Page) => async (label: string) => {
   await test.info().attach(label, { body: await page.screenshot(), contentType: "image/png" });
@@ -105,6 +115,11 @@ function testBody(testCase: ExportCase): string {
 ${capture}${code}
 });
 `;
+}
+
+/** Whether its file imports ask: a script that asks a person for a value. */
+function usesAsk(testCase: ExportCase): boolean {
+  return /\bask\(/.test(testCase.code);
 }
 
 function callsCapture(testCase: ExportCase): boolean {
@@ -212,7 +227,7 @@ export function projectFiles(
       .join("/");
     files[`tests/${folder}/${fileName(testCase)}`] = `${caseHeader(testCase)}
 
-import { test, expect, vars, env${usesCapture(testCase) ? ", captureWith" : ""} } from "${"../".repeat(folder.split("/").length)}fixtures";
+import { test, expect, vars, env${usesAsk(testCase) ? ", ask" : ""}${usesCapture(testCase) ? ", captureWith" : ""} } from "${"../".repeat(folder.split("/").length)}fixtures";
 
 ${testBody(testCase)}`;
   }

@@ -32,6 +32,7 @@ import { attachRunEvidence, resolveStoredPath } from "./attachment.service";
 import { verifyIfRanCurrentScript } from "./automation-script.service";
 import { deleteExecution, recordExecution } from "./execution.service";
 import { resolveEnvironmentForRunner } from "./run-environment.service";
+import { isWaitingForAnswer } from "./run-prompt.service";
 
 /**
  * Automated test runs.
@@ -568,7 +569,14 @@ export async function claimNextRun(runnerName: string): Promise<RunnerJob | null
       const now = new Date();
       const run = await tx.testRun.update({
         where: { id },
-        data: { status: "RUNNING", startedAt: now, heartbeatAt: now, runnerName },
+        // The ask token is for every run: any script may ask a person for a value.
+        data: {
+          status: "RUNNING",
+          startedAt: now,
+          heartbeatAt: now,
+          runnerName,
+          askToken: randomBytes(24).toString("base64url"),
+        },
         select: { liveView: true },
       });
       if (run.liveView) {
@@ -631,6 +639,7 @@ async function buildRunnerJob(runId: string): Promise<RunnerJob | null> {
       inOrder: run.inOrder,
       signInOnce: run.signInOnce,
       liveToken: run.liveToken,
+      askToken: run.askToken,
     },
     environment,
     items: run.items.map((item) => ({
@@ -646,18 +655,19 @@ async function buildRunnerJob(runId: string): Promise<RunnerJob | null> {
 }
 
 /** The runner is alive. Tells it whether someone asked to stop. */
-export async function heartbeat(runId: string): Promise<{ cancel: boolean }> {
+export async function heartbeat(runId: string): Promise<{ cancel: boolean; waitingForAnswer: boolean }> {
   const run = await prisma.testRun.findUnique({
     where: { id: runId },
     select: { status: true, cancelRequested: true },
   });
-  if (!run) return { cancel: true };
-  if (run.status !== "RUNNING") return { cancel: true };
+  if (!run) return { cancel: true, waitingForAnswer: false };
+  if (run.status !== "RUNNING") return { cancel: true, waitingForAnswer: false };
   await prisma.testRun.update({
     where: { id: runId },
     data: { heartbeatAt: new Date() },
   });
-  return { cancel: run.cancelRequested };
+  // A script waiting for a person (an OTP): the runner gives the run longer.
+  return { cancel: run.cancelRequested, waitingForAnswer: await isWaitingForAnswer(runId) };
 }
 
 const ARTIFACT_TYPES: Record<RunArtifactKind, { mimeType: string; ext: string; magic: (b: Buffer) => boolean }[]> = {

@@ -47,6 +47,7 @@ import { AI_MODELS, AI_MODEL_LABELS, type AiModel } from "@wetestcase/dto";
 import { ApiError, api, errorMessage } from "@/utils/api-client";
 
 import { LiveView, WatchLiveFields, type LiveChoice } from "./live-view";
+import { RunPrompts } from "./run-prompts";
 import { RunStatusBadge, formatDuration } from "./run-status-badge";
 import { ScriptReferences } from "./script-references";
 import { diffLines } from "@/utils/line-diff";
@@ -370,7 +371,11 @@ export function ScriptWritingPanel({
       )}
 
       {active && result?.currentRunId && (
-        <LiveView runId={result.currentRunId} quietWhenEmpty />
+        <>
+          {/* The draft may ask for a value, like an SMS code, while it is tried. */}
+          <RunPrompts runId={result.currentRunId} canAnswer={Boolean(onCancel)} />
+          <LiveView runId={result.currentRunId} quietWhenEmpty />
+        </>
       )}
 
       <ScriptReferences projectId={projectId} references={result?.references} />

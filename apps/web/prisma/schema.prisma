@@ -1015,6 +1015,9 @@ model TestRun {
   /// Issued at claim time: the only credential the test processes get, and
   /// good only for posting this run's live frames.
   liveToken String?
+  /// Issued at claim time, for every run: lets its scripts ask a person for
+  /// a value (`ask("Enter the SMS code")`) and read the answer. Nothing else.
+  askToken  String?
 
   /// Copied at start, so renaming or deleting the environment later does not
   /// change what a past run says it ran against.
@@ -1047,7 +1050,8 @@ model TestRun {
   createdById String
   createdBy   User   @relation(fields: [createdById], references: [id])
 
-  items TestRunItem[]
+  items   TestRunItem[]
+  prompts RunPrompt[]
 
   @@unique([projectId, number])
   @@unique([projectId, code])
@@ -1055,6 +1059,28 @@ model TestRun {
 }
 
 /// One test case within a run.
+/// A script asking a person for a value while it runs — an OTP sent by SMS,
+/// say. The run page shows it as an input box; the script waits for the
+/// answer, which is kept sealed and dropped once the script has read it.
+model RunPrompt {
+  id           String    @id @default(cuid())
+  /// The case asking, e.g. "TC-LOGIN-0001".
+  label        String
+  question     String
+  /// AES-sealed (lib/secret-box.ts); cleared once delivered.
+  answerSealed String?
+  answeredAt   DateTime?
+  deliveredAt  DateTime?
+  /// No answer by then: the script stops waiting and the step fails.
+  expiresAt    DateTime
+  createdAt    DateTime  @default(now())
+
+  runId String
+  run   TestRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@index([runId])
+}
+
 model TestRunItem {
   id         String        @id @default(cuid())
   status     RunItemStatus @default(QUEUED)

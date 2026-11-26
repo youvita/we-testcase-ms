@@ -155,6 +155,7 @@ You write only the body of an async test function. The runner wraps it: never wr
 Rules:
 - Paths are relative to the environment's base URL: page.goto("/login"), request.get("/users"). Never hard-code a host.
 - Never hard-code accounts, passwords, OTPs or tokens. Use vars.NAME from the variables listed. If the test needs a value that is not listed, use a sensible vars.NAME anyway and say in notes that QA must add it.
+- A value that changes every time and only a person receives — an OTP or verification code sent by SMS or email — cannot be a variable. Get it with const code = await ask("Enter the 6-digit code sent by SMS") at the moment the code has been sent, then type it in. The run pauses and QA types it on the run page. Use ask only for such values, never for accounts or passwords. Say in notes that the test asks for it.
 - vars are for accounts, secrets and settings — not for the records a test works on. When the test edits, deletes, finds or otherwise needs a record (a customer, an order), the script creates it first, through the same screens a user would, with a unique name such as \`QA Delete ${"${Date.now()}"}\`, and keeps that name in a const for the later steps. Never depend on records that happen to exist, and never ask QA for a variable naming one.
 - Find elements the way a user does: getByRole, getByLabel, getByPlaceholder, getByText — using names that appear in the page outline. Use a CSS selector only when nothing else identifies the element.
 - Follow the test case's steps in order, with a short comment for each step.
@@ -178,7 +179,7 @@ function firstDraftPrompt(options: {
 
 ${describeEnvironment(options.env)}
 
-In scope: ${fixturesFor(options.testCase)}, plus expect, vars, env (env.name, env.webUrl, env.adminUrl, env.apiUrl)${isApi ? "" : " and capture(label)"}.
+In scope: ${fixturesFor(options.testCase)}, plus expect, vars, env (env.name, env.webUrl, env.adminUrl, env.apiUrl), ask(question)${isApi ? "" : " and capture(label)"}.
 ${options.instructions ? `\nInstructions from QA: ${options.instructions}\n` : ""}
 ${
   isApi
@@ -209,7 +210,7 @@ function repairPrompt(options: {
 
 ${describeEnvironment(options.env)}
 
-In scope: ${fixturesFor(options.testCase)}, plus expect, vars, env${options.testCase.platform === "API" ? "" : " and capture(label)"}.
+In scope: ${fixturesFor(options.testCase)}, plus expect, vars, env, ask(question)${options.testCase.platform === "API" ? "" : " and capture(label)"}.
 ${options.instructions ? `\nInstructions from QA: ${options.instructions}\n` : ""}${
     options.hint
       ? `

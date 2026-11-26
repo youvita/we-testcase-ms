@@ -188,6 +188,43 @@ const captureWith = (page) => async (label) => {
   }
 };
 
+// \`const otp = await ask("Enter the SMS code")\`: the test waits while the
+// run page shows the question in an input box, and goes on with what a
+// person types — for values no variable can hold, like a one-time code. The
+// answer is masked like a secret. No answer in time fails the step.
+const ask = async (question, options = {}) => {
+  const seconds = Math.min(600, Math.max(10, Math.round(Number(options.timeoutSeconds) || 180)));
+  const appUrl = process.env.WTC_APP_URL;
+  const token = process.env.WTC_ASK_TOKEN;
+  if (!appUrl || !token) throw new Error("ask() needs a runner that supports it — update the runner.");
+  // Waiting for a person does not count against the test's own time.
+  test.setTimeout(test.info().timeout + (seconds + 15) * 1000);
+  const route = appUrl + "/api/runner/runs/${job.run.id}/prompts";
+  const headers = { authorization: "Bearer " + token, "content-type": "application/json" };
+  const created = await fetch(route, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ label: ${JSON.stringify(item.tcId)}, question: String(question), timeoutSeconds: seconds }),
+  });
+  const body = await created.json().catch(() => null);
+  if (!created.ok || !body?.data?.id) throw new Error("ask(): the app did not take the question (" + created.status + ").");
+  console.log("[ask] " + JSON.stringify(String(question)) + " — waiting up to " + seconds + " s for an answer on the run page");
+  const deadline = Date.now() + (seconds + 5) * 1000;
+  while (Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+    const polled = await fetch(route + "/" + body.data.id, { headers }).catch(() => null);
+    const state = polled?.ok ? (await polled.json().catch(() => null))?.data : null;
+    if (state?.status === "answered") {
+      const answer = String(state.answer);
+      if (answer.length >= 3) secrets.push(answer);
+      console.log("[ask] " + JSON.stringify(String(question)) + " — answered");
+      return answer;
+    }
+    if (state?.status === "expired") break;
+  }
+  throw new Error("Nobody answered " + JSON.stringify(String(question)) + " on the run page within " + seconds + " s.");
+};
+
 // Every call the script makes through \`request\`, with what it sent and what
 // came back — the run page shows them, so QA sees an API's answer without
 // opening the trace. Secrets masked, bodies cut short.
@@ -619,7 +656,12 @@ function stop(child: ChildProcess) {
   setTimeout(() => child.exitCode === null && child.kill("SIGKILL"), 5_000).unref();
 }
 
-function runPlaywright(dir: string, liveToken: string | null, extraArgs: string[] = []): ChildProcess {
+function runPlaywright(
+  dir: string,
+  tokens: { liveToken?: string | null; askToken?: string | null } = {},
+  extraArgs: string[] = [],
+): ChildProcess {
+  const { liveToken, askToken } = tokens;
   // Scripts run in this process and are written by people, so it never sees
   // the runner's own token. Watching live, it gets one good only for frames.
   const { RUNNER_TOKEN: _withheld, ...env } = process.env;
@@ -632,7 +674,10 @@ function runPlaywright(dir: string, liveToken: string | null, extraArgs: string[
         ...env,
         CI: "1",
         FORCE_COLOR: "0",
-        ...(liveToken ? { WTC_APP_URL: APP_URL, WTC_LIVE_TOKEN: liveToken } : {}),
+        ...(liveToken || askToken ? { WTC_APP_URL: APP_URL } : {}),
+        ...(liveToken ? { WTC_LIVE_TOKEN: liveToken } : {}),
+        // Good only for this run's ask() questions.
+        ...(askToken ? { WTC_ASK_TOKEN: askToken } : {}),
       },
       stdio: ["ignore", "pipe", "pipe"],
     },
@@ -666,7 +711,7 @@ async function setAsideBrokenSpecs(
   const broken = new Map<string, string>();
   for (let pass = 0; pass < 5; pass += 1) {
     await rm(path.join(dir, "report.json"), { force: true });
-    await exited(runPlaywright(dir, null, ["--list"]));
+    await exited(runPlaywright(dir, {}, ["--list"]));
     const report = await readReport(dir);
     const errors = report?.errors ?? [];
     if (errors.length === 0) return { broken, fatal: null };
@@ -801,13 +846,28 @@ async function executeRun(job: RunnerJob) {
 
   let output = "";
   let cancelled = false;
-  const child = runPlaywright(dir, job.run.liveToken);
+  const child = runPlaywright(dir, { liveToken: job.run.liveToken, askToken: job.run.askToken });
   child.stdout?.on("data", (chunk) => (output = (output + chunk.toString()).slice(-20_000)));
   child.stderr?.on("data", (chunk) => (output = (output + chunk.toString()).slice(-20_000)));
 
+  // A hard ceiling so one hung browser cannot hold the runner forever —
+  // pushed back while a script waits for a person to answer ask().
+  const workers = job.run.inOrder ? 1 : WORKERS;
+  // One more test when the run signs in once, first.
+  const ceilingMs = (Math.ceil(job.items.length / workers) + 1 + (shared ? 1 : 0)) * TEST_TIMEOUT_MS + 120_000;
+  let deadline = Date.now() + ceilingMs;
+  let overtime = false;
+
   const beat = setInterval(async () => {
+    if (Date.now() > deadline && !overtime) {
+      overtime = true;
+      log(`${job.run.label} exceeded its time — stopping`);
+      stop(child);
+      return;
+    }
     try {
-      const { data } = await api<{ cancel: boolean }>("POST", `/runs/${job.run.id}/heartbeat`);
+      const { data } = await api<{ cancel: boolean; waitingForAnswer?: boolean }>("POST", `/runs/${job.run.id}/heartbeat`);
+      if (data?.waitingForAnswer) deadline = Math.max(deadline, Date.now() + TEST_TIMEOUT_MS);
       if (data?.cancel && !cancelled) {
         cancelled = true;
         log(`cancel requested for ${job.run.label}`);
@@ -818,18 +878,8 @@ async function executeRun(job: RunnerJob) {
     }
   }, HEARTBEAT_MS);
 
-  // A hard ceiling so one hung browser cannot hold the runner forever.
-  const workers = job.run.inOrder ? 1 : WORKERS;
-  // One more test when the run signs in once, first.
-  const ceilingMs = (Math.ceil(job.items.length / workers) + 1 + (shared ? 1 : 0)) * TEST_TIMEOUT_MS + 120_000;
-  const ceiling = setTimeout(() => {
-    log(`${job.run.label} exceeded ${Math.round(ceilingMs / 1000)} s — stopping`);
-    stop(child);
-  }, ceilingMs);
-
   await exited(child);
   clearInterval(beat);
-  clearTimeout(ceiling);
 
   const report = await readReport(dir);
 

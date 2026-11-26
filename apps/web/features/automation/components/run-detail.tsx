@@ -21,6 +21,7 @@ import { ApiError, api, errorMessage } from "@/utils/api-client";
 import { formatBytes, formatDateTime } from "@/utils/format";
 
 import { RunStatusBadge, formatDuration, isRunActive } from "./run-status-badge";
+import { RunPrompts } from "./run-prompts";
 import { LiveView } from "./live-view";
 import { TriageCard } from "./triage-card";
 import { CodeView } from "@/components/shared/code-view";
@@ -159,6 +160,8 @@ export function RunDetail({
 
   return (
     <div className="space-y-4">
+      {/* A script waiting for a value only a person has, like an SMS code. */}
+      {active && <RunPrompts runId={run.id} canAnswer={canManage} />}
       <Card data-tour="run-summary">
         <CardContent className="space-y-3 p-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
