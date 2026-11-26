@@ -570,6 +570,8 @@ export type RunnerJob = {
     signInOnce?: boolean;
     /** Set when someone is watching: a token good only for this run's frames. */
     liveToken: string | null;
+    /** Good only for this run's ask() prompts. Absent from older apps. */
+    askToken?: string | null;
   };
   environment: {
     name: string;
@@ -659,3 +661,13 @@ export interface SmokeTestCaseDto {
   /** Without a script, it is skipped when the smoke test runs. */
   hasScript: boolean;
 }
+
+/** A running script waiting for a person to type a value in. */
+export type RunPromptDto = {
+  id: string;
+  /** The case asking, e.g. "TC-LOGIN-0001". */
+  label: string;
+  question: string;
+  askedAt: string;
+  expiresAt: string;
+};

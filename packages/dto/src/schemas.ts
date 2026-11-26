@@ -946,3 +946,23 @@ export const improveWritingSchema = z.object({
 });
 
 export type ImproveWritingInput = z.infer<typeof improveWritingSchema>;
+
+// ---------------------------------------------------------------------------
+// Asking a person during a run
+// ---------------------------------------------------------------------------
+
+/** A script's ask("Enter the SMS code"), sent by the test process. */
+export const runPromptCreateSchema = z.object({
+  /** The case asking, e.g. "TC-LOGIN-0001". */
+  label: z.string().trim().min(1).max(120),
+  question: z.string().trim().min(1).max(500),
+  /** How long the script waits for an answer. */
+  timeoutSeconds: z.number().int().min(10).max(600).default(180),
+});
+
+export type RunPromptCreateInput = z.input<typeof runPromptCreateSchema>;
+
+/** What QA typed into the box. */
+export const runPromptAnswerSchema = z.object({
+  answer: z.string().max(500).refine((v) => v.trim().length > 0, "Type the value the test asks for"),
+});

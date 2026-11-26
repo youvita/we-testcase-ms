@@ -66,8 +66,17 @@ declare const request: import("playwright-core").APIRequestContext;
 declare const env: {
   readonly name: string;
   readonly webUrl: string | null;
+  readonly adminUrl: string | null;
   readonly apiUrl: string | null;
 };
+/**
+ * Ask a person for a value while the test runs — an OTP sent by SMS, say.
+ * The run page shows the question in an input box; the test waits (3 minutes
+ * by default) and goes on with what is typed. The answer is masked like a secret.
+ *
+ *     const otp = await ask("Enter the 6-digit code sent by SMS");
+ */
+declare function ask(question: string, options?: { timeoutSeconds?: number }): Promise<string>;
 /** The environment's variables, by name. */
 declare const vars: {
 ${known.join("\n")}
